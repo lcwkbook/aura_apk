@@ -1,4 +1,4 @@
-package com.bitebiWePro;
+package com.Aurakernel;
 
 import android.content.Context;
 import android.net.Uri;

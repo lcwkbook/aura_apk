@@ -3,7 +3,7 @@ android {
     compileSdkVersion 33
     buildToolsVersion "33.0.0"
     defaultConfig {
-        applicationId "com.bitebiWePro"
+        applicationId "com.Aurakernel"
         minSdkVersion 19
         targetSdkVersion 26
         versionCode 1

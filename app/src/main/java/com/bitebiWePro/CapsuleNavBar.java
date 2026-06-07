@@ -1,4 +1,4 @@
-package com.bitebiWePro;
+package com.Aurakernel;
 
 import android.animation.ValueAnimator;
 import android.graphics.Canvas;
