@@ -14,6 +14,11 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.animation.Animator;
+import android.animation.ValueAnimator;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -87,7 +92,22 @@ public class MainActivity extends Activity {
   private static final String PREF_FAV_DIRS = "favorite_dirs";
   private static final String PREF_LAST_RUN_DIR = "last_run_dir";
   private static final String PREF_LAST_DRIVER_DIR = "last_driver_dir";
-  
+
+  // 纯白启动页背景
+final int SPLASH_WHITE_BG = Color.WHITE;
+// 主淡绿色（进度条、圆环主弧线、核心元素）
+final int MAIN_GREEN = Color.rgb(81, 191, 101);
+// 浅绿（副标题、辅助文字）
+final int LIGHT_GREEN = Color.rgb(129, 199, 132);
+// 深灰主文字（白底标题专用）
+final int DARK_TEXT = Color.rgb(33, 33, 33);
+// 浅灰辅助文字
+final int GRAY_TEXT = Color.rgb(97, 97, 97);
+// 轨道浅灰色（进度条底色）
+final int TRACK_BG = Color.argb(40, 160, 160, 160);
+// 绿色光晕
+final int GREEN_GLOW = Color.argb(60, 81, 191, 101);
+
   private UpdateTask updateTask;
   private FrameLayout root;
   private LinearLayout pageHost;
@@ -171,40 +191,38 @@ public class MainActivity extends Activity {
     root.addView(tip, new FrameLayout.LayoutParams(-1, -1));
 
     new Thread(() -> {
-        boolean hasRoot = RunnerSupport.hasRoot();
-        handler.post(() -> {
-            if (hasRoot) {
-                // 有 Root，正常进入
-                showSplashThenMain();
-            } else {
-                // 无 Root，停留在当前提示界面
-                rootDenied = true;
-                tip.setText("未获取 Root 权限，无法使用该软件");
-                tip.setTextColor(Color.RED);
-                root.setOnClickListener(null);
-                Toast.makeText(MainActivity.this, "未获取 Root 权限", Toast.LENGTH_LONG).show();
-            }
-        });
+      boolean hasRoot = RunnerSupport.hasRoot();
+      handler.post(() -> {
+        if (hasRoot) {
+          // 有 Root，正常进入
+          showSplashThenMain();
+        } else {
+          // 无 Root，停留在当前提示界面
+          rootDenied = true;
+          tip.setText("未获取 Root 权限，无法使用该软件");
+          tip.setTextColor(Color.RED);
+          root.setOnClickListener(null);
+          Toast.makeText(MainActivity.this, "未获取 Root 权限", Toast.LENGTH_LONG).show();
+        }
+      });
     }).start();
-}
+  }
 
-@Override
-public void onBackPressed() {
+  @Override
+  public void onBackPressed() {
     if (rootDenied) {
-        finish();   // 允许退出
+      finish(); // 允许退出
     } else {
-        super.onBackPressed();
+      super.onBackPressed();
     }
-}
+  }
 
   private boolean hasStoragePermission() {
     if (Build.VERSION.SDK_INT >= 30) {
       return Environment.isExternalStorageManager();
     } else if (Build.VERSION.SDK_INT >= 23) {
-      return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
-              == PackageManager.PERMISSION_GRANTED
-          && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-              == PackageManager.PERMISSION_GRANTED;
+      return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+          && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
     return true;
   }
@@ -217,7 +235,7 @@ public void onBackPressed() {
     } else if (Build.VERSION.SDK_INT >= 23) {
       requestPermissions(
           new String[] {
-            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
+              Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE
           },
           REQUEST_MANAGE_STORAGE);
     }
@@ -246,9 +264,9 @@ public void onBackPressed() {
         Toast.makeText(this, "必须授予权限才能使用", Toast.LENGTH_LONG).show();
         finish();
       }
-    }else if (requestCode == 1001) {
-        // 用户从安装未知源设置返回，不自动重试，需手动再次点击检测更新
-        Toast.makeText(this, "已允许安装，请再次点击检测更新", Toast.LENGTH_SHORT).show();
+    } else if (requestCode == 1001) {
+      // 用户从安装未知源设置返回，不自动重试，需手动再次点击检测更新
+      Toast.makeText(this, "已允许安装，请再次点击检测更新", Toast.LENGTH_SHORT).show();
     }
   }
 
@@ -267,9 +285,9 @@ public void onBackPressed() {
   }
 
   @Override
-protected void onDestroy() {
+  protected void onDestroy() {
     if (updateTask != null && !updateTask.isCancelled()) {
-        updateTask.cancel(true);
+      updateTask.cancel(true);
     }
     stopRunningProcess(false);
     handler.removeCallbacksAndMessages(null);
@@ -286,7 +304,8 @@ protected void onDestroy() {
         w.setNavigationBarColor(bgColor());
       }
       int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
-      if (!nightMode && Build.VERSION.SDK_INT >= 23) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+      if (!nightMode && Build.VERSION.SDK_INT >= 23)
+        flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
       if (!nightMode && Build.VERSION.SDK_INT >= 26)
         flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
       w.getDecorView().setSystemUiVisibility(flags);
@@ -295,81 +314,220 @@ protected void onDestroy() {
     }
   }
 
-  private void showSplashThenMain() {
+  // ====================== 重写启动动画（白色背景 + 淡绿色元素） ======================
+private void showSplashThenMain() {
     root.removeAllViews();
-    root.setBackground(bgGradient());
 
-    LinearLayout box = new LinearLayout(this);
-    box.setOrientation(LinearLayout.VERTICAL);
-    box.setGravity(Gravity.CENTER);
-    box.setPadding(dp(30), dp(30), dp(30), dp(30));
-    root.addView(box, new FrameLayout.LayoutParams(-1, -1));
+    // === 改为 纯白色背景（替换原来深色渐变） ===
+    root.setBackgroundColor(SPLASH_WHITE_BG);
 
-    TextView logo = text("W", 44, Color.WHITE, Typeface.BOLD);
-    logo.setGravity(Gravity.CENTER);
-    logo.setBackground(round(primaryColor(), 30, Color.argb(80, 255, 255, 255), 1));
-    LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(86), dp(86));
-    box.addView(logo, logoLp);
+    FrameLayout splashRoot = new FrameLayout(this);
+    splashRoot.setPadding(dp(30), dp(30), dp(30), dp(30));
+    root.addView(splashRoot, new FrameLayout.LayoutParams(-1, -1));
 
-    TextView name = text("AuraKernel", 32, textColor(), Typeface.BOLD);
-    name.setGravity(Gravity.CENTER);
-    LinearLayout.LayoutParams nlp = lp(-1, -2, 0, dp(22), 0, 0);
-    box.addView(name, nlp);
+    // ===== 1. 光环 Logo（淡绿色主题） =====
+    RingView ringView = new RingView(this);
+    ringView.setAlpha(0f);
+    FrameLayout.LayoutParams ringLp = new FrameLayout.LayoutParams(dp(110), dp(110));
+    ringLp.gravity = Gravity.CENTER;
+    ringLp.topMargin = -dp(50);
+    splashRoot.addView(ringView, ringLp);
 
-    TextView sub =
-        text("Binary Runner · Driver Mode · Live Terminal", 13, subTextColor(), Typeface.NORMAL);
-    sub.setGravity(Gravity.CENTER);
-    box.addView(sub, lp(-1, -2, 0, dp(8), 0, dp(24)));
+    // ===== 2. 品牌名（深灰色文字，白底清晰） =====
+    TextView nameView = text("AuraKernel", 34, DARK_TEXT, Typeface.BOLD);
+    nameView.setAlpha(0f);
+    nameView.setTranslationY(dp(24));
+    nameView.setGravity(Gravity.CENTER);
+    // 文字阴影（白底弱化阴影）
+    nameView.setShadowLayer(dp(4), 0, dp(2), Color.argb(40, 0, 0, 0));
+    FrameLayout.LayoutParams nameLp = new FrameLayout.LayoutParams(-1, -2);
+    nameLp.gravity = Gravity.CENTER;
+    nameLp.topMargin = dp(76);
+    splashRoot.addView(nameView, nameLp);
 
-    LinearLayout dots = new LinearLayout(this);
-    dots.setGravity(Gravity.CENTER);
-    box.addView(dots, lp(-1, dp(18), 0, 0, 0, 0));
-    for (int i = 0; i < 3; i++) {
-      TextView dot = text("", 1, Color.WHITE, Typeface.NORMAL);
-      dot.setBackground(round(i == 0 ? primaryColor() : tagColor(), 20, 0, 0));
-      LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(28), dp(6));
-      dlp.setMargins(dp(4), 0, dp(4), 0);
-      dots.addView(dot, dlp);
+    // ===== 3. 副标题（淡绿色文字） =====
+    TextView subView = text("Binary Runner · Driver Mode · Live Terminal", 12,
+            LIGHT_GREEN, Typeface.NORMAL);
+    subView.setAlpha(0f);
+    subView.setGravity(Gravity.CENTER);
+    FrameLayout.LayoutParams subLp = new FrameLayout.LayoutParams(-1, -2);
+    subLp.gravity = Gravity.CENTER;
+    subLp.topMargin = dp(112);
+    splashRoot.addView(subView, subLp);
+
+    // ===== 4. 加载指示条（浅灰轨道 + 淡绿色进度条） =====
+    final View track = new View(this);
+    track.setBackground(round(TRACK_BG, 3, 0, 0));
+    FrameLayout.LayoutParams trackLp = new FrameLayout.LayoutParams(dp(200), dp(5));
+    trackLp.gravity = Gravity.CENTER;
+    trackLp.topMargin = dp(180);
+    splashRoot.addView(track, trackLp);
+
+    final View bar = new View(this);
+    bar.setBackground(round(MAIN_GREEN, 3, 0, 0)); // 淡绿色进度条
+    FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(dp(200), dp(5));
+    barLp.gravity = Gravity.CENTER;
+    barLp.topMargin = dp(180);
+    splashRoot.addView(bar, barLp);
+    // 缩放支点：从左向右展开
+    bar.setScaleX(0f);
+    bar.setPivotX(0f);
+
+    // ===== 加载条动画 =====
+    final ValueAnimator barAnim = ValueAnimator.ofFloat(0f, 1f);
+    barAnim.setDuration(1400);
+    barAnim.setStartDelay(1000);
+    barAnim.setInterpolator(new DecelerateInterpolator(2.0f));
+    barAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+        public void onAnimationUpdate(ValueAnimator animation) {
+            float value = (Float) animation.getAnimatedValue();
+            bar.setScaleX(value);
+        }
+    });
+
+    // ===== 动画序列（完全保留原有动画逻辑） =====
+    // 1. 光环淡入 + 旋转
+    ringView.animate()
+            .alpha(1f)
+            .setDuration(700)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .start();
+
+    final ValueAnimator rotateAnim = ValueAnimator.ofFloat(0f, 360f);
+    rotateAnim.setDuration(2500);
+    rotateAnim.setRepeatCount(ValueAnimator.INFINITE);
+    rotateAnim.setInterpolator(new android.view.animation.LinearInterpolator());
+    rotateAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+        public void onAnimationUpdate(ValueAnimator animation) {
+            ringView.setRotation((Float) animation.getAnimatedValue());
+        }
+    });
+    rotateAnim.setStartDelay(200);
+    rotateAnim.start();
+
+    // 2. 品牌名弹性弹入
+    nameView.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(550)
+            .setStartDelay(400)
+            .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
+            .start();
+
+    // 3. 副标题淡入
+    subView.animate()
+            .alpha(1f)
+            .setDuration(450)
+            .setStartDelay(800)
+            .setInterpolator(new DecelerateInterpolator())
+            .start();
+
+    // 4. 加载条结束，跳转主界面
+    barAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+        @Override
+        public void onAnimationEnd(android.animation.Animator animation) {
+            handler.postDelayed(new Runnable() {
+                public void run() {
+                    rotateAnim.cancel();
+                    // 整体淡出
+                    splashRoot.animate()
+                            .alpha(0f)
+                            .setDuration(300)
+                            .setInterpolator(new DecelerateInterpolator())
+                            .withEndAction(new Runnable() {
+                                @Override
+                                public void run() {
+                                    showMainShell();
+                                }
+                            })
+                            .start();
+                }
+            }, 400);
+        }
+    });
+    barAnim.start();
+}
+
+  // ====================== RingView 内部类（纯白背景 + 淡绿色元素） ======================
+private class RingView extends View {
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF arcRect = new RectF(); // 修复：添加 () 括号
+
+    public RingView(Context context) {
+        super(context);
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null);
     }
 
-    AnimationSet set = new AnimationSet(true);
-    ScaleAnimation scale =
-        new ScaleAnimation(
-            0.82f,
-            1f,
-            0.82f,
-            1f,
-            Animation.RELATIVE_TO_SELF,
-            0.5f,
-            Animation.RELATIVE_TO_SELF,
-            0.5f);
-    scale.setDuration(560);
-    AlphaAnimation alpha = new AlphaAnimation(0f, 1f);
-    alpha.setDuration(560);
-    set.addAnimation(scale);
-    set.addAnimation(alpha);
-    logo.startAnimation(set);
-    name.startAnimation(alpha);
-    sub.startAnimation(alpha);
+    @Override
+    protected void onDraw(Canvas canvas) {
+        float w = getWidth();
+        float h = getHeight();
+        float cx = w / 2f;
+        float cy = h / 2f;
+        float radius = Math.min(w, h) / 2f - dp(6);
 
-    handler.postDelayed(
-        new Runnable() {
-          public void run() {
-            showMainShell();
-          }
-        },
-        900);
-  }
+        // === 外环（半透明白色轮廓，适配白底） ===
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(3));
+        paint.setColor(Color.argb(50, 120, 120, 120));
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        arcRect.set(cx - radius, cy - radius, cx + radius, cy + radius);
+        canvas.drawArc(arcRect, -90, 360, false, paint);
+
+        // === 主弧线：淡绿色（替换原蓝色） ===
+        paint.setStrokeWidth(dp(4));
+        paint.setColor(MAIN_GREEN);
+        float startAngle = -90 + (System.currentTimeMillis() % 2500) / 2500f * 360f;
+        float sweepAngle = 150f;
+        arcRect.set(cx - radius, cy - radius, cx + radius, cy + radius);
+        canvas.drawArc(arcRect, startAngle, sweepAngle, false, paint);
+
+        // === 内层高光弧（浅白提亮） ===
+        paint.setStrokeWidth(dp(2));
+        paint.setColor(Color.argb(200, 255, 255, 255));
+        canvas.drawArc(arcRect, startAngle + 15, sweepAngle - 30, false, paint);
+
+        // === 前端高亮光点 + 绿色光晕 ===
+        float dotAngle = (float) Math.toRadians(startAngle + sweepAngle);
+        float dotX = cx + radius * (float) Math.cos(dotAngle);
+        float dotY = cy + radius * (float) Math.sin(dotAngle);
+
+        paint.setStyle(Paint.Style.FILL);
+        // 外层绿色光晕
+        paint.setColor(GREEN_GLOW);
+        canvas.drawCircle(dotX, dotY, dp(8), paint);
+        // 中层亮圈
+        paint.setColor(Color.argb(120, 255, 255, 255));
+        canvas.drawCircle(dotX, dotY, dp(4), paint);
+        // 核心白点
+        paint.setColor(Color.WHITE);
+        canvas.drawCircle(dotX, dotY, dp(3), paint);
+
+        // === 尾端淡绿色小点 ===
+        float tailAngle = (float) Math.toRadians(startAngle + 20);
+        float tailX = cx + radius * (float) Math.cos(tailAngle);
+        float tailY = cy + radius * (float) Math.sin(tailAngle);
+        paint.setColor(Color.argb(80, 81, 191, 101));
+        canvas.drawCircle(tailX, tailY, dp(3), paint);
+
+        // === 中心绿色发光点 ===
+        paint.setColor(Color.argb(30, 81, 191, 101));
+        canvas.drawCircle(cx, cy, dp(12), paint);
+        paint.setColor(Color.argb(60, 255, 255, 255));
+        canvas.drawCircle(cx, cy, dp(5), paint);
+        paint.setColor(Color.argb(120, 255, 255, 255));
+        canvas.drawCircle(cx, cy, dp(2), paint);
+    }
+}
 
   private GradientDrawable bgGradient() {
-    GradientDrawable g =
-        new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            nightMode
-                ? new int[] {Color.rgb(8, 12, 22), Color.rgb(17, 26, 49), Color.rgb(7, 10, 18)}
-                : new int[] {
-                  Color.rgb(238, 245, 255), Color.rgb(250, 252, 255), Color.rgb(235, 244, 255)
-                });
+    GradientDrawable g = new GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        nightMode
+            ? new int[] { Color.rgb(8, 12, 22), Color.rgb(17, 26, 49), Color.rgb(7, 10, 18) }
+            : new int[] {
+                Color.rgb(238, 245, 255), Color.rgb(250, 252, 255), Color.rgb(235, 244, 255)
+            });
     return g;
   }
 
@@ -392,25 +550,25 @@ protected void onDestroy() {
 
     // ============ 【新增】进入软件后自动检查更新 ============
     handler.postDelayed(new Runnable() {
-        @Override
-        public void run() {
-            // 静默检查更新，只有发现新版本时才弹窗提示
-            if (isNetworkAvailable()) {
-                if (updateTask != null && !updateTask.isCancelled()) {
-                    updateTask.cancel(true);
-                }
-                updateTask = new UpdateTask(MainActivity.this);
-                updateTask.execute();
-            }
-            // 无网络时静默跳过，不弹任何提示
+      @Override
+      public void run() {
+        // 静默检查更新，只有发现新版本时才弹窗提示
+        if (isNetworkAvailable()) {
+          if (updateTask != null && !updateTask.isCancelled()) {
+            updateTask.cancel(true);
+          }
+          updateTask = new UpdateTask(MainActivity.this);
+          updateTask.execute();
         }
+        // 无网络时静默跳过，不弹任何提示
+      }
     }, 1500); // 延迟1.5秒等页面完全加载后再检查
     // ======================================================
-}
-
+  }
 
   private void prepareScriptIfNeeded() {
-    if (scriptReady) return;
+    if (scriptReady)
+      return;
 
     // 检查本地文件
     File scriptDir = new File(getFilesDir(), "scripts");
@@ -426,70 +584,74 @@ protected void onDestroy() {
 
     // 需要下载
     append("正在下载运行脚本...\n");
-    if (runButton != null) runButton.setEnabled(false);
+    if (runButton != null)
+      runButton.setEnabled(false);
 
     new Thread(
-            () -> {
-              try {
-                if (!scriptDir.exists()) scriptDir.mkdirs();
-                File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
+        () -> {
+          try {
+            if (!scriptDir.exists())
+              scriptDir.mkdirs();
+            File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
 
-                URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
+            URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
 
-                // 如果证书有问题，临时忽略（上线前请申请正规证书）
-                if (conn instanceof HttpsURLConnection) {
-                  HttpsURLConnection sconn = (HttpsURLConnection) conn;
-                  TrustManager[] trustAll =
-                      new TrustManager[] {
-                        new X509TrustManager() {
-                          public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                          }
+            // 如果证书有问题，临时忽略（上线前请申请正规证书）
+            if (conn instanceof HttpsURLConnection) {
+              HttpsURLConnection sconn = (HttpsURLConnection) conn;
+              TrustManager[] trustAll = new TrustManager[] {
+                  new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                      return new X509Certificate[0];
+                    }
 
-                          public void checkClientTrusted(X509Certificate[] c, String a) {}
+                    public void checkClientTrusted(X509Certificate[] c, String a) {
+                    }
 
-                          public void checkServerTrusted(X509Certificate[] c, String a) {}
-                        }
-                      };
-                  SSLContext sc = SSLContext.getInstance("TLS");
-                  sc.init(null, trustAll, new SecureRandom());
-                  sconn.setSSLSocketFactory(sc.getSocketFactory());
-                  sconn.setHostnameVerifier((hostname, session) -> true);
-                }
+                    public void checkServerTrusted(X509Certificate[] c, String a) {
+                    }
+                  }
+              };
+              SSLContext sc = SSLContext.getInstance("TLS");
+              sc.init(null, trustAll, new SecureRandom());
+              sconn.setSSLSocketFactory(sc.getSocketFactory());
+              sconn.setHostnameVerifier((hostname, session) -> true);
+            }
 
-                InputStream in = new BufferedInputStream(conn.getInputStream());
-                FileOutputStream out = new FileOutputStream(tempFile);
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
-                out.flush();
-                out.close();
-                in.close();
-                conn.disconnect();
+            InputStream in = new BufferedInputStream(conn.getInputStream());
+            FileOutputStream out = new FileOutputStream(tempFile);
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) != -1)
+              out.write(buf, 0, len);
+            out.flush();
+            out.close();
+            in.close();
+            conn.disconnect();
 
-                // 重命名为正式文件
-                tempFile.renameTo(scriptFile);
-                RunnerSupport.chmod777(scriptFile);
+            // 重命名为正式文件
+            tempFile.renameTo(scriptFile);
+            RunnerSupport.chmod777(scriptFile);
 
-                handler.post(
-                    () -> {
-                      selectedFile = scriptFile;
-                      selectedName = SCRIPT_NAME;
-                      scriptReady = true;
-                      append("运行脚本准备完毕\n");
-                      updateRunButton();
-                    });
-              } catch (Exception e) {
-                handler.post(
-                    () -> {
-                      append("脚本下载失败: " + e.getMessage() + "\n");
-                      updateRunButton();
-                    });
-              }
-            })
+            handler.post(
+                () -> {
+                  selectedFile = scriptFile;
+                  selectedName = SCRIPT_NAME;
+                  scriptReady = true;
+                  append("运行脚本准备完毕\n");
+                  updateRunButton();
+                });
+          } catch (Exception e) {
+            handler.post(
+                () -> {
+                  append("脚本下载失败: " + e.getMessage() + "\n");
+                  updateRunButton();
+                });
+          }
+        })
         .start();
   }
 
@@ -533,9 +695,11 @@ protected void onDestroy() {
   }
 
   private void switchPage(int page) {
-    if (pageHost == null) return;
+    if (pageHost == null)
+      return;
     int oldPage = currentPage;
-    if (page == currentPage && pageHost.getChildCount() > 0) return;
+    if (page == currentPage && pageHost.getChildCount() > 0)
+      return;
     currentPage = page;
     pageHost.removeAllViews();
     pageHost.setBackgroundColor(bgColor());
@@ -547,16 +711,15 @@ protected void onDestroy() {
 
   private void animatePageIn(View view, int direction) {
     AnimationSet set = new AnimationSet(true);
-    TranslateAnimation slide =
-        new TranslateAnimation(
-            Animation.RELATIVE_TO_PARENT,
-            direction >= 0 ? 0.08f : -0.08f,
-            Animation.RELATIVE_TO_PARENT,
-            0f,
-            Animation.RELATIVE_TO_SELF,
-            0f,
-            Animation.RELATIVE_TO_SELF,
-            0f);
+    TranslateAnimation slide = new TranslateAnimation(
+        Animation.RELATIVE_TO_PARENT,
+        direction >= 0 ? 0.08f : -0.08f,
+        Animation.RELATIVE_TO_PARENT,
+        0f,
+        Animation.RELATIVE_TO_SELF,
+        0f,
+        Animation.RELATIVE_TO_SELF,
+        0f);
     AlphaAnimation alpha = new AlphaAnimation(0.18f, 1f);
     slide.setDuration(260);
     alpha.setDuration(220);
@@ -627,7 +790,8 @@ protected void onDestroy() {
     keyEdit.setBackground(round(cardColor(), 12, borderColor(), 1));
     // 恢复上次保存的卡密
     String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
-    if (!savedKey.isEmpty()) keyEdit.setText(savedKey);
+    if (!savedKey.isEmpty())
+      keyEdit.setText(savedKey);
     card.addView(keyEdit, lp(-1, -2, 0, dp(6), 0, dp(16)));
 
     // ======= 2. 驱动选择（独立板块） =======
@@ -680,7 +844,7 @@ protected void onDestroy() {
     runRow.setOrientation(LinearLayout.HORIZONTAL);
     card.addView(runRow, lp(-1, dp(48), 0, dp(8), 0, 0));
 
-    runButton = button("直接运行", true); 
+    runButton = button("直接运行", true);
     stopButton = button("停止", false);
     runRow.addView(runButton, new LinearLayout.LayoutParams(0, -1, 1));
     LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(88), -1);
@@ -789,7 +953,8 @@ protected void onDestroy() {
   }
 
   private void updateSwitchButton(TextView btn, boolean on) {
-    if (btn == null) return;
+    if (btn == null)
+      return;
     btn.setText(on ? "开启" : "关闭");
     btn.setTextColor(on ? Color.WHITE : subTextColor());
     btn.setBackground(
@@ -908,12 +1073,11 @@ protected void onDestroy() {
           }
         });
 
-    TextView tip =
-        text(
-            "说明：运行程序现在采用实时管道模式，stdout/stderr 会显示在首页终端；输入框会把内容写入进程 stdin，适合公告确认、卡密输入等交互。",
-            12,
-            subTextColor(),
-            Typeface.NORMAL);
+    TextView tip = text(
+        "说明：运行程序现在采用实时管道模式，stdout/stderr 会显示在首页终端；输入框会把内容写入进程 stdin，适合公告确认、卡密输入等交互。",
+        12,
+        subTextColor(),
+        Typeface.NORMAL);
     tip.setLineSpacing(dp(2), 1f);
     page.addView(tip, lp(-1, -2, 0, dp(4), 0, 0));
     return scroll;
@@ -956,63 +1120,63 @@ protected void onDestroy() {
       Toast.makeText(this, "请先等待脚本准备完毕", Toast.LENGTH_SHORT).show();
       return;
     }
-    if (running) return;
+    if (running)
+      return;
 
     outputBuffer.setLength(0);
-    if (outputView != null) outputView.setText("");
+    if (outputView != null)
+      outputView.setText("");
     running = true;
     updateRunButton();
     // updateInputState();
     append("开始运行脚本\n");
 
     new Thread(
-            new Runnable() {
-              public void run() {
-                try {
-                  post("请求 Root 权限...\n");
-                  if (!RunnerSupport.hasRoot()) {
-                    post("Root 权限不可用\n");
-                    return;
-                  }
-
-                  post("应用触摸兼容设置...\n");
-                  RunnerSupport.applyTouchCompatibility(getPackageName());
-
-                  post("准备程序...\n");
-                  String rootPath;
-                  boolean isElf = false;
-                  if (selectedFile.canRead()) {
-                    File local =
-                        RunnerSupport.copyFromPath(MainActivity.this, selectedFile, selectedName);
-                    isElf = RunnerSupport.isElf(local);
-                    rootPath = RunnerSupport.prepareRootExecutable(local, selectedName);
-                  } else {
-                    post("普通权限无法读取文件，尝试用 Root 复制...\n");
-                    rootPath =
-                        RunnerSupport.prepareRootExecutableFromPath(
-                            selectedFile.getAbsolutePath(), selectedName);
-                    isElf = RunnerSupport.looksLikeElfOrBinaryName(selectedName);
-                  }
-
-                  activeRootPath = rootPath;
-                  post("启动真实终端...\n\n");
-                  startInteractiveRootProcess(rootPath, isElf);
-                } catch (Exception e) {
-                  post("运行失败: " + safeMessage(e) + "\n");
-                } finally {
-                  handler.post(
-                      new Runnable() {
-                        public void run() {
-                          running = false;
-                          processWriter = null;
-                          runningProcess = null;
-                          activeRootPath = "";
-                          updateRunButton();
-                        }
-                      });
-                }
+        new Runnable() {
+          public void run() {
+            try {
+              post("请求 Root 权限...\n");
+              if (!RunnerSupport.hasRoot()) {
+                post("Root 权限不可用\n");
+                return;
               }
-            })
+
+              post("应用触摸兼容设置...\n");
+              RunnerSupport.applyTouchCompatibility(getPackageName());
+
+              post("准备程序...\n");
+              String rootPath;
+              boolean isElf = false;
+              if (selectedFile.canRead()) {
+                File local = RunnerSupport.copyFromPath(MainActivity.this, selectedFile, selectedName);
+                isElf = RunnerSupport.isElf(local);
+                rootPath = RunnerSupport.prepareRootExecutable(local, selectedName);
+              } else {
+                post("普通权限无法读取文件，尝试用 Root 复制...\n");
+                rootPath = RunnerSupport.prepareRootExecutableFromPath(
+                    selectedFile.getAbsolutePath(), selectedName);
+                isElf = RunnerSupport.looksLikeElfOrBinaryName(selectedName);
+              }
+
+              activeRootPath = rootPath;
+              post("启动真实终端...\n\n");
+              startInteractiveRootProcess(rootPath, isElf);
+            } catch (Exception e) {
+              post("运行失败: " + safeMessage(e) + "\n");
+            } finally {
+              handler.post(
+                  new Runnable() {
+                    public void run() {
+                      running = false;
+                      processWriter = null;
+                      runningProcess = null;
+                      activeRootPath = "";
+                      updateRunButton();
+                    }
+                  });
+            }
+          }
+        })
         .start();
   }
 
@@ -1037,45 +1201,48 @@ protected void onDestroy() {
     String line;
 
     try {
-        while ((line = reader.readLine()) != null) {
-            post(line + "\n");
+      while ((line = reader.readLine()) != null) {
+        post(line + "\n");
 
-            // 检测 NEED_KAMI → 需要 App 输入卡密
-            if (!kamiHandled && line.contains("[NEED_KAMI]")) {
-                kamiHandled = true;
-                String kami = keyEdit.getText().toString().trim();
-                if (!kami.isEmpty()) {
-                    Thread.sleep(200);  // 给 C++ 一点时间到 cin
-                    processWriter.write(kami);
-                    processWriter.newLine();
-                    processWriter.flush();
-                    post("[自动输入卡密]\n");
-                    // 保存
-                    getSharedPreferences(PREFS, MODE_PRIVATE)
-                        .edit().putString("key_value", kami).apply();
-                } else {
-                    post("[未设置卡密]\n");
-                }
-            }
-
-            // 检测 SAVED_KAMI → C++ 已自动使用，App 什么都不做
-            if (!kamiHandled && line.contains("[SAVED_KAMI]")) {
-                kamiHandled = true;
-                post("[C++ 端已自动使用本地卡密]\n");
-                // 不做任何写入操作！
-            }
+        // 检测 NEED_KAMI → 需要 App 输入卡密
+        if (!kamiHandled && line.contains("[NEED_KAMI]")) {
+          kamiHandled = true;
+          String kami = keyEdit.getText().toString().trim();
+          if (!kami.isEmpty()) {
+            Thread.sleep(200); // 给 C++ 一点时间到 cin
+            processWriter.write(kami);
+            processWriter.newLine();
+            processWriter.flush();
+            post("[自动输入卡密]\n");
+            // 保存
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putString("key_value", kami).apply();
+          } else {
+            post("[未设置卡密]\n");
+          }
         }
+
+        // 检测 SAVED_KAMI → C++ 已自动使用，App 什么都不做
+        if (!kamiHandled && line.contains("[SAVED_KAMI]")) {
+          kamiHandled = true;
+          post("[C++ 端已自动使用本地卡密]\n");
+          // 不做任何写入操作！
+        }
+      }
     } catch (Exception e) {
-        post("读取异常: " + e.getMessage() + "\n");
+      post("读取异常: " + e.getMessage() + "\n");
     } finally {
-        try { in.close(); } catch (Exception ignored) {}
+      try {
+        in.close();
+      } catch (Exception ignored) {
+      }
     }
 
     int code = p.waitFor();
     post("\n[AuraKernel] su shell exited: " + code + "\n");
     running = false;
     updateRunButton();
-}
+  }
 
   private void sendDriverOptionsWithoutKami() {
     String driverNum = driverType == 0 ? "2" : (driverType == 1 ? "3" : "1");
@@ -1086,45 +1253,53 @@ protected void onDestroy() {
 
     // 1. 驱动选择
     handler.postDelayed(() -> {
-        if (!running || processWriter == null) return;
-        try {
-            processWriter.write(driverNum);
-            processWriter.newLine();
-            processWriter.flush();
-            append(driverNum + "\n");
-        } catch (Exception e) {}
+      if (!running || processWriter == null)
+        return;
+      try {
+        processWriter.write(driverNum);
+        processWriter.newLine();
+        processWriter.flush();
+        append(driverNum + "\n");
+      } catch (Exception e) {
+      }
     }, baseDelay);
 
     // 2. 防录屏
     handler.postDelayed(() -> {
-        if (!running || processWriter == null) return;
-        try {
-            processWriter.write(antiNum);
-            processWriter.newLine();
-            processWriter.flush();
-            append(antiNum + "\n");
-        } catch (Exception e) {}
+      if (!running || processWriter == null)
+        return;
+      try {
+        processWriter.write(antiNum);
+        processWriter.newLine();
+        processWriter.flush();
+        append(antiNum + "\n");
+      } catch (Exception e) {
+      }
     }, baseDelay + 800);
 
     // 3. 无后台（非KPM时）
     if (driverType != 0) {
-        handler.postDelayed(() -> {
-            if (!running || processWriter == null) return;
-            try {
-                processWriter.write(bgNum);
-                processWriter.newLine();
-                processWriter.flush();
-                append(bgNum + "\n");
-            } catch (Exception e) {}
-        }, baseDelay + 1600);
+      handler.postDelayed(() -> {
+        if (!running || processWriter == null)
+          return;
+        try {
+          processWriter.write(bgNum);
+          processWriter.newLine();
+          processWriter.flush();
+          append(bgNum + "\n");
+        } catch (Exception e) {
+        }
+      }, baseDelay + 1600);
     }
 
-}
+  }
 
   private void autoSendLine(String value, String reason) {
-    if (!running || processWriter == null) return;
+    if (!running || processWriter == null)
+      return;
     try {
-      if (value != null && value.length() > 0) processWriter.write(value);
+      if (value != null && value.length() > 0)
+        processWriter.write(value);
       processWriter.newLine();
       processWriter.flush();
       append(reason + "：" + (value == null ? "" : value) + " + 回车\n");
@@ -1143,15 +1318,19 @@ protected void onDestroy() {
     } catch (Exception ignored) {
     }
     try {
-      if (processWriter != null) processWriter.close();
+      if (processWriter != null)
+        processWriter.close();
     } catch (Exception ignored) {
     }
     try {
-      if (runningProcess != null) runningProcess.destroy();
+      if (runningProcess != null)
+        runningProcess.destroy();
     } catch (Exception ignored) {
     }
-    if (path != null && path.length() > 0) RunnerSupport.stopRootProcessByPath(path);
-    if (showLog) append("\n已请求停止进程\n");
+    if (path != null && path.length() > 0)
+      RunnerSupport.stopRootProcessByPath(path);
+    if (showLog)
+      append("\n已请求停止进程\n");
     processWriter = null;
     runningProcess = null;
     activeRootPath = "";
@@ -1160,13 +1339,13 @@ protected void onDestroy() {
   }
 
   private void updateRunButton() {
-    if (runButton == null) return;
+    if (runButton == null)
+      return;
     boolean ok = selectedFile != null && !running;
     runButton.setEnabled(ok);
     runButton.setAlpha(ok ? 1f : 0.55f);
     // 按钮文字根据驱动类型变化
-    String label =
-        (driverType == 0 ? "直接运行 (KPM)" : driverType == 1 ? "直接运行 (Paradise)" : "直接运行 (备用)");
+    String label = (driverType == 0 ? "直接运行 (KPM)" : driverType == 1 ? "直接运行 (Paradise)" : "直接运行 (备用)");
     runButton.setText(running ? "运行中..." : label);
     runButton.setBackground(round(ok ? primaryColor() : disabledColor(), 14, 0, 0));
     runButton.setTextColor(ok ? Color.WHITE : subTextColor());
@@ -1208,10 +1387,12 @@ protected void onDestroy() {
     String last = sp.getString(pref, "");
     if (last != null && last.length() > 0) {
       File f = new File(last);
-      if (f.exists() && f.isDirectory()) return f;
+      if (f.exists() && f.isDirectory())
+        return f;
     }
     File sd = Environment.getExternalStorageDirectory();
-    if (sd != null && sd.exists()) return sd;
+    if (sd != null && sd.exists())
+      return sd;
     return new File("/");
   }
 
@@ -1257,7 +1438,8 @@ protected void onDestroy() {
         new View.OnClickListener() {
           public void onClick(View v) {
             File parent = state.currentDir.getParentFile();
-            if (parent != null) navigateBrowser(state, parent);
+            if (parent != null)
+              navigateBrowser(state, parent);
           }
         });
     addBrowserAction(
@@ -1290,7 +1472,8 @@ protected void onDestroy() {
     List<String> favs = getFavoriteDirs();
     for (int i = 0; i < favs.size(); i++) {
       final File f = new File(favs.get(i));
-      if (!f.exists() || !f.isDirectory()) continue;
+      if (!f.exists() || !f.isDirectory())
+        continue;
       addBrowserAction(
           actions,
           shortPath(f.getAbsolutePath()),
@@ -1312,12 +1495,11 @@ protected void onDestroy() {
 
     List<File> files = listFilesForBrowser(state.currentDir, state.zipOnly);
     if (files.size() == 0) {
-      TextView empty =
-          text(
-              "当前目录为空，或没有读取权限。可以尝试授权全部文件访问，或切换到 /sdcard、/storage/emulated/0、根目录 /。",
-              13,
-              subTextColor(),
-              Typeface.NORMAL);
+      TextView empty = text(
+          "当前目录为空，或没有读取权限。可以尝试授权全部文件访问，或切换到 /sdcard、/storage/emulated/0、根目录 /。",
+          13,
+          subTextColor(),
+          Typeface.NORMAL);
       empty.setPadding(dp(12), dp(30), dp(12), dp(30));
       empty.setGravity(Gravity.CENTER);
       empty.setLineSpacing(dp(2), 1f);
@@ -1327,7 +1509,8 @@ protected void onDestroy() {
         final File f = files.get(i);
         View row = browserRow(f, state.zipOnly);
         list.addView(row, new LinearLayout.LayoutParams(-1, dp(58)));
-        if (i < files.size() - 1) addDivider(list);
+        if (i < files.size() - 1)
+          addDivider(list);
         row.setOnClickListener(
             new View.OnClickListener() {
               public void onClick(View v) {
@@ -1366,9 +1549,8 @@ protected void onDestroy() {
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
     row.setPadding(dp(2), 0, dp(2), 0);
-    TextView icon =
-        text(
-            f.isDirectory() ? "目录" : (zipOnly ? "ZIP" : "FILE"), 11, primaryColor(), Typeface.BOLD);
+    TextView icon = text(
+        f.isDirectory() ? "目录" : (zipOnly ? "ZIP" : "FILE"), 11, primaryColor(), Typeface.BOLD);
     icon.setGravity(Gravity.CENTER);
     icon.setBackground(round(tagColor(), 13, 0, 0));
     row.addView(icon, new LinearLayout.LayoutParams(dp(46), dp(38)));
@@ -1377,19 +1559,17 @@ protected void onDestroy() {
     LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1);
     tlp.setMargins(dp(10), 0, 0, 0);
     row.addView(texts, tlp);
-    TextView name =
-        text(
-            f.getName().length() == 0 ? f.getAbsolutePath() : f.getName(),
-            14,
-            textColor(),
-            f.isDirectory() ? Typeface.BOLD : Typeface.NORMAL);
+    TextView name = text(
+        f.getName().length() == 0 ? f.getAbsolutePath() : f.getName(),
+        14,
+        textColor(),
+        f.isDirectory() ? Typeface.BOLD : Typeface.NORMAL);
     name.setSingleLine(true);
     name.setEllipsize(TextUtils.TruncateAt.MIDDLE);
     texts.addView(name, new LinearLayout.LayoutParams(-1, -2));
-    String info =
-        f.isDirectory()
-            ? f.getAbsolutePath()
-            : readableSize(f.length()) + " · " + f.getAbsolutePath();
+    String info = f.isDirectory()
+        ? f.getAbsolutePath()
+        : readableSize(f.length()) + " · " + f.getAbsolutePath();
     TextView detail = text(info, 11, subTextColor(), Typeface.NORMAL);
     detail.setSingleLine(true);
     detail.setEllipsize(TextUtils.TruncateAt.MIDDLE);
@@ -1400,24 +1580,31 @@ protected void onDestroy() {
 
   private List<File> listFilesForBrowser(File dir, boolean zipOnly) {
     ArrayList<File> out = new ArrayList<File>();
-    if (dir == null) return out;
+    if (dir == null)
+      return out;
     File[] arr = null;
     try {
       arr = dir.listFiles();
     } catch (Exception ignored) {
     }
-    if (arr == null) return out;
+    if (arr == null)
+      return out;
     for (File f : arr) {
-      if (f == null) continue;
-      if (f.isHidden() && !dir.getAbsolutePath().equals("/")) continue;
-      if (f.isDirectory()) out.add(f);
-      else if (!zipOnly || f.getName().toLowerCase().endsWith(".zip")) out.add(f);
+      if (f == null)
+        continue;
+      if (f.isHidden() && !dir.getAbsolutePath().equals("/"))
+        continue;
+      if (f.isDirectory())
+        out.add(f);
+      else if (!zipOnly || f.getName().toLowerCase().endsWith(".zip"))
+        out.add(f);
     }
     Collections.sort(
         out,
         new Comparator<File>() {
           public int compare(File a, File b) {
-            if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
+            if (a.isDirectory() != b.isDirectory())
+              return a.isDirectory() ? -1 : 1;
             return a.getName().compareToIgnoreCase(b.getName());
           }
         });
@@ -1425,34 +1612,42 @@ protected void onDestroy() {
   }
 
   private void navigateBrowser(BrowserState state, File dir) {
-    if (dir == null) return;
+    if (dir == null)
+      return;
     state.currentDir = dir;
     refreshBrowser(state);
   }
 
   private void refreshBrowser(BrowserState state) {
-    if (state.dialog != null) state.dialog.setContentView(buildBrowserView(state));
+    if (state.dialog != null)
+      state.dialog.setContentView(buildBrowserView(state));
   }
 
   private List<String> getFavoriteDirs() {
     String raw = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_FAV_DIRS, "");
     ArrayList<String> list = new ArrayList<String>();
-    if (raw == null || raw.length() == 0) return list;
+    if (raw == null || raw.length() == 0)
+      return list;
     String[] parts = raw.split("\\n");
     for (int i = 0; i < parts.length; i++) {
       String p = parts[i].trim();
-      if (p.length() > 0 && !list.contains(p)) list.add(p);
+      if (p.length() > 0 && !list.contains(p))
+        list.add(p);
     }
     return list;
   }
 
   private void addFavoriteDir(String path) {
-    if (path == null || path.length() == 0) return;
+    if (path == null || path.length() == 0)
+      return;
     List<String> list = getFavoriteDirs();
-    if (!list.contains(path)) list.add(0, path);
-    while (list.size() > 12) list.remove(list.size() - 1);
+    if (!list.contains(path))
+      list.add(0, path);
+    while (list.size() > 12)
+      list.remove(list.size() - 1);
     StringBuilder b = new StringBuilder();
-    for (int i = 0; i < list.size(); i++) b.append(list.get(i)).append('\n');
+    for (int i = 0; i < list.size(); i++)
+      b.append(list.get(i)).append('\n');
     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_FAV_DIRS, b.toString()).apply();
   }
 
@@ -1467,14 +1662,18 @@ protected void onDestroy() {
   }
 
   private String shortPath(String p) {
-    if (p == null) return "收藏";
-    if (p.length() <= 18) return p;
+    if (p == null)
+      return "收藏";
+    if (p.length() <= 18)
+      return p;
     return "…" + p.substring(p.length() - 17);
   }
 
   private String readableSize(long size) {
-    if (size < 1024) return size + " B";
-    if (size < 1024 * 1024) return (size / 1024) + " KB";
+    if (size < 1024)
+      return size + " B";
+    if (size < 1024 * 1024)
+      return (size / 1024) + " KB";
     return (size / (1024 * 1024)) + " MB";
   }
 
@@ -1482,11 +1681,9 @@ protected void onDestroy() {
     if (Build.VERSION.SDK_INT >= 23) {
       try {
         ArrayList<String> perms = new ArrayList<String>();
-        if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)
+        if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
           perms.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-        if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED)
+        if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
           perms.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
         if (perms.size() > 0)
           requestPermissions(perms.toArray(new String[perms.size()]), REQ_STORAGE);
@@ -1522,10 +1719,9 @@ protected void onDestroy() {
     showMainShell();
     switchPage(1);
   }
-  
-// ====================== 【修复完成：检测更新功能】 ======================
-// 静态内部类 + 弱引用，杜绝内存泄漏 & 闪退
-private static class UpdateTask extends AsyncTask<Void, Void, String> {
+
+// ====================== 检测更新（内部类） ======================
+  private static class UpdateTask extends AsyncTask<Void, Void, String> {
     private WeakReference<MainActivity> activityRef;
 
     UpdateTask(MainActivity activity) {
@@ -1534,24 +1730,19 @@ private static class UpdateTask extends AsyncTask<Void, Void, String> {
 
     @Override
     protected String doInBackground(Void... voids) {
-        // 后台网络请求（子线程，不会卡UI）
         try {
             URL url = new URL("https://aura.xiaon.sbs/update/update.json");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(8000);
-
             BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
             StringBuilder sb = new StringBuilder();
             String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line);
-            }
+            while ((line = reader.readLine()) != null) sb.append(line);
             reader.close();
             conn.disconnect();
             return sb.toString();
         } catch (Exception e) {
-            e.printStackTrace();
             return null;
         }
     }
@@ -1560,19 +1751,13 @@ private static class UpdateTask extends AsyncTask<Void, Void, String> {
     protected void onPostExecute(String result) {
         super.onPostExecute(result);
         MainActivity activity = activityRef.get();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
 
-        // 安全判断1：页面已销毁则不执行，防止空指针闪退
-        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
-            return;
-        }
-
-        // 安全判断2：网络请求失败
         if (result == null || result.trim().isEmpty()) {
-            Toast.makeText(activity, "检查更新失败，请检查网络连接", Toast.LENGTH_SHORT).show();
+            Toast.makeText(activity, "检查更新失败", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 解析更新信息 — 整段 try-catch 保护
         try {
             JSONObject json = new JSONObject(result);
             int newVersionCode = json.getInt("versionCode");
@@ -1580,159 +1765,119 @@ private static class UpdateTask extends AsyncTask<Void, Void, String> {
             String apkUrl = json.optString("apkUrl", "");
             String desc = json.optString("description", "有新版本可用");
 
-            // ============ 【修复核心】API 28+ 兼容获取 versionCode ============
             int currentVersionCode;
-            try {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    // Android 9 (API 28) 起，getLongVersionCode() 替代 versionCode
-                    currentVersionCode = (int) activity.getPackageManager()
-                            .getPackageInfo(activity.getPackageName(), 0)
-                            .getLongVersionCode();
-                } else {
-                    // API 27 及以下使用旧的 versionCode
-                    currentVersionCode = activity.getPackageManager()
-                            .getPackageInfo(activity.getPackageName(), 0).versionCode;
-                }
-            } catch (PackageManager.NameNotFoundException e) {
-                // 极端情况：获取自身包信息失败（几乎不可能，但防崩溃）
-                Toast.makeText(activity, "无法获取当前版本信息", Toast.LENGTH_SHORT).show();
-                e.printStackTrace();
-                return;
+            if (Build.VERSION.SDK_INT >= 28) {
+                currentVersionCode = (int) activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0).getLongVersionCode();
+            } else {
+                currentVersionCode = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0).versionCode;
             }
 
-           // ============ 获取当前版本名 ============
-String currentVersionName;
-try {
-    currentVersionName = activity.getPackageManager()
-        .getPackageInfo(activity.getPackageName(), 0).versionName;
-    if (currentVersionName == null) currentVersionName = "";
-} catch (Exception e) {
-    currentVersionName = "";
-}
+            String currentVersionName;
+            try {
+                currentVersionName = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0).versionName;
+                if (currentVersionName == null) currentVersionName = "";
+            } catch (Exception e) {
+                currentVersionName = "";
+            }
 
-// ============ 双重比较：版本名优先 ============
+            if (newVersionName.equals(currentVersionName)) {
+                return; // 静默，已是最新
+            }
 
-// 情况1：版本名相同 → 已是最新版本
-if (newVersionName.equals(currentVersionName)) {
-    Toast.makeText(activity, "已是最新版本 v" + currentVersionName, Toast.LENGTH_SHORT).show();
-    return;
-}
-
-// 情况2：版本名不同，再用 versionCode 比较
-if (newVersionCode > currentVersionCode) {
-    // 有新版本 — 检查 apkUrl 是否有效
-    if (apkUrl == null || apkUrl.trim().isEmpty()) {
-        Toast.makeText(activity, "更新链接不可用，请联系开发者", Toast.LENGTH_SHORT).show();
-        return;
+            if (newVersionCode > currentVersionCode) {
+                activity.showUpdateDialog(newVersionName, desc, apkUrl);
+            }
+        } catch (Exception ignored) {}
     }
-    // 显示更新弹窗
-    activity.showUpdateDialog(newVersionName, desc, apkUrl);
-} else {
-    // versionCode 不满足但版本名不同（极少情况）
-    Toast.makeText(activity, "已是最新版本 v" + currentVersionName, Toast.LENGTH_SHORT).show();
-}
+  }
 
-
-
-        } catch (JSONException e) {
-            // JSON 解析失败（服务器返回格式不对等）
-            e.printStackTrace();
-            Toast.makeText(activity, "更新信息解析失败", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            // 兜底：任何未预料的异常都不会导致闪退
-            e.printStackTrace();
-            Toast.makeText(activity, "检查更新时发生意外错误", Toast.LENGTH_SHORT).show();
-        }
-    }
-}
-
-// 检查更新（按钮点击事件）
-private void checkUpdate() {
+  // 检查更新（按钮点击事件）
+  private void checkUpdate() {
     if (!isNetworkAvailable()) {
-        Toast.makeText(this, "当前无网络连接", Toast.LENGTH_SHORT).show();
-        return;
+      Toast.makeText(this, "当前无网络连接", Toast.LENGTH_SHORT).show();
+      return;
     }
     // 新增：加载提示
     Toast.makeText(this, "正在检查更新...", Toast.LENGTH_SHORT).show();
     // 取消旧任务，防止重复执行
     if (updateTask != null && !updateTask.isCancelled()) {
-        updateTask.cancel(true);
+      updateTask.cancel(true);
     }
     updateTask = new UpdateTask(this);
     updateTask.execute();
-}
+  }
 
-// 显示更新弹窗 - 修复可能的编译兼容性问题
-private void showUpdateDialog(String newVersion, String desc, final String apkUrl) {
+  // 显示更新弹窗 - 修复可能的编译兼容性问题
+  private void showUpdateDialog(String newVersion, String desc, final String apkUrl) {
     new android.app.AlertDialog.Builder(this)
-            .setTitle("发现新版本 v" + newVersion)
-            .setMessage(desc)
-            .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    downloadApk(apkUrl);
-                }
-            })
-            .setNegativeButton("稍后再说", null)
-            .show();
-}
+        .setTitle("发现新版本 v" + newVersion)
+        .setMessage(desc)
+        .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
+          @Override
+          public void onClick(DialogInterface dialog, int which) {
+            downloadApk(apkUrl);
+          }
+        })
+        .setNegativeButton("稍后再说", null)
+        .show();
+  }
 
-
-// 下载APK - 彻底修复：使用浏览器打开下载链接，避免DownloadManager各种兼容性问题
-private void downloadApk(String apkUrl) {
+  // 下载APK - 彻底修复：使用浏览器打开下载链接，避免DownloadManager各种兼容性问题
+  private void downloadApk(String apkUrl) {
     // ① 检查 apkUrl 是否有效
     if (apkUrl == null || apkUrl.trim().isEmpty()) {
-        Toast.makeText(this, "更新链接无效，请稍后重试", Toast.LENGTH_SHORT).show();
-        return;
+      Toast.makeText(this, "更新链接无效，请稍后重试", Toast.LENGTH_SHORT).show();
+      return;
     }
 
     // ② 使用系统浏览器打开下载链接（最稳定、最兼容的方式）
     try {
-        Uri uri = Uri.parse(apkUrl);
-        if (uri == null) {
-            Toast.makeText(this, "更新地址格式错误", Toast.LENGTH_SHORT).show();
-            return;
-        }
+      Uri uri = Uri.parse(apkUrl);
+      if (uri == null) {
+        Toast.makeText(this, "更新地址格式错误", Toast.LENGTH_SHORT).show();
+        return;
+      }
 
-        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        
-        // 检查是否有浏览器能处理这个链接
-        if (intent.resolveActivity(getPackageManager()) != null) {
-            startActivity(intent);
-            Toast.makeText(this, "已打开浏览器，请下载APK后手动安装", Toast.LENGTH_LONG).show();
-        } else {
-            Toast.makeText(this, "未找到浏览器，请复制链接到浏览器下载", Toast.LENGTH_LONG).show();
-            // 可选：复制链接到剪贴板
-            android.content.ClipboardManager clipboard = 
-                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("下载链接", apkUrl));
-                Toast.makeText(this, "链接已复制到剪贴板", Toast.LENGTH_SHORT).show();
-            }
+      Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+      // 检查是否有浏览器能处理这个链接
+      if (intent.resolveActivity(getPackageManager()) != null) {
+        startActivity(intent);
+        Toast.makeText(this, "已打开浏览器，请下载APK后手动安装", Toast.LENGTH_LONG).show();
+      } else {
+        Toast.makeText(this, "未找到浏览器，请复制链接到浏览器下载", Toast.LENGTH_LONG).show();
+        // 可选：复制链接到剪贴板
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(
+            CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+          clipboard.setPrimaryClip(ClipData.newPlainText("下载链接", apkUrl));
+          Toast.makeText(this, "链接已复制到剪贴板", Toast.LENGTH_SHORT).show();
         }
+      }
     } catch (ActivityNotFoundException e) {
-        Toast.makeText(this, "未找到可用的浏览器应用", Toast.LENGTH_SHORT).show();
-        e.printStackTrace();
+      Toast.makeText(this, "未找到可用的浏览器应用", Toast.LENGTH_SHORT).show();
+      e.printStackTrace();
     } catch (Exception e) {
-        Toast.makeText(this, "打开下载链接失败", Toast.LENGTH_SHORT).show();
-        e.printStackTrace();
+      Toast.makeText(this, "打开下载链接失败", Toast.LENGTH_SHORT).show();
+      e.printStackTrace();
     }
-}
+  }
 
-
-
-// 判断网络是否可用
-private boolean isNetworkAvailable() {
+  // 判断网络是否可用
+  private boolean isNetworkAvailable() {
     try {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-        NetworkInfo info = cm.getActiveNetworkInfo();
-        return info != null && info.isConnected();
+      ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+      NetworkInfo info = cm.getActiveNetworkInfo();
+      return info != null && info.isConnected();
     } catch (Exception e) {
-        return false;
+      return false;
     }
-}
-// ====================== 【修复结束】 ======================
+  }
+  // ====================== 【修复结束】 ======================
 
   private String getVersionName() {
     try {
@@ -1745,8 +1890,10 @@ private boolean isNetworkAvailable() {
 
   private void append(String s) {
     outputBuffer.append(s);
-    if (outputBuffer.length() > 80000) outputBuffer.delete(0, outputBuffer.length() - 60000);
-    if (outputView != null) outputView.setText(outputBuffer.toString());
+    if (outputBuffer.length() > 80000)
+      outputBuffer.delete(0, outputBuffer.length() - 60000);
+    if (outputView != null)
+      outputView.setText(outputBuffer.toString());
     scrollTerminalBottom();
   }
 
@@ -1824,7 +1971,8 @@ private boolean isNetworkAvailable() {
     GradientDrawable g = new GradientDrawable();
     g.setColor(color);
     g.setCornerRadius(dp(radius));
-    if (strokeWidth > 0) g.setStroke(dp(strokeWidth), strokeColor);
+    if (strokeWidth > 0)
+      g.setStroke(dp(strokeWidth), strokeColor);
     return g;
   }
 
