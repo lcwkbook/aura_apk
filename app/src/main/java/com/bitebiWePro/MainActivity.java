@@ -3,7 +3,10 @@ package com.Aurakernel;
 import android.Manifest;
 import android.app.Activity;
 import android.app.Dialog;
+import java.lang.ref.WeakReference;
 import android.content.ClipData;
+import android.content.DialogInterface;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -51,10 +54,24 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import java.net.URI;
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.database.Cursor;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.AsyncTask;
+import org.json.JSONObject;
+import org.json.JSONException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 public class MainActivity extends Activity {
   private static final String REMOTE_SCRIPT_URL = "https://aura.xiaon.sbs/update/Aurakernel.sh";
@@ -70,7 +87,8 @@ public class MainActivity extends Activity {
   private static final String PREF_FAV_DIRS = "favorite_dirs";
   private static final String PREF_LAST_RUN_DIR = "last_run_dir";
   private static final String PREF_LAST_DRIVER_DIR = "last_driver_dir";
-
+  
+  private UpdateTask updateTask;
   private FrameLayout root;
   private LinearLayout pageHost;
   private TextView navHome;
@@ -106,6 +124,7 @@ public class MainActivity extends Activity {
 
   private final Handler handler = new Handler();
   private final StringBuilder outputBuffer = new StringBuilder("就绪\n");
+  private boolean rootDenied = false;
 
   private interface FilePickCallback {
     void onPicked(File file);
@@ -245,7 +264,7 @@ public class MainActivity extends Activity {
   }
 
   private void checkRootAndProceed() {
-    // 显示正在检查的提示
+    // 显示检查提示
     root.removeAllViews();
     TextView tip = new TextView(this);
     tip.setText("正在检查 Root 权限...");
@@ -254,23 +273,32 @@ public class MainActivity extends Activity {
     tip.setGravity(Gravity.CENTER);
     root.addView(tip, new FrameLayout.LayoutParams(-1, -1));
 
-    new Thread(
-            () -> {
-              boolean hasRoot = RunnerSupport.hasRoot();
-              handler.post(
-                  () -> {
-                    if (hasRoot) {
-                      // 有 Root 权限，正常进入
-                      showSplashThenMain();
-                    } else {
-                      Toast.makeText(MainActivity.this, "设备未获取 Root 权限，无法使用", Toast.LENGTH_LONG)
-                          .show();
-                      finish();
-                    }
-                  });
-            })
-        .start();
-  }
+    new Thread(() -> {
+        boolean hasRoot = RunnerSupport.hasRoot();
+        handler.post(() -> {
+            if (hasRoot) {
+                // 有 Root，正常进入
+                showSplashThenMain();
+            } else {
+                // 无 Root，停留在当前提示界面
+                rootDenied = true;
+                tip.setText("未获取 Root 权限，无法使用该软件");
+                tip.setTextColor(Color.RED);
+                root.setOnClickListener(null);
+                Toast.makeText(MainActivity.this, "未获取 Root 权限", Toast.LENGTH_LONG).show();
+            }
+        });
+    }).start();
+}
+
+@Override
+public void onBackPressed() {
+    if (rootDenied) {
+        finish();   // 允许退出
+    } else {
+        super.onBackPressed();
+    }
+}
 
   private boolean hasStoragePermission() {
     if (Build.VERSION.SDK_INT >= 30) {
@@ -321,6 +349,9 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "必须授予权限才能使用", Toast.LENGTH_LONG).show();
         finish();
       }
+    }else if (requestCode == 1001) {
+        // 用户从安装未知源设置返回，不自动重试，需手动再次点击检测更新
+        Toast.makeText(this, "已允许安装，请再次点击检测更新", Toast.LENGTH_SHORT).show();
     }
   }
 
@@ -339,7 +370,10 @@ public class MainActivity extends Activity {
   }
 
   @Override
-  protected void onDestroy() {
+protected void onDestroy() {
+    if (updateTask != null && !updateTask.isCancelled()) {
+        updateTask.cancel(true);
+    }
     stopRunningProcess(false);
     handler.removeCallbacksAndMessages(null);
     super.onDestroy();
@@ -458,7 +492,25 @@ public class MainActivity extends Activity {
     shell.addView(createBottomNav(), new LinearLayout.LayoutParams(-1, dp(76)));
     switchPage(currentPage);
     prepareScriptIfNeeded(); // 自动检查并下载脚本
-  }
+
+    // ============ 【新增】进入软件后自动检查更新 ============
+    handler.postDelayed(new Runnable() {
+        @Override
+        public void run() {
+            // 静默检查更新，只有发现新版本时才弹窗提示
+            if (isNetworkAvailable()) {
+                if (updateTask != null && !updateTask.isCancelled()) {
+                    updateTask.cancel(true);
+                }
+                updateTask = new UpdateTask(MainActivity.this);
+                updateTask.execute();
+            }
+            // 无网络时静默跳过，不弹任何提示
+        }
+    }, 1500); // 延迟1.5秒等页面完全加载后再检查
+    // ======================================================
+}
+
 
   private void prepareScriptIfNeeded() {
     if (scriptReady) return;
@@ -1799,32 +1851,239 @@ public class MainActivity extends Activity {
     switchPage(1);
   }
 
-  private void joinGroupChat() {
-    final String groupNumber = "1080220886";
-    try {
-      Intent intent =
-          new Intent(
-              Intent.ACTION_VIEW,
-              Uri.parse(
-                  "mqqapi://card/show_pslcard?src_type=internal&version=1&uin="
-                      + groupNumber
-                      + "&card_type=group&source=qrcode"));
-      startActivity(intent);
-    } catch (Exception e) {
-      try {
-        android.content.ClipboardManager clipboard =
-            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("QQ群号", groupNumber));
-        Toast.makeText(this, "未检测到 QQ，群号已复制: " + groupNumber, Toast.LENGTH_LONG).show();
-      } catch (Exception ignored) {
-        Toast.makeText(this, "QQ群: " + groupNumber, Toast.LENGTH_LONG).show();
-      }
-    }
-  }
+  // private void joinGroupChat() {
+  //   final String groupNumber = "1080220886";
+  //   try {
+  //     Intent intent =
+  //         new Intent(
+  //             Intent.ACTION_VIEW,
+  //             Uri.parse(
+  //                 "mqqapi://card/show_pslcard?src_type=internal&version=1&uin="
+  //                     + groupNumber
+  //                     + "&card_type=group&source=qrcode"));
+  //     startActivity(intent);
+  //   } catch (Exception e) {
+  //     try {
+  //       android.content.ClipboardManager clipboard =
+  //           (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+  //       if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("QQ群号", groupNumber));
+  //       Toast.makeText(this, "未检测到 QQ，群号已复制: " + groupNumber, Toast.LENGTH_LONG).show();
+  //     } catch (Exception ignored) {
+  //       Toast.makeText(this, "QQ群: " + groupNumber, Toast.LENGTH_LONG).show();
+  //     }
+  //   }
+  // }
 
-  private void checkUpdate() {
-    Toast.makeText(this, "当前已是最新版本 v" + getVersionName(), Toast.LENGTH_SHORT).show();
-  }
+// ====================== 【修复完成：检测更新功能】 ======================
+// 静态内部类 + 弱引用，杜绝内存泄漏 & 闪退
+private static class UpdateTask extends AsyncTask<Void, Void, String> {
+    private WeakReference<MainActivity> activityRef;
+
+    UpdateTask(MainActivity activity) {
+        activityRef = new WeakReference<>(activity);
+    }
+
+    @Override
+    protected String doInBackground(Void... voids) {
+        // 后台网络请求（子线程，不会卡UI）
+        try {
+            URL url = new URL("https://aura.xiaon.sbs/update/update.json");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            reader.close();
+            conn.disconnect();
+            return sb.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    protected void onPostExecute(String result) {
+        super.onPostExecute(result);
+        MainActivity activity = activityRef.get();
+
+        // 安全判断1：页面已销毁则不执行，防止空指针闪退
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            return;
+        }
+
+        // 安全判断2：网络请求失败
+        if (result == null || result.trim().isEmpty()) {
+            Toast.makeText(activity, "检查更新失败，请检查网络连接", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 解析更新信息 — 整段 try-catch 保护
+        try {
+            JSONObject json = new JSONObject(result);
+            int newVersionCode = json.getInt("versionCode");
+            String newVersionName = json.optString("versionName", "未知版本");
+            String apkUrl = json.optString("apkUrl", "");
+            String desc = json.optString("description", "有新版本可用");
+
+            // ============ 【修复核心】API 28+ 兼容获取 versionCode ============
+            int currentVersionCode;
+            try {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    // Android 9 (API 28) 起，getLongVersionCode() 替代 versionCode
+                    currentVersionCode = (int) activity.getPackageManager()
+                            .getPackageInfo(activity.getPackageName(), 0)
+                            .getLongVersionCode();
+                } else {
+                    // API 27 及以下使用旧的 versionCode
+                    currentVersionCode = activity.getPackageManager()
+                            .getPackageInfo(activity.getPackageName(), 0).versionCode;
+                }
+            } catch (PackageManager.NameNotFoundException e) {
+                // 极端情况：获取自身包信息失败（几乎不可能，但防崩溃）
+                Toast.makeText(activity, "无法获取当前版本信息", Toast.LENGTH_SHORT).show();
+                e.printStackTrace();
+                return;
+            }
+
+           // ============ 获取当前版本名 ============
+String currentVersionName;
+try {
+    currentVersionName = activity.getPackageManager()
+        .getPackageInfo(activity.getPackageName(), 0).versionName;
+    if (currentVersionName == null) currentVersionName = "";
+} catch (Exception e) {
+    currentVersionName = "";
+}
+
+// ============ 双重比较：版本名优先 ============
+
+// 情况1：版本名相同 → 已是最新版本
+if (newVersionName.equals(currentVersionName)) {
+    Toast.makeText(activity, "已是最新版本 v" + currentVersionName, Toast.LENGTH_SHORT).show();
+    return;
+}
+
+// 情况2：版本名不同，再用 versionCode 比较
+if (newVersionCode > currentVersionCode) {
+    // 有新版本 — 检查 apkUrl 是否有效
+    if (apkUrl == null || apkUrl.trim().isEmpty()) {
+        Toast.makeText(activity, "更新链接不可用，请联系开发者", Toast.LENGTH_SHORT).show();
+        return;
+    }
+    // 显示更新弹窗
+    activity.showUpdateDialog(newVersionName, desc, apkUrl);
+} else {
+    // versionCode 不满足但版本名不同（极少情况）
+    Toast.makeText(activity, "已是最新版本 v" + currentVersionName, Toast.LENGTH_SHORT).show();
+}
+
+
+
+        } catch (JSONException e) {
+            // JSON 解析失败（服务器返回格式不对等）
+            e.printStackTrace();
+            Toast.makeText(activity, "更新信息解析失败", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            // 兜底：任何未预料的异常都不会导致闪退
+            e.printStackTrace();
+            Toast.makeText(activity, "检查更新时发生意外错误", Toast.LENGTH_SHORT).show();
+        }
+    }
+}
+
+// 检查更新（按钮点击事件）
+private void checkUpdate() {
+    if (!isNetworkAvailable()) {
+        Toast.makeText(this, "当前无网络连接", Toast.LENGTH_SHORT).show();
+        return;
+    }
+    // 新增：加载提示
+    Toast.makeText(this, "正在检查更新...", Toast.LENGTH_SHORT).show();
+    // 取消旧任务，防止重复执行
+    if (updateTask != null && !updateTask.isCancelled()) {
+        updateTask.cancel(true);
+    }
+    updateTask = new UpdateTask(this);
+    updateTask.execute();
+}
+
+// 显示更新弹窗 - 修复可能的编译兼容性问题
+private void showUpdateDialog(String newVersion, String desc, final String apkUrl) {
+    new android.app.AlertDialog.Builder(this)
+            .setTitle("发现新版本 v" + newVersion)
+            .setMessage(desc)
+            .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    downloadApk(apkUrl);
+                }
+            })
+            .setNegativeButton("稍后再说", null)
+            .show();
+}
+
+
+// 下载APK - 彻底修复：使用浏览器打开下载链接，避免DownloadManager各种兼容性问题
+private void downloadApk(String apkUrl) {
+    // ① 检查 apkUrl 是否有效
+    if (apkUrl == null || apkUrl.trim().isEmpty()) {
+        Toast.makeText(this, "更新链接无效，请稍后重试", Toast.LENGTH_SHORT).show();
+        return;
+    }
+
+    // ② 使用系统浏览器打开下载链接（最稳定、最兼容的方式）
+    try {
+        Uri uri = Uri.parse(apkUrl);
+        if (uri == null) {
+            Toast.makeText(this, "更新地址格式错误", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        
+        // 检查是否有浏览器能处理这个链接
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            startActivity(intent);
+            Toast.makeText(this, "已打开浏览器，请下载APK后手动安装", Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "未找到浏览器，请复制链接到浏览器下载", Toast.LENGTH_LONG).show();
+            // 可选：复制链接到剪贴板
+            android.content.ClipboardManager clipboard = 
+                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("下载链接", apkUrl));
+                Toast.makeText(this, "链接已复制到剪贴板", Toast.LENGTH_SHORT).show();
+            }
+        }
+    } catch (ActivityNotFoundException e) {
+        Toast.makeText(this, "未找到可用的浏览器应用", Toast.LENGTH_SHORT).show();
+        e.printStackTrace();
+    } catch (Exception e) {
+        Toast.makeText(this, "打开下载链接失败", Toast.LENGTH_SHORT).show();
+        e.printStackTrace();
+    }
+}
+
+
+
+// 判断网络是否可用
+private boolean isNetworkAvailable() {
+    try {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        NetworkInfo info = cm.getActiveNetworkInfo();
+        return info != null && info.isConnected();
+    } catch (Exception e) {
+        return false;
+    }
+}
+// ====================== 【修复结束】 ======================
 
   private String getVersionName() {
     try {
