@@ -1278,41 +1278,63 @@ protected void onDestroy() {
     Process p = new ProcessBuilder("su").redirectErrorStream(true).start();
     runningProcess = p;
     processWriter = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
-    handler.post(
-        new Runnable() {
-          public void run() {
-            // updateInputState();
-          }
-        });
 
     post("[AuraKernel] root command dispatched\n");
     processWriter.write(command);
     processWriter.newLine();
     processWriter.flush();
-    sendDriverOptions();
 
+    // ===== 重要：使用不包含卡密的版本 =====
+    sendDriverOptionsWithoutKami();
+
+    // ===== 读取输出，检测标记 =====
     InputStream in = p.getInputStream();
-    byte[] buf = new byte[1024];
-    int len;
+    BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
+    boolean kamiHandled = false;
+    String line;
+
     try {
-      while ((len = in.read(buf)) != -1) {
-        String chunk;
-        try {
-          chunk = new String(buf, 0, len, "UTF-8");
-        } catch (Exception e) {
-          chunk = new String(buf, 0, len); // 使用系统默认编码兜底
+        while ((line = reader.readLine()) != null) {
+            post(line + "\n");
+
+            // 检测 NEED_KAMI → 需要 App 输入卡密
+            if (!kamiHandled && line.contains("[NEED_KAMI]")) {
+                kamiHandled = true;
+                String kami = keyEdit.getText().toString().trim();
+                if (!kami.isEmpty()) {
+                    Thread.sleep(200);  // 给 C++ 一点时间到 cin
+                    processWriter.write(kami);
+                    processWriter.newLine();
+                    processWriter.flush();
+                    post("[自动输入卡密]\n");
+                    // 保存
+                    getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .edit().putString("key_value", kami).apply();
+                } else {
+                    post("[未设置卡密]\n");
+                }
+            }
+
+            // 检测 SAVED_KAMI → C++ 已自动使用，App 什么都不做
+            if (!kamiHandled && line.contains("[SAVED_KAMI]")) {
+                kamiHandled = true;
+                post("[C++ 端已自动使用本地卡密]\n");
+                // 不做任何写入操作！
+            }
         }
-        post(chunk);
-      }
+    } catch (Exception e) {
+        post("读取异常: " + e.getMessage() + "\n");
     } finally {
-      try {
-        in.close();
-      } catch (Exception ignored) {
-      }
+        try { in.close(); } catch (Exception ignored) {}
     }
+
     int code = p.waitFor();
     post("\n[AuraKernel] su shell exited: " + code + "\n");
-  }
+    running = false;
+    updateRunButton();
+}
+
+
 
   //   private void sendTerminalInput() {
   //     if (!running || processWriter == null) {
@@ -1350,79 +1372,51 @@ protected void onDestroy() {
   //     return "未知驱动";
   //   }
 
-  private void sendDriverOptions() {
-    String key = keyEdit.getText().toString().trim();
-
+  private void sendDriverOptionsWithoutKami() {
     String driverNum = driverType == 0 ? "2" : (driverType == 1 ? "3" : "1");
     String antiNum = antiRecord ? "1" : "2";
     String bgNum = noBackground ? "2" : "1";
 
-    int baseDelay = 600; // 驱动选择延迟
+    int baseDelay = 600;
 
     // 1. 驱动选择
-    handler.postDelayed(
-        () -> {
-          if (!running || processWriter == null) return;
-          try {
+    handler.postDelayed(() -> {
+        if (!running || processWriter == null) return;
+        try {
             processWriter.write(driverNum);
             processWriter.newLine();
             processWriter.flush();
             append(driverNum + "\n");
-          } catch (Exception e) {
-          }
-        },
-        baseDelay);
+        } catch (Exception e) {}
+    }, baseDelay);
 
     // 2. 防录屏
-    handler.postDelayed(
-        () -> {
-          if (!running || processWriter == null) return;
-          try {
+    handler.postDelayed(() -> {
+        if (!running || processWriter == null) return;
+        try {
             processWriter.write(antiNum);
             processWriter.newLine();
             processWriter.flush();
             append(antiNum + "\n");
-          } catch (Exception e) {
-          }
-        },
-        baseDelay + 800);
+        } catch (Exception e) {}
+    }, baseDelay + 800);
 
     // 3. 无后台（非KPM时）
-    int bgDelay = baseDelay + 1600;
     if (driverType != 0) {
-      handler.postDelayed(
-          () -> {
+        handler.postDelayed(() -> {
             if (!running || processWriter == null) return;
             try {
-              processWriter.write(bgNum);
-              processWriter.newLine();
-              processWriter.flush();
-              append(bgNum + "\n");
-            } catch (Exception e) {
-            }
-          },
-          bgDelay);
+                processWriter.write(bgNum);
+                processWriter.newLine();
+                processWriter.flush();
+                append(bgNum + "\n");
+            } catch (Exception e) {}
+        }, baseDelay + 1600);
     }
 
-    // 4. 卡密（放到最后，延迟足够长）
-    if (!key.isEmpty()) {
-      getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value", key).apply();
-      // 在无后台（或防录屏）之后 1.2 秒发送
-      int keyDelay = (driverType != 0 ? bgDelay : baseDelay + 800) + 3000;
-      handler.postDelayed(
-          () -> {
-            if (!running || processWriter == null) return;
-            try {
-              processWriter.write(key);
-              processWriter.newLine();
-              processWriter.flush();
-              append(key + "\n");
-            } catch (Exception e) {
-            }
-          },
-          keyDelay);
-    }
-  }
+    // 注意：不再发送卡密！卡密由输出匹配触发
+}
+
 
   //   private void scheduleAutoDriverChoiceIfNeeded() {
   //     final String choice = getAutoDriverChoiceForWePro();
