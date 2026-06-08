@@ -95,27 +95,17 @@ public class MainActivity extends Activity {
   private TextView navMine;
   private TextView driverBtnKpm, driverBtnParadise, driverBtnBackup;
   private TextView antiRecordBtn, noBackgroundBtn;
-  //   private TextView fileNameView;
-  //   private TextView driverNameView;
-  //   private TextView modeNoDriverView;
-  //   private TextView modeDriverView;
-  //   private LinearLayout driverBlock;
+
   private TextView outputView;
   private ScrollView terminalScroll;
-  //   private EditText inputEdit;
   private Button runButton;
-  //   private Button sendButton;
   private Button stopButton;
   private EditText keyEdit;
 
   private File selectedFile;
-  //   private File driverZipFile;
   private String selectedName = "";
-  //   private String driverZipName = "";
-  //   private String matchedDriverName = "";
   private boolean running = false;
   private boolean nightMode = false;
-  //   private boolean driverMode = false;
   private int currentPage = 0;
 
   private Process runningProcess;
@@ -139,98 +129,6 @@ public class MainActivity extends Activity {
     FilePickCallback callback;
   }
 
-  // /**
-  //  * 异步下载远程脚本并自动运行
-  //  */
-  // private void downloadAndRunRemoteScript() {
-  //     if (running) {
-  //         Toast.makeText(this, "已有程序在运行", Toast.LENGTH_SHORT).show();
-  //         return;
-  //     }
-
-  //     // 更新UI反馈
-  //     append("正在下载远程脚本...\n");
-  //     if (runButton != null) runButton.setText("下载中...");
-  //     if (runButton != null) runButton.setEnabled(false);
-
-  //     new Thread(new Runnable() {
-  //         @Override
-  //         public void run() {
-  //             File tempFile = null;
-  //             try {
-  //                 // 下载到应用私有临时目录
-  //                 File dir = new File(getCacheDir(), "remote_runner");
-  //                 if (!dir.exists()) dir.mkdirs();
-  //                 tempFile = new File(dir, REMOTE_SCRIPT_NAME + ".download");
-
-  //                 // 使用 HttpURLConnection 下载
-  //                 java.net.URL url = new java.net.URL(REMOTE_SCRIPT_URL);
-  //                 java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-  // url.openConnection();
-  //                 conn.setConnectTimeout(15000);
-  //                 conn.setReadTimeout(30000);
-  //                 conn.setRequestMethod("GET");
-  //                 conn.setInstanceFollowRedirects(true);
-
-  //                 int code = conn.getResponseCode();
-  //                 if (code != 200) {
-  //                     throw new Exception("服务器返回非200状态码: " + code);
-  //                 }
-
-  //                 InputStream in = new BufferedInputStream(conn.getInputStream());
-  //                 FileOutputStream out = new FileOutputStream(tempFile);
-  //                 byte[] buf = new byte[8192];
-  //                 int len;
-  //                 while ((len = in.read(buf)) != -1) {
-  //                     out.write(buf, 0, len);
-  //                 }
-  //                 out.flush();
-  //                 out.close();
-  //                 in.close();
-  //                 conn.disconnect();
-
-  //                 // 重命名为正式文件名
-  //                 File finalFile = new File(dir, REMOTE_SCRIPT_NAME);
-  //                 if (finalFile.exists()) finalFile.delete();
-  //                 tempFile.renameTo(finalFile);
-
-  //                 // 确保可执行（虽然 .sh 最终由 sh 解释执行，但无害）
-  //                 RunnerSupport.chmod777(finalFile);
-
-  //                 // 在主线程更新 selectedFile 并触发运行
-  //                 handler.post(new Runnable() {
-  //                     @Override
-  //                     public void run() {
-  //                         selectedFile = finalFile;
-  //                         selectedName = REMOTE_SCRIPT_NAME;
-  //                         if (fileNameView != null) {
-  //                             fileNameView.setText(finalFile.getAbsolutePath());
-  //                         }
-  //                         append("远程脚本下载完成: " + finalFile.getAbsolutePath() + "\n");
-  //                         updateRunButton();
-  //                         // 自动开始运行（如果你想点击按钮后再运行，可以注释掉下面这行）
-  //                         runSelectedFile();
-  //                     }
-  //                 });
-
-  //             } catch (final Exception e) {
-  //                 final String errMsg = safeMessage(e);
-  //                 handler.post(new Runnable() {
-  //                     @Override
-  //                     public void run() {
-  //                         append("远程脚本下载失败: " + errMsg + "\n");
-  //                         updateRunButton();
-  //                         Toast.makeText(MainActivity.this, "下载失败: " + errMsg,
-  // Toast.LENGTH_LONG).show();
-  //                     }
-  //                 });
-  //                 // 清理失败的临时文件
-  //                 if (tempFile != null && tempFile.exists()) tempFile.delete();
-  //             }
-  //         }
-  //     }).start();
-  // }
-
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -245,7 +143,6 @@ public class MainActivity extends Activity {
     driverType = sp.getInt("driver_type", 0); // 新增
     antiRecord = sp.getBoolean("anti_record", false); // 新增
     noBackground = sp.getBoolean("no_background", false); // 新增
-    // driverMode = sp.getBoolean("driver_mode", false);
     setupWindow();
     root = new FrameLayout(this);
 
@@ -741,9 +638,9 @@ protected void onDestroy() {
     driverRow.setOrientation(LinearLayout.HORIZONTAL);
     card.addView(driverRow, lp(-1, dp(42), 0, 0, 0, dp(16)));
 
-    driverBtnKpm = driverOptionButton("KPM", driverType == 0);
-    driverBtnParadise = driverOptionButton("Paradise", driverType == 1);
-    driverBtnBackup = driverOptionButton("备用", driverType == 2);
+    driverBtnKpm = driverOptionButton("KMA-KPM驱动", driverType == 0);
+    driverBtnParadise = driverOptionButton("Paradise驱动", driverType == 1);
+    driverBtnBackup = driverOptionButton("备用驱动", driverType == 2);
     driverRow.addView(driverBtnKpm, new LinearLayout.LayoutParams(0, -1, 1));
     driverRow.addView(driverBtnParadise, new LinearLayout.LayoutParams(0, -1, 1));
     driverRow.addView(driverBtnBackup, new LinearLayout.LayoutParams(0, -1, 1));
@@ -783,7 +680,7 @@ protected void onDestroy() {
     runRow.setOrientation(LinearLayout.HORIZONTAL);
     card.addView(runRow, lp(-1, dp(48), 0, dp(8), 0, 0));
 
-    runButton = button("直接运行", true); // 移除了驱动名称
+    runButton = button("直接运行", true); 
     stopButton = button("停止", false);
     runRow.addView(runButton, new LinearLayout.LayoutParams(0, -1, 1));
     LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(88), -1);
@@ -803,38 +700,7 @@ protected void onDestroy() {
     terminalScroll.addView(outputView, new ScrollView.LayoutParams(-1, -2));
     page.addView(terminalScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-    // LinearLayout inputRow = new LinearLayout(this);
-    // inputRow.setOrientation(LinearLayout.HORIZONTAL);
-    // inputRow.setGravity(Gravity.CENTER_VERTICAL);
-    // inputRow.setPadding(0, dp(10), 0, 0);
-    // page.addView(inputRow, new LinearLayout.LayoutParams(-1, dp(58)));
-
-    // inputEdit = new EditText(this);
-    // inputEdit.setSingleLine(true);
-    // inputEdit.setTextSize(14);
-    // inputEdit.setTextColor(textColor());
-    // inputEdit.setHintTextColor(subTextColor());
-    // inputEdit.setHint("输入法");
-    // // 不使用密码/安全键盘类型，避免部分系统弹出安全键盘导致触摸和输入异常。
-    // inputEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-    // inputEdit.setPadding(dp(14), 0, dp(14), 0);
-    // inputEdit.setBackground(round(cardColor(), 16, borderColor(), 1));
-    // inputRow.addView(inputEdit, new LinearLayout.LayoutParams(0, -1, 1));
-
-    // sendButton = button("回车", true);
-    // LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(82), -1);
-    // sendLp.setMargins(dp(10), 0, 0, 0);
-    // inputRow.addView(sendButton, sendLp);
-    // sendButton.setOnClickListener(
-    //     new View.OnClickListener() {
-    //       public void onClick(View v) {
-    //         sendTerminalInput();
-    //       }
-    //     });
-
-    // updateModeButtons();
     updateRunButton();
-    // updateInputState();
     scrollTerminalBottom();
     return page;
   }
@@ -1013,16 +879,6 @@ protected void onDestroy() {
         });
     addDivider(card);
 
-    // View group = settingRow("加入 QQ 群", "1080220886", "Q");
-    // card.addView(group);
-    // group.setOnClickListener(
-    //     new View.OnClickListener() {
-    //       public void onClick(View v) {
-    //         joinGroupChat();
-    //       }
-    //     });
-    // addDivider(card);
-
     View update = settingRow("检测更新", "当前版本 v" + getVersionName(), "↑");
     card.addView(update);
     update.setOnClickListener(
@@ -1095,116 +951,6 @@ protected void onDestroy() {
     parent.addView(v, new LinearLayout.LayoutParams(-1, 1));
   }
 
-  //   private void setDriverMode(boolean enable) {
-  //     if (running) {
-  //       Toast.makeText(this, "运行中不能切换模式", Toast.LENGTH_SHORT).show();
-  //       return;
-  //     }
-  //     driverMode = enable;
-  //     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("driver_mode",
-  // driverMode).apply();
-  //     append("已切换为" + (driverMode ? "驱动模式" : "无驱动模式") + "\n");
-  //     switchPage(0);
-  //   }
-
-  //   private void updateModeButtons() {
-  //     if (modeNoDriverView != null) {
-  //       modeNoDriverView.setTextColor(!driverMode ? Color.WHITE : subTextColor());
-  //       modeNoDriverView.setBackground(
-  //           round(
-  //               !driverMode ? primaryColor() : tagColor(),
-  //               16,
-  //               !driverMode ? 0 : borderColor(),
-  //               !driverMode ? 0 : 1));
-  //     }
-  //     if (modeDriverView != null) {
-  //       modeDriverView.setTextColor(driverMode ? Color.WHITE : subTextColor());
-  //       modeDriverView.setBackground(
-  //           round(
-  //               driverMode ? primaryColor() : tagColor(),
-  //               16,
-  //               driverMode ? 0 : borderColor(),
-  //               driverMode ? 0 : 1));
-  //     }
-  //     if (driverBlock != null) driverBlock.setVisibility(driverMode ? View.VISIBLE : View.GONE);
-  //   }
-
-  // private void chooseProgramFile() {
-  //     showFilePicker("选择运行文件", false, PREF_LAST_RUN_DIR, new FilePickCallback() {
-  //         public void onPicked(File file) {
-  //             selectedFile = file;
-  //             selectedName = file.getName();
-  //             if (fileNameView != null) fileNameView.setText(file.getAbsolutePath());
-  //             append("已选择运行文件: " + file.getAbsolutePath() + "\n");
-  //             updateRunButton();
-  //         }
-  //     });
-  // }
-
-  //   private void chooseDriverZip() {
-  //     showFilePicker(
-  //         "选择驱动 ZIP",
-  //         true,
-  //         PREF_LAST_DRIVER_DIR,
-  //         new FilePickCallback() {
-  //           public void onPicked(File file) {
-  //             driverZipFile = file;
-  //             driverZipName = file.getName();
-  //             matchedDriverName = "";
-  //             if (driverNameView != null) driverNameView.setText("正在匹配内核...");
-  //             append("已选择驱动 ZIP: " + file.getAbsolutePath() + "\n");
-  //             verifyDriverZipAsync(file);
-  //             updateRunButton();
-  //           }
-  //         });
-  //   }
-
-  //   private void verifyDriverZipAsync(final File file) {
-  //     new Thread(
-  //             new Runnable() {
-  //               public void run() {
-  //                 try {
-  //                   final String match = RunnerSupport.findMatchingDriverEntryName(file);
-  //                   handler.post(
-  //                       new Runnable() {
-  //                         public void run() {
-  //                           if (file != driverZipFile) return;
-  //                           if (match == null || match.length() == 0) {
-  //                             matchedDriverName = "";
-  //                             if (driverNameView != null)
-  //                               driverNameView.setText(driverZipName + " · 未匹配");
-  //                             append("未找到当前内核对应驱动: " + RunnerSupport.getKernelVersion() + "\n");
-  //                             Toast.makeText(
-  //                                     MainActivity.this, "驱动 ZIP 没有匹配当前内核版本的文件",
-  // Toast.LENGTH_LONG)
-  //                                 .show();
-  //                           } else {
-  //                             matchedDriverName = new File(match).getName();
-  //                             if (driverNameView != null)
-  //                               driverNameView.setText(driverZipName + " · " +
-  // matchedDriverName);
-  //                             append("已匹配驱动: " + matchedDriverName + "\n");
-  //                           }
-  //                           updateRunButton();
-  //                         }
-  //                       });
-  //                 } catch (final Exception e) {
-  //                   handler.post(
-  //                       new Runnable() {
-  //                         public void run() {
-  //                           matchedDriverName = "";
-  //                           if (driverNameView != null)
-  //                             driverNameView.setText(driverZipName + " · 读取失败");
-  //                           append("驱动 ZIP 读取失败: " + safeMessage(e) + "\n");
-  //                           updateRunButton();
-  //                         }
-  //                       });
-  //                 }
-  //               }
-  //             })
-  //         .start();
-  //   }
-
   private void runSelectedFile() {
     if (selectedFile == null) {
       Toast.makeText(this, "请先等待脚本准备完毕", Toast.LENGTH_SHORT).show();
@@ -1233,7 +979,6 @@ protected void onDestroy() {
                   RunnerSupport.applyTouchCompatibility(getPackageName());
 
                   post("准备程序...\n");
-                  //   post("本地路径: " + selectedFile.getAbsolutePath() + "\n");
                   String rootPath;
                   boolean isElf = false;
                   if (selectedFile.canRead()) {
@@ -1250,7 +995,6 @@ protected void onDestroy() {
                   }
 
                   activeRootPath = rootPath;
-                  //   post("Root 运行路径: " + rootPath + "\n");
                   post("启动真实终端...\n\n");
                   startInteractiveRootProcess(rootPath, isElf);
                 } catch (Exception e) {
@@ -1264,7 +1008,6 @@ protected void onDestroy() {
                           runningProcess = null;
                           activeRootPath = "";
                           updateRunButton();
-                          //   updateInputState();
                         }
                       });
                 }
@@ -1334,44 +1077,6 @@ protected void onDestroy() {
     updateRunButton();
 }
 
-
-
-  //   private void sendTerminalInput() {
-  //     if (!running || processWriter == null) {
-  //       Toast.makeText(this, "程序未运行，无法发送", Toast.LENGTH_SHORT).show();
-  //       return;
-  //     }
-  //     String value = inputEdit == null ? "" : inputEdit.getText().toString();
-  //     try {
-  //       if (value.length() > 0) processWriter.write(value);
-  //       processWriter.newLine();
-  //       processWriter.flush();
-  //       if (inputEdit != null) inputEdit.setText("");
-  //       append(value.length() > 0 ? "\n[已输入并回车]\n" : "\n[已回车]\n");
-  //     } catch (Exception e) {
-  //       append("\n发送失败: " + safeMessage(e) + "\n");
-  //       Toast.makeText(this, "发送失败", Toast.LENGTH_SHORT).show();
-  //     }
-  //   }
-
-  //   private String getAutoDriverChoiceForWePro() {
-  //     if (!driverMode) return null;
-  //     if (selectedName == null || !"AuraKernel.sh".equalsIgnoreCase(selectedName.trim())) return
-  // null;
-  //     String zip = driverZipName == null ? "" : driverZipName.toLowerCase();
-  //     String path = driverZipFile == null ? "" : driverZipFile.getName().toLowerCase();
-  //     String all = zip + " " + path;
-  //     if (all.contains("rt")) return "2";
-  //     if (all.contains("qx")) return "1";
-  //     return null;
-  //   }
-
-  //   private String describeAutoDriverChoice(String choice) {
-  //     if ("2".equals(choice)) return "Rt 驱动";
-  //     if ("1".equals(choice)) return "Qx 驱动";
-  //     return "未知驱动";
-  //   }
-
   private void sendDriverOptionsWithoutKami() {
     String driverNum = driverType == 0 ? "2" : (driverType == 1 ? "3" : "1");
     String antiNum = antiRecord ? "1" : "2";
@@ -1414,22 +1119,7 @@ protected void onDestroy() {
         }, baseDelay + 1600);
     }
 
-    // 注意：不再发送卡密！卡密由输出匹配触发
 }
-
-
-  //   private void scheduleAutoDriverChoiceIfNeeded() {
-  //     final String choice = getAutoDriverChoiceForWePro();
-  //     if (choice == null) return;
-  //     post("[AuraKernel] 已安排自动输入：" + choice + " + 回车\n");
-  //     handler.postDelayed(
-  //         new Runnable() {
-  //           public void run() {
-  //             autoSendLine(choice, "AuraKernel.sh 自动选择 " + describeAutoDriverChoice(choice));
-  //           }
-  //         },
-  //         1200);
-  //   }
 
   private void autoSendLine(String value, String reason) {
     if (!running || processWriter == null) return;
@@ -1467,7 +1157,6 @@ protected void onDestroy() {
     activeRootPath = "";
     running = false;
     updateRunButton();
-    // updateInputState();
   }
 
   private void updateRunButton() {
@@ -1490,17 +1179,6 @@ protected void onDestroy() {
       stopButton.setTextColor(running ? dangerColor() : subTextColor());
     }
   }
-
-  //   private void updateInputState() {
-  //     boolean enabled = running && processWriter != null;
-  //     if (sendButton != null) {
-  //       sendButton.setEnabled(enabled);
-  //       sendButton.setAlpha(enabled ? 1f : 0.55f);
-  //       sendButton.setBackground(round(enabled ? primaryColor() : disabledColor(), 14, 0, 0));
-  //       sendButton.setTextColor(enabled ? Color.WHITE : subTextColor());
-  //     }
-  //     if (inputEdit != null) inputEdit.setEnabled(enabled);
-  //   }
 
   private void showFilePicker(
       String title, boolean zipOnly, String lastDirPref, FilePickCallback callback) {
@@ -1844,30 +1522,7 @@ protected void onDestroy() {
     showMainShell();
     switchPage(1);
   }
-
-  // private void joinGroupChat() {
-  //   final String groupNumber = "1080220886";
-  //   try {
-  //     Intent intent =
-  //         new Intent(
-  //             Intent.ACTION_VIEW,
-  //             Uri.parse(
-  //                 "mqqapi://card/show_pslcard?src_type=internal&version=1&uin="
-  //                     + groupNumber
-  //                     + "&card_type=group&source=qrcode"));
-  //     startActivity(intent);
-  //   } catch (Exception e) {
-  //     try {
-  //       android.content.ClipboardManager clipboard =
-  //           (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-  //       if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("QQ群号", groupNumber));
-  //       Toast.makeText(this, "未检测到 QQ，群号已复制: " + groupNumber, Toast.LENGTH_LONG).show();
-  //     } catch (Exception ignored) {
-  //       Toast.makeText(this, "QQ群: " + groupNumber, Toast.LENGTH_LONG).show();
-  //     }
-  //   }
-  // }
-
+  
 // ====================== 【修复完成：检测更新功能】 ======================
 // 静态内部类 + 弱引用，杜绝内存泄漏 & 闪退
 private static class UpdateTask extends AsyncTask<Void, Void, String> {
