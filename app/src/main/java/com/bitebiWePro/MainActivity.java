@@ -62,7 +62,9 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -70,6 +72,7 @@ import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
+  private boolean[] isRunning = new boolean[1];
   private static final String REMOTE_SCRIPT_URL = "https://aura.xiaon.sbs/update/Aurakernel.sh";
   private static final String REMOTE_SCRIPT_NAME = "Aurakernel.sh";
   private static final String SCRIPT_NAME = "Aurakernel.sh";
@@ -127,6 +130,31 @@ public class MainActivity extends Activity {
   private final StringBuilder outputBuffer = new StringBuilder("就绪\n");
   private boolean rootDenied = false;
 
+  // ====================== 驱动模块 常量 & 全局控件 ======================
+  // 驱动ZIP下载地址
+  private static final String DRIVER_ZIP_URL = "https://aura.xiaon.sbs/update/驱动.zip";
+  // 应用私有files目录下 驱动根目录
+  private File driverRootDir;
+  // 驱动ZIP临时文件
+  private File driverZipFile;
+
+  // 底部导航新增驱动按钮
+  private TextView navDriver;
+  // 驱动下载任务
+  private DownloadDriverTask downloadTask;
+
+  // 驱动页面控件
+  private TextView driverPageStatus; // 驱动页面状态提示
+  private LinearLayout driverFileListLayout; // 统一文件列表容器
+  private File currentBrowseDir; // 当前浏览目录（固定根目录，不再跳转）
+
+  // ========== 驱动文件夹展开优化 ==========
+  private Set<File> expandedDirs;
+  // 手风琴：记录当前唯一展开的文件夹（解决闪烁核心）
+  private File currentExpandedFolder = null;
+  // 防止重复点击
+  private boolean isAnimating = false;
+
   private interface FilePickCallback {
     void onPicked(File file);
   }
@@ -148,6 +176,16 @@ public class MainActivity extends Activity {
       setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
     } catch (Exception ignored) {
     }
+
+    // ========== 新增：初始化驱动私有目录（files目录） ==========
+    driverRootDir = new File(getFilesDir(), "drivers");
+    driverZipFile = new File(getFilesDir(), "驱动.zip");
+    if (!driverRootDir.exists()) {
+      driverRootDir.mkdirs();
+    }
+    // 初始化文件夹展开集合
+    expandedDirs = new HashSet<>();
+    // ========================================================
 
     SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
     nightMode = sp.getBoolean("night_mode", false);
@@ -284,6 +322,10 @@ public class MainActivity extends Activity {
   protected void onDestroy() {
     if (updateTask != null && !updateTask.isCancelled()) {
       updateTask.cancel(true);
+    }
+    // 新增：取消驱动下载任务
+    if (downloadTask != null && !downloadTask.isCancelled()) {
+      downloadTask.cancel(true);
     }
     stopRunningProcess(false);
     handler.removeCallbacksAndMessages(null);
@@ -669,24 +711,22 @@ public class MainActivity extends Activity {
     bar.setGravity(Gravity.CENTER);
     bar.setPadding(dp(6), dp(6), dp(6), dp(6));
     bar.setBackground(round(cardColor(), 28, borderColor(), 1));
-    wrap.addView(bar, new LinearLayout.LayoutParams(dp(230), dp(56)));
+    // 加宽适配3个按钮
+    wrap.addView(bar, new LinearLayout.LayoutParams(dp(300), dp(56)));
 
+    // 三个导航按钮：主页、驱动、我的
     navHome = navButton("主页", true);
+    navDriver = navButton("驱动", false);
     navMine = navButton("我的", false);
+
     bar.addView(navHome, new LinearLayout.LayoutParams(0, -1, 1));
+    bar.addView(navDriver, new LinearLayout.LayoutParams(0, -1, 1));
     bar.addView(navMine, new LinearLayout.LayoutParams(0, -1, 1));
-    navHome.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            switchPage(0);
-          }
-        });
-    navMine.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            switchPage(1);
-          }
-        });
+
+    // 点击事件
+    navHome.setOnClickListener(v -> switchPage(0));
+    navDriver.setOnClickListener(v -> switchPage(1));
+    navMine.setOnClickListener(v -> switchPage(2));
     return wrap;
   }
 
@@ -704,7 +744,13 @@ public class MainActivity extends Activity {
     currentPage = page;
     pageHost.removeAllViews();
     pageHost.setBackgroundColor(bgColor());
-    View next = page == 0 ? createHomePage() : createMinePage();
+
+    // 0=主页 1=驱动 2=我的
+    View next = null;
+    if (page == 0) next = createHomePage();
+    else if (page == 1) next = createDriverPage(); // 新增驱动页面
+    else next = createMinePage();
+
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
     animatePageIn(next, page >= oldPage ? 1 : -1);
     updateNav();
@@ -732,13 +778,21 @@ public class MainActivity extends Activity {
   }
 
   private void updateNav() {
+    // 主页按钮
     if (navHome != null) {
       boolean active = currentPage == 0;
       navHome.setTextColor(active ? Color.WHITE : subTextColor());
       navHome.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
     }
-    if (navMine != null) {
+    // 驱动按钮（新增）
+    if (navDriver != null) {
       boolean active = currentPage == 1;
+      navDriver.setTextColor(active ? Color.WHITE : subTextColor());
+      navDriver.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
+    }
+    // 我的按钮
+    if (navMine != null) {
+      boolean active = currentPage == 2;
       navMine.setTextColor(active ? Color.WHITE : subTextColor());
       navMine.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
     }
@@ -880,14 +934,35 @@ public class MainActivity extends Activity {
     stopButton.setOnClickListener(v -> stopRunningProcess(true));
     // ====================== 拆分结束 ======================
 
+    // ====================== 半屏+毛玻璃终端 ======================
     terminalScroll = new ScrollView(this);
     terminalScroll.setFillViewport(true);
-    terminalScroll.setBackground(round(terminalBgColor(), 18, 0, 0));
-    outputView = text(outputBuffer.toString(), 12, Color.rgb(218, 231, 223), Typeface.NORMAL);
+    // 毛玻璃效果背景（半透明磨砂+圆角）+ 科技绿细边框
+    GradientDrawable terminalBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            // 毛玻璃核心：半透明黑色渐变，模拟磨砂模糊效果
+            new int[] {Color.argb(180, 10, 15, 22), Color.argb(160, 5, 8, 12)});
+    terminalBg.setCornerRadius(dp(18));
+    terminalBg.setStroke(dp(1), Color.argb(30, 81, 191, 101));
+    terminalScroll.setBackground(terminalBg);
+    // 隐藏原生滚动条，极简现代
+    terminalScroll.setVerticalScrollBarEnabled(false);
+    terminalScroll.setHorizontalScrollBarEnabled(false);
+
+    outputView = text(outputBuffer.toString(), 12, Color.rgb(81, 191, 101), Typeface.NORMAL);
     outputView.setTypeface(Typeface.MONOSPACE);
+    // 文字优化：抗锯齿、行间距、字符间距
+    outputView.getPaint().setAntiAlias(true);
+    outputView.setLineSpacing(dp(3), 1.0f);
+    outputView.setLetterSpacing(0.02f);
+    // 内边距
     outputView.setPadding(dp(14), dp(14), dp(14), dp(14));
+
     terminalScroll.addView(outputView, new ScrollView.LayoutParams(-1, -2));
-    page.addView(terminalScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+    // 核心：半屏显示 → 权重设置为 0.5，占屏幕一半高度
+    page.addView(terminalScroll, new LinearLayout.LayoutParams(-1, 0, 0.5f));
+    // ==============================================================
 
     updateRunButton();
     scrollTerminalBottom();
@@ -1026,6 +1101,1023 @@ public class MainActivity extends Activity {
     arrow.setBackground(round(tagColor(), 12, 0, 0));
     row.addView(arrow, new LinearLayout.LayoutParams(-2, -2));
     return v;
+  }
+
+  // ====================== 新版驱动页面（单文件列表 + 右侧刷入按钮） ======================
+  private View createDriverPage() {
+    ScrollView scroll = new ScrollView(this);
+    scroll.setFillViewport(false);
+    LinearLayout page = new LinearLayout(this);
+    page.setOrientation(LinearLayout.VERTICAL);
+    page.setPadding(dp(20), dp(22), dp(20), dp(20));
+    page.setBackgroundColor(bgColor());
+    scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
+
+    // 1. 页面标题
+    TextView title = text("驱动中心", 28, textColor(), Typeface.BOLD);
+    page.addView(title, lp(-1, -2, 0, 0, 0, dp(6)));
+    // 仅保留获取驱动提示
+    TextView subTip = text("点击按钮获取最新驱动文件", 13, subTextColor(), Typeface.NORMAL);
+    page.addView(subTip, lp(-1, -2, 0, 0, 0, dp(18)));
+
+    // 2. 下载卡片（完全保留原有下载/解压逻辑）
+    LinearLayout downloadCard = new LinearLayout(this);
+    downloadCard.setOrientation(LinearLayout.VERTICAL);
+    downloadCard.setPadding(dp(18), dp(18), dp(18), dp(18));
+    downloadCard.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(downloadCard, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    // 下载状态文本
+    driverPageStatus = text("就绪，点击下方按钮下载驱动压缩包", 13, LIGHT_GREEN, Typeface.NORMAL);
+    driverPageStatus.setGravity(Gravity.CENTER);
+    downloadCard.addView(driverPageStatus, lp(-1, -2, 0, 0, 0, dp(12)));
+
+    // 进度条轨道
+    final View progressTrack = new View(this);
+    progressTrack.setBackground(round(TRACK_BG, 3, 0, 0));
+    progressTrack.setVisibility(View.GONE);
+    downloadCard.addView(progressTrack, lp(-1, dp(5), 0, 0, 0, dp(8)));
+
+    // 进度条动画
+    final View progressBar = new View(this);
+    progressBar.setBackground(round(MAIN_GREEN, 3, 0, 0));
+    progressBar.setVisibility(View.GONE);
+    progressBar.setScaleX(0f);
+    progressBar.setPivotX(0f);
+    downloadCard.addView(progressBar, lp(-1, dp(5), 0, 0, 0, dp(12)));
+
+    // 下载按钮
+    final Button downloadBtn = button("获取最新驱动", true);
+    downloadCard.addView(downloadBtn, lp(-1, dp(48), 0, 0, 0, 0));
+
+    // 下载按钮点击事件
+    downloadBtn.setOnClickListener(
+        v -> {
+          if (!isNetworkAvailable()) {
+            Toast.makeText(this, "当前无网络，请检查网络", Toast.LENGTH_SHORT).show();
+            return;
+          }
+          if (downloadTask != null && !downloadTask.isCancelled()) {
+            Toast.makeText(this, "正在下载/解压中，请勿重复操作", Toast.LENGTH_SHORT).show();
+            return;
+          }
+          // 重置UI状态
+          progressTrack.setVisibility(View.VISIBLE);
+          progressBar.setVisibility(View.VISIBLE);
+          downloadBtn.setText("下载中...");
+          downloadBtn.setEnabled(false);
+          downloadBtn.setAlpha(0.6f);
+          // 启动下载+解压任务
+          downloadTask = new DownloadDriverTask(this, driverPageStatus, progressBar, downloadBtn);
+          downloadTask.execute();
+        });
+
+    // 分割线
+    addDivider(page);
+
+    // 3. 驱动系列 标题
+    TextView listMainTitle = text("驱动系列", 16, textColor(), Typeface.BOLD);
+    listMainTitle.setPadding(0, dp(16), 0, dp(8));
+    page.addView(listMainTitle, lp(-1, -2, 0, 0, 0, 0));
+
+    // 4. 统一文件列表容器（左侧名称 + 右侧刷入按钮）
+    driverFileListLayout = new LinearLayout(this);
+    driverFileListLayout.setOrientation(LinearLayout.VERTICAL);
+    driverFileListLayout.setBackground(round(cardColor(), 20, borderColor(), 1));
+    driverFileListLayout.setPadding(dp(10), dp(8), dp(10), dp(8));
+    page.addView(driverFileListLayout, new LinearLayout.LayoutParams(-1, 0, 1));
+
+    // 初始化：默认浏览驱动根目录下的「驱动」文件夹（跳过外层）
+    currentBrowseDir = new File(driverRootDir, "驱动");
+    // 确保目录存在（防止解压失败时崩溃）
+    if (!currentBrowseDir.exists()) {
+      currentBrowseDir.mkdirs();
+    }
+    // 加载当前目录文件列表
+    refreshDriverFileList();
+
+    return scroll;
+  }
+
+  // ====================== 驱动下载 + 自动解压 异步任务 ======================
+  private static class DownloadDriverTask extends AsyncTask<Void, Integer, Boolean> {
+    private final WeakReference<MainActivity> activityRef;
+    private final TextView statusText;
+    private final View progressBar;
+    private final Button downloadBtn;
+
+    public DownloadDriverTask(MainActivity activity, TextView status, View bar, Button btn) {
+      activityRef = new WeakReference<>(activity);
+      statusText = status;
+      progressBar = bar;
+      downloadBtn = btn;
+    }
+
+    @Override
+    protected void onPreExecute() {
+      super.onPreExecute();
+      statusText.setText("正在连接服务器...");
+    }
+
+    @Override
+    protected Boolean doInBackground(Void... voids) {
+      MainActivity activity = activityRef.get();
+      if (activity == null) return false;
+
+      try {
+        // 1. 下载ZIP文件到应用files目录
+        URL url = new URL(DRIVER_ZIP_URL);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(30000);
+
+        // 兼容HTTPS（沿用原有证书忽略逻辑）
+        if (conn instanceof HttpsURLConnection) {
+          HttpsURLConnection sconn = (HttpsURLConnection) conn;
+          TrustManager[] trustAll =
+              new TrustManager[] {
+                new X509TrustManager() {
+                  @Override
+                  public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                  }
+
+                  @Override
+                  public void checkClientTrusted(X509Certificate[] c, String a) {}
+
+                  @Override
+                  public void checkServerTrusted(X509Certificate[] c, String a) {}
+                }
+              };
+          SSLContext sc = SSLContext.getInstance("TLS");
+          sc.init(null, trustAll, new SecureRandom());
+          sconn.setSSLSocketFactory(sc.getSocketFactory());
+          sconn.setHostnameVerifier((hostname, session) -> true);
+        }
+
+        int totalLength = conn.getContentLength();
+        InputStream input = new BufferedInputStream(conn.getInputStream());
+        FileOutputStream output = new FileOutputStream(activity.driverZipFile);
+
+        byte[] buffer = new byte[8192];
+        long downloadSize = 0;
+        int len;
+        while ((len = input.read(buffer)) != -1) {
+          downloadSize += len;
+          int progress = (int) (downloadSize * 100.0 / totalLength);
+          publishProgress(progress);
+          output.write(buffer, 0, len);
+        }
+
+        output.flush();
+        output.close();
+        input.close();
+        conn.disconnect();
+
+        // 2. 下载完成 → 自动解压到 files/drivers 目录
+        publishProgress(-1);
+        boolean unzipResult = activity.unZipFile(activity.driverZipFile, activity.driverRootDir);
+
+        // 可选：解压后删除临时ZIP包（释放空间）
+        activity.driverZipFile.delete();
+
+        return unzipResult;
+
+      } catch (Exception e) {
+        e.printStackTrace();
+        return false;
+      }
+    }
+
+    @Override
+    protected void onProgressUpdate(Integer... values) {
+      super.onProgressUpdate(values);
+      int progress = values[0];
+      MainActivity activity = activityRef.get();
+      if (activity == null) return;
+
+      if (progress == -1) {
+        // 下载完成，进入解压阶段
+        statusText.setText("下载完成，正在自动解压驱动...");
+      } else {
+        // 下载进度
+        progressBar.setScaleX(progress / 100f);
+        statusText.setText("下载进度：" + progress + "%");
+      }
+    }
+
+    @Override
+    protected void onPostExecute(Boolean success) {
+      super.onPostExecute(success);
+      MainActivity activity = activityRef.get();
+      if (activity == null) return;
+
+      // 恢复按钮状态
+      downloadBtn.setEnabled(true);
+      downloadBtn.setAlpha(1f);
+      progressBar.setVisibility(View.GONE);
+
+      if (success) {
+        statusText.setText("驱动下载并解压完成！请选择对应文件");
+        downloadBtn.setText("重新下载");
+        Toast.makeText(activity, "驱动解压成功，请选择驱动文件", Toast.LENGTH_LONG).show();
+        // ✅ 修复：调用新版刷新方法
+        activity.refreshDriverFileList();
+      } else {
+        statusText.setText("下载/解压失败，请检查网络后重试");
+        downloadBtn.setText("重新下载");
+        Toast.makeText(activity, "驱动下载或解压失败", Toast.LENGTH_SHORT).show();
+      }
+      // 清空任务
+      activity.downloadTask = null;
+    }
+  }
+
+  // ====================== 工具：ZIP解压（兼容中文，解压到files目录） ======================
+  private boolean unZipFile(File zipFile, File targetDir) {
+    if (!zipFile.exists() || !zipFile.getName().endsWith(".zip")) {
+      return false;
+    }
+    // 清空旧目录
+    deleteDir(targetDir);
+    targetDir.mkdirs();
+
+    java.util.zip.ZipFile zip = null;
+    try {
+      // 解决Android ZIP中文乱码
+      zip = new java.util.zip.ZipFile(zipFile, java.nio.charset.Charset.forName("GBK"));
+      java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
+
+      while (entries.hasMoreElements()) {
+        java.util.zip.ZipEntry entry = entries.nextElement();
+        String entryName = entry.getName();
+        File outFile = new File(targetDir, entryName);
+
+        // 创建父目录
+        if (!outFile.getParentFile().exists()) {
+          outFile.getParentFile().mkdirs();
+        }
+
+        // 修复：同时处理文件和文件夹，确保完整解压
+        if (entry.isDirectory()) {
+          outFile.mkdirs();
+          continue;
+        }
+
+        // 写入文件
+        InputStream in = zip.getInputStream(entry);
+        FileOutputStream out = new FileOutputStream(outFile);
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = in.read(buf)) != -1) {
+          out.write(buf, 0, len);
+        }
+        out.flush();
+        out.close();
+        in.close();
+      }
+      return true;
+    } catch (Exception e) {
+      e.printStackTrace();
+      return false;
+    } finally {
+      try {
+        if (zip != null) zip.close();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
+  }
+
+  private void refreshDriverFileList() {
+    if (driverFileListLayout == null || currentBrowseDir == null) return;
+
+    // 重置所有状态，防止各种锁死
+    isAnimating = false;
+    currentExpandedFolder = null;
+
+    driverFileListLayout.removeAllViews();
+
+    if (!currentBrowseDir.exists() || !currentBrowseDir.isDirectory()) {
+      TextView emptyTip = text("当前驱动目录不存在", 12, subTextColor(), Typeface.NORMAL);
+      emptyTip.setPadding(dp(12), dp(20), dp(12), dp(20));
+      emptyTip.setGravity(Gravity.CENTER);
+      driverFileListLayout.addView(emptyTip);
+      return;
+    }
+
+    File[] dirFiles = currentBrowseDir.listFiles();
+    if (dirFiles == null || dirFiles.length == 0) {
+      TextView emptyTip = text("当前驱动目录为空，请点击「获取最新驱动」下载", 12, subTextColor(), Typeface.NORMAL);
+      emptyTip.setPadding(dp(12), dp(20), dp(12), dp(20));
+      emptyTip.setGravity(Gravity.CENTER);
+      driverFileListLayout.addView(emptyTip);
+      return;
+    }
+
+    // 排序
+    java.util.Arrays.sort(
+        dirFiles,
+        (f1, f2) -> {
+          if (f1.isDirectory() && !f2.isDirectory()) return -1;
+          if (!f1.isDirectory() && f2.isDirectory()) return 1;
+          return f1.getName().compareToIgnoreCase(f2.getName());
+        });
+
+    // 核心修复：为根文件项设置正确的布局参数
+    LinearLayout.LayoutParams itemParams =
+        new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+
+    LinearLayout.LayoutParams dividerParams =
+        new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+
+    // 加载所有根文件
+    for (int i = 0; i < dirFiles.length; i++) {
+      File item = dirFiles[i];
+      View fileItem = createFileItem(item, false);
+      fileItem.setLayoutParams(itemParams); // 修复：设置正确布局参数
+      driverFileListLayout.addView(fileItem);
+
+      if (i < dirFiles.length - 1) {
+        View divider = new View(this);
+        divider.setBackgroundColor(borderColor());
+        divider.setLayoutParams(dividerParams); // 修复：设置分割线布局参数
+        driverFileListLayout.addView(divider);
+      }
+    }
+  }
+
+  private View createFileItem(final File targetFile, boolean isChild) {
+    final LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setClickable(true);
+
+    int leftPadding = dp(12);
+    if (isChild) leftPadding += dp(24);
+    row.setPadding(leftPadding, dp(16), dp(16), dp(16));
+
+    final TextView nameText = new TextView(this);
+    nameText.setTextSize(14);
+    nameText.setTextColor(textColor());
+    nameText.setSingleLine(true);
+    nameText.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+    nameText.setText(targetFile.getName());
+    nameText.setTag(targetFile.getAbsolutePath());
+    LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(0, -2, 1);
+    row.addView(nameText, nameLp);
+
+    if (targetFile.isDirectory()) {
+      final TextView iconArrow = new TextView(this);
+      iconArrow.setTextSize(18);
+      iconArrow.setPadding(dp(8), 0, dp(8), 0);
+      iconArrow.setTextColor(primaryColor());
+      iconArrow.setText("▸");
+      row.addView(iconArrow);
+
+      // ✅ 核心：点击零延迟，箭头+列表同步动画
+      View.OnClickListener click =
+          v -> {
+            if (isAnimating) return;
+            isAnimating = true;
+
+            if (currentExpandedFolder == targetFile) {
+              // 收起：箭头转回 + 列表依次滑回（逐个消失）
+              animateArrow(iconArrow, false);
+              collapseFolder(targetFile, iconArrow);
+              currentExpandedFolder = null;
+            } else {
+              // 手风琴：先收起上一个（完成后）→ 展开新的
+              if (currentExpandedFolder != null) {
+                View prevRow = findRowByFile(currentExpandedFolder);
+                TextView prevIcon = findIconInRow(prevRow);
+
+                collapseAllChildren(
+                    currentExpandedFolder,
+                    () -> {
+                      animateArrow(prevIcon, false);
+                      // 立即展开新文件夹
+                      currentExpandedFolder = targetFile;
+                      animateArrow(iconArrow, true);
+                      expandFolder(targetFile, row, iconArrow);
+                    });
+              } else {
+                // 直接展开：零延迟
+                currentExpandedFolder = targetFile;
+                animateArrow(iconArrow, true);
+                expandFolder(targetFile, row, iconArrow);
+              }
+            }
+          };
+
+      iconArrow.setOnClickListener(click);
+      nameText.setOnClickListener(click);
+      row.setOnClickListener(click);
+
+    } else {
+      Button flashBtn = new Button(this);
+      flashBtn.setText("刷入");
+      flashBtn.setTextSize(12);
+      flashBtn.setBackgroundColor(primaryColor());
+      flashBtn.setTextColor(Color.WHITE);
+      flashBtn.setOnClickListener(v -> executeDriverFile(targetFile));
+      LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(dp(70), dp(36));
+      btnLp.setMargins(dp(8), 0, 0, 0);
+      row.addView(flashBtn, btnLp);
+    }
+
+    return row;
+  }
+
+  private void expandFolder(final File folder, final View parentRow, final TextView icon) {
+    if (!folder.exists() || folder.listFiles() == null) {
+      isAnimating = false;
+      return;
+    }
+
+    File[] childFiles = folder.listFiles();
+    int parentIndex = driverFileListLayout.indexOfChild(parentRow);
+    int insertIndex = parentIndex + 1;
+    final String tag = "child_" + folder.getAbsolutePath();
+
+    LinearLayout.LayoutParams itemParams =
+        new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    LinearLayout.LayoutParams dividerParams =
+        new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+
+    // 先静默添加全部子项（不可见）
+    List<View> addedItems = new ArrayList<>();
+    for (int i = 0; i < childFiles.length; i++) {
+      View childItem = createFileItem(childFiles[i], true);
+      childItem.setTag(tag);
+      childItem.setLayoutParams(itemParams);
+      childItem.setAlpha(0f); // 初始透明
+
+      View divider = new View(this);
+      divider.setBackgroundColor(borderColor());
+      divider.setTag(tag);
+      divider.setLayoutParams(dividerParams);
+      divider.setAlpha(0f);
+
+      driverFileListLayout.addView(childItem, insertIndex++);
+      driverFileListLayout.addView(divider, insertIndex++);
+
+      addedItems.add(childItem);
+      addedItems.add(divider);
+    }
+
+    // 等布局完成后，再统一播放滑入动画（零帧延迟）
+    driverFileListLayout.post(
+        () -> {
+          for (int i = 0; i < addedItems.size(); i++) {
+            View v = addedItems.get(i);
+            v.setTranslationY(-dp(12)); // 初始位移
+            v.setAlpha(1f);
+            v.animate()
+                .translationY(0)
+                .setDuration(260)
+                .setStartDelay(i * 18) // 连续流水
+                .setInterpolator(new DecelerateInterpolator(1.5f))
+                .start();
+          }
+          // 全部动画结束再解锁
+          long totalDuration = 260 + (addedItems.size() - 1) * 18;
+          handler.postDelayed(() -> isAnimating = false, totalDuration);
+        });
+  }
+
+  // 新建：从根目录逐层展开到指定文件夹
+  private void expandPathToFolder(File target) {
+    // 构建从根目录到 target 的路径列表
+    List<File> path = new ArrayList<>();
+    File current = target;
+    File root = currentBrowseDir;
+    while (current != null && !current.equals(root)) {
+      path.add(0, current);
+      current = current.getParentFile();
+    }
+
+    // 核心修复：使用Handler延迟展开，避免阻塞UI线程
+    expandPathRecursive(path, 0);
+  }
+
+  // 辅助方法：递归展开路径
+  private void expandPathRecursive(final List<File> path, final int index) {
+    if (index >= path.size()) {
+      return;
+    }
+
+    final File step = path.get(index);
+    View row = findRowByFile(step);
+    if (row == null) {
+      return;
+    }
+
+    TextView icon = findIconInRow(row);
+    if (icon == null) {
+      return;
+    }
+
+    // 展开当前文件夹
+    currentExpandedFolder = null;
+    expandFolder(step, row, icon);
+
+    // 修复：使用Handler延迟50ms展开下一层，避免UI阻塞
+    handler.postDelayed(() -> expandPathRecursive(path, index + 1), 50);
+  }
+
+  // 🛠️ 在 driverFileListLayout 中按文件路径查找行
+  private View findRowByFile(File file) {
+    String targetPath = file.getAbsolutePath();
+    for (int i = 0; i < driverFileListLayout.getChildCount(); i++) {
+      View child = driverFileListLayout.getChildAt(i);
+      if (child instanceof LinearLayout) {
+        // 先尝试直接 tag
+        if (targetPath.equals(child.getTag())) continue; // tag 被用作 child_xxx
+        // 遍历子 View 找 nameText 的 tag
+        View nameView = findViewWithPathTag(child, targetPath);
+        if (nameView != null) return child;
+      }
+    }
+    return null;
+  }
+
+  // 🛠️ 在行内查找有指定 tag 的 TextView
+  private View findViewWithPathTag(View row, String path) {
+    if (row instanceof LinearLayout) {
+      LinearLayout ll = (LinearLayout) row;
+      for (int i = 0; i < ll.getChildCount(); i++) {
+        View v = ll.getChildAt(i);
+        if (v instanceof TextView && path.equals(v.getTag())) {
+          return v;
+        }
+      }
+    }
+    return null;
+  }
+
+  // 🛠️ 在文件夹行内找到图标 TextView
+  private TextView findIconInRow(View row) {
+    if (row instanceof LinearLayout) {
+      LinearLayout ll = (LinearLayout) row;
+      for (int i = 0; i < ll.getChildCount(); i++) {
+        View v = ll.getChildAt(i);
+        if (v instanceof TextView && v != row) {
+          CharSequence text = ((TextView) v).getText();
+          if (text != null && (text.equals("▸") || text.equals("▾"))) {
+            return (TextView) v;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // ====================== 终极流式滑动动画（零延迟、依次联动） ======================
+  // 展开：从上到下 依次滑出（无延迟，点击即动）
+  private void animateItemIn(View view, int index) {
+    // 先确保 View 不可见，防止闪烁
+    view.setAlpha(0f);
+    view.post(
+        () -> {
+          // 此时 layout 已完成，拿到真正的 top/left
+          view.setTranslationY(-dp(12));
+          view.setAlpha(1f);
+          view.animate()
+              .translationY(0)
+              .setDuration(260)
+              .setStartDelay(index * 18) // 极短错开，依旧连续
+              .setInterpolator(new DecelerateInterpolator(1.5f))
+              .start();
+        });
+  }
+
+  // 收起：从下到上 依次滑回（逐个消失，不瞬间清空）
+  private void animateItemOut(View view, int index, Runnable onFinish) {
+    view.animate()
+        .translationY(-dp(12))
+        .alpha(0.4f) // 淡出一点更柔和
+        .setDuration(260)
+        .setStartDelay(index * 18)
+        .setInterpolator(new DecelerateInterpolator(1.5f))
+        .withEndAction(
+            () -> {
+              if (onFinish != null) onFinish.run();
+            })
+        .start();
+  }
+
+  // 文件夹箭头 旋转动画（同步联动，零卡顿）
+  private void animateArrow(TextView arrow, boolean expand) {
+    arrow.animate().rotation(expand ? 180 : 0).setDuration(200).start();
+  }
+
+  private void collapseFolder(final File folder, final TextView icon) {
+    final String tag = "child_" + folder.getAbsolutePath();
+    List<View> removeList = new ArrayList<>();
+    for (int i = 0; i < driverFileListLayout.getChildCount(); i++) {
+      View child = driverFileListLayout.getChildAt(i);
+      if (tag.equals(child.getTag())) {
+        removeList.add(child);
+      }
+    }
+
+    if (removeList.isEmpty()) {
+      isAnimating = false;
+      return;
+    }
+
+    // ✅ 核心：倒序依次收起，逐个消失，不瞬间清空
+    int total = removeList.size();
+    for (int i = total - 1; i >= 0; i--) {
+      View view = removeList.get(i);
+      int index = total - 1 - i;
+
+      // 最后一个动画完成后解锁
+      if (i == 0) {
+        animateItemOut(
+            view,
+            index,
+            () -> {
+              driverFileListLayout.removeView(view);
+              isAnimating = false;
+            });
+      } else {
+        animateItemOut(view, index, () -> driverFileListLayout.removeView(view));
+      }
+    }
+  }
+
+  // 带完成回调的收起（手风琴专用，丝滑无跳动）
+  private void collapseAllChildren(File folder, Runnable onCollapseComplete) {
+    final String tag = "child_" + folder.getAbsolutePath();
+    List<View> removeList = new ArrayList<>();
+    for (int i = driverFileListLayout.getChildCount() - 1; i >= 0; i--) {
+      View child = driverFileListLayout.getChildAt(i);
+      if (tag.equals(child.getTag())) {
+        removeList.add(child);
+      }
+    }
+
+    if (removeList.isEmpty()) {
+      onCollapseComplete.run();
+      return;
+    }
+
+    int total = removeList.size();
+    for (int i = total - 1; i >= 0; i--) {
+      final View view = removeList.get(i);
+      final int index = total - 1 - i; // 动画序号，最后一个动画 index = total-1
+      // 用 final 变量捕获
+      Runnable onEnd =
+          () -> {
+            driverFileListLayout.removeView(view);
+            if (index == total - 1) { // 最后一个元素动画结束才回调
+              onCollapseComplete.run();
+            }
+          };
+      animateItemOut(view, index, onEnd);
+    }
+  }
+
+  // ====================== 核心：刷入执行逻辑（当前页面运行文件） ======================
+  private void executeDriverFile(final File file) {
+    if (file == null || !file.exists() || file.isDirectory()) {
+      Toast.makeText(this, "文件不存在，无法执行", Toast.LENGTH_SHORT).show();
+      return;
+    }
+    if (running) {
+      Toast.makeText(this, "当前有任务正在运行，请稍后再试", Toast.LENGTH_SHORT).show();
+      return;
+    }
+    // 打开独立终端
+    showDriverTerminalDialog(file);
+  }
+
+  private void showDriverTerminalDialog(final File originalFile) {
+    // 现代圆角透明Dialog主题
+    final Dialog dialog = new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
+
+    // ===================== 根布局：现代圆角卡片 + 深色渐变背景 =====================
+    LinearLayout rootLayout = new LinearLayout(this);
+    rootLayout.setOrientation(LinearLayout.VERTICAL);
+    // 圆角渐变背景（科技黑）
+    GradientDrawable terminalBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {Color.rgb(12, 16, 24), Color.rgb(8, 10, 16)});
+    terminalBg.setCornerRadius(dp(24));
+    rootLayout.setBackground(terminalBg);
+    // 边距：避免全屏贴边
+    rootLayout.setPadding(dp(16), dp(48), dp(16), dp(24));
+
+    dialog.setContentView(rootLayout);
+    Window window = dialog.getWindow();
+    if (window != null) {
+      WindowManager.LayoutParams lp = window.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      window.setAttributes(lp);
+      // 弹窗淡入动画
+      window.setWindowAnimations(android.R.style.Animation_Translucent);
+    }
+
+    // ===================== 现代半透标题栏 =====================
+    LinearLayout titleBar = new LinearLayout(this);
+    titleBar.setOrientation(LinearLayout.HORIZONTAL);
+    titleBar.setPadding(dp(20), dp(14), dp(20), dp(14));
+    titleBar.setGravity(Gravity.CENTER_VERTICAL);
+    // 半透渐变标题栏
+    GradientDrawable titleBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {Color.argb(40, 255, 255, 255), Color.argb(20, 255, 255, 255)});
+    titleBg.setCornerRadius(dp(16));
+    titleBar.setBackground(titleBg);
+
+    // 标题
+    TextView titleText = new TextView(this);
+    titleText.setText("驱动执行终端");
+    titleText.setTextSize(18);
+    titleText.setTextColor(Color.WHITE);
+    titleText.setTypeface(Typeface.DEFAULT_BOLD);
+    LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -2, 1);
+    titleBar.addView(titleText, titleLp);
+
+    // 文件名（霓虹绿高亮）
+    TextView fileNameText = new TextView(this);
+    fileNameText.setText(originalFile.getName());
+    fileNameText.setTextSize(12);
+    fileNameText.setTextColor(Color.rgb(81, 191, 101));
+    fileNameText.setSingleLine(true);
+    fileNameText.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+    fileNameText.setTypeface(Typeface.MONOSPACE);
+    LinearLayout.LayoutParams fileLp = new LinearLayout.LayoutParams(0, -2, 1);
+    fileLp.setMargins(dp(8), 0, dp(8), 0);
+    titleBar.addView(fileNameText, fileLp);
+
+    // 关闭按钮（圆形现代风格）
+    Button closeBtn = new Button(this);
+    closeBtn.setText("✕");
+    closeBtn.setTextSize(16);
+    closeBtn.setTextColor(Color.WHITE);
+    closeBtn.setBackground(round(Color.argb(60, 255, 80, 80), 100, 0, 0));
+    closeBtn.setPadding(dp(2), 0, dp(2), 0);
+    closeBtn.setOnClickListener(
+        v -> {
+          dialog.dismiss();
+          isRunning[0] = false;
+        });
+    LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(36), dp(36));
+    titleBar.addView(closeBtn, closeLp);
+
+    LinearLayout.LayoutParams titleBarLp = new LinearLayout.LayoutParams(-1, -2);
+    titleBarLp.setMargins(0, 0, 0, dp(16));
+    rootLayout.addView(titleBar, titleBarLp);
+
+    // ===================== 终端输出区域（核心美化） =====================
+    final ScrollView scrollView = new ScrollView(this);
+    scrollView.setFillViewport(true);
+    scrollView.setBackground(round(Color.rgb(5, 8, 12), 16, 0, 0));
+    scrollView.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+    final TextView outputView = new TextView(this);
+    outputView.setTextSize(13);
+    outputView.setTextColor(Color.rgb(220, 240, 225));
+    // 专业等宽字体 + 行间距
+    outputView.setTypeface(Typeface.MONOSPACE);
+    outputView.setLineSpacing(dp(4), 1.0f);
+    outputView.setText("▶ 准备执行：" + originalFile.getName() + "\n▶ 等待Root权限授权...\n");
+    scrollView.addView(outputView);
+
+    LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(-1, 0, 1);
+    scrollLp.setMargins(0, 0, 0, dp(16));
+    rootLayout.addView(scrollView, scrollLp);
+
+    // ===================== 底部功能按钮栏（3按钮：停止/清除/复制） =====================
+    LinearLayout bottomBar = new LinearLayout(this);
+    bottomBar.setOrientation(LinearLayout.HORIZONTAL);
+    bottomBar.setGravity(Gravity.CENTER);
+    bottomBar.setPadding(dp(4), 0, dp(4), 0);
+
+    // 停止按钮
+    final Button stopButton = createModernButton("停止运行", Color.rgb(255, 80, 80));
+    // 清除按钮
+    final Button clearButton = createModernButton("清除日志", Color.rgb(100, 149, 237));
+    // 复制按钮
+    final Button copyButton = createModernButton("复制输出", Color.rgb(81, 191, 101));
+
+    // 按钮布局权重
+    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(50), 1);
+    btnLp.setMargins(dp(6), 0, dp(6), 0);
+    bottomBar.addView(stopButton, btnLp);
+    bottomBar.addView(clearButton, btnLp);
+    bottomBar.addView(copyButton, btnLp);
+
+    rootLayout.addView(bottomBar, new LinearLayout.LayoutParams(-1, -2));
+
+    // ===================== 执行逻辑（原逻辑不变） =====================
+    final Process[] processHolder = new Process[1];
+    final BufferedWriter[] writerHolder = new BufferedWriter[1];
+    final boolean[] isRunning = {true};
+    final Handler handler = new Handler();
+    final StringBuilder outputBuffer = new StringBuilder();
+
+    // 停止按钮
+    stopButton.setOnClickListener(
+        v -> {
+          isRunning[0] = false;
+          try {
+            if (writerHolder[0] != null) writerHolder[0].close();
+          } catch (Exception ignored) {
+          }
+          try {
+            if (processHolder[0] != null) processHolder[0].destroy();
+          } catch (Exception ignored) {
+          }
+          appendTerminalText(outputView, outputBuffer, "\n⏹️ 已手动停止运行\n", scrollView);
+          stopButton.setText("已停止");
+          stopButton.setEnabled(false);
+        });
+
+    // 清除日志按钮
+    clearButton.setOnClickListener(
+        v -> {
+          outputBuffer.setLength(0);
+          outputView.setText("▶ 终端已清空\n");
+        });
+
+    // 复制输出按钮
+    copyButton.setOnClickListener(
+        v -> {
+          android.content.ClipboardManager clipboard =
+              (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+          ClipData clip = ClipData.newPlainText("驱动终端日志", outputView.getText().toString());
+          clipboard.setPrimaryClip(clip);
+          Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show();
+        });
+
+    // 弹窗关闭销毁进程
+    dialog.setOnDismissListener(
+        di -> {
+          isRunning[0] = false;
+          try {
+            if (writerHolder[0] != null) writerHolder[0].close();
+          } catch (Exception ignored) {
+          }
+          try {
+            if (processHolder[0] != null) processHolder[0].destroy();
+          } catch (Exception ignored) {
+          }
+        });
+
+    dialog.show();
+
+    // 执行线程
+    new Thread(
+            () -> {
+              try {
+                handler.post(
+                    () ->
+                        appendTerminalText(
+                            outputView, outputBuffer, "🔐 正在请求 Root 权限...\n", scrollView));
+                if (!RunnerSupport.hasRoot()) {
+                  handler.post(
+                      () ->
+                          appendTerminalText(
+                              outputView, outputBuffer, "❌ Root 权限不可用，执行终止\n", scrollView));
+                  return;
+                }
+
+                String fileName = originalFile.getName().toLowerCase();
+                boolean isScript =
+                    fileName.endsWith(".sh")
+                        || fileName.endsWith(".bash")
+                        || fileName.endsWith(".zsh");
+
+                File localFile =
+                    RunnerSupport.copyFromPath(
+                        MainActivity.this, originalFile, originalFile.getName());
+                if (localFile == null || !localFile.exists()) {
+                  handler.post(
+                      () ->
+                          appendTerminalText(
+                              outputView, outputBuffer, "❌ 复制驱动文件失败，无法访问\n", scrollView));
+                  return;
+                }
+
+                handler.post(
+                    () ->
+                        appendTerminalText(outputView, outputBuffer, "⚙️ 准备运行环境...\n", scrollView));
+
+                String rootCommand;
+                if (isScript) {
+                  rootCommand = "sh " + localFile.getAbsolutePath();
+                  handler.post(
+                      () ->
+                          appendTerminalText(
+                              outputView, outputBuffer, "📜 检测到脚本文件，使用 sh 执行\n", scrollView));
+                } else {
+                  try {
+                    String rootPath =
+                        RunnerSupport.prepareRootExecutable(localFile, originalFile.getName());
+                    rootCommand = RunnerSupport.buildRootShellCommand(new File(rootPath), true);
+                  } catch (Exception e) {
+                    handler.post(
+                        () ->
+                            appendTerminalText(
+                                outputView, outputBuffer, "⚠️ 标准准备失败，尝试备用执行方式...\n", scrollView));
+                    rootCommand = "sh " + localFile.getAbsolutePath();
+                  }
+                }
+
+                handler.post(
+                    () ->
+                        appendTerminalText(outputView, outputBuffer, "🚀 启动进程...\n\n", scrollView));
+
+                Process p = new ProcessBuilder("su").redirectErrorStream(true).start();
+                processHolder[0] = p;
+                BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
+                writerHolder[0] = writer;
+
+                writer.write(rootCommand);
+                writer.newLine();
+                writer.flush();
+
+                BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
+                String line;
+                while (isRunning[0] && (line = reader.readLine()) != null) {
+                  final String outputLine = line + "\n";
+                  handler.post(
+                      () -> appendTerminalText(outputView, outputBuffer, outputLine, scrollView));
+                }
+
+                int exitCode = p.waitFor();
+                final String exitMsg = "\n✅ 进程结束，退出码: " + exitCode + "\n";
+                handler.post(
+                    () -> {
+                      appendTerminalText(outputView, outputBuffer, exitMsg, scrollView);
+                      stopButton.post(
+                          () -> {
+                            stopButton.setText("运行结束");
+                            stopButton.setEnabled(false);
+                          });
+                    });
+
+              } catch (Exception e) {
+                final String errorMsg = "⚠️ 执行异常: " + e.getMessage() + "\n";
+                handler.post(
+                    () -> appendTerminalText(outputView, outputBuffer, errorMsg, scrollView));
+              }
+            })
+        .start();
+  }
+
+  // ===================== 新增：现代化按钮创建工具方法 =====================
+  private Button createModernButton(String text, int bgColor) {
+    Button btn = new Button(this);
+    btn.setText(text);
+    btn.setTextSize(14);
+    btn.setTextColor(Color.WHITE);
+    btn.setTypeface(Typeface.DEFAULT_BOLD);
+    btn.setAllCaps(false);
+    // 圆角背景
+    btn.setBackground(round(bgColor, 100, 0, 0));
+    // 移除默认按压阴影
+    if (Build.VERSION.SDK_INT >= 21) {
+      btn.setStateListAnimator(null);
+      btn.setElevation(0f);
+    }
+    return btn;
+  }
+
+  // 辅助方法：追加终端文本并自动滚动
+  private void appendTerminalText(
+      TextView textView, StringBuilder buffer, String text, ScrollView scrollView) {
+    buffer.append(text);
+    if (buffer.length() > 50000) buffer.delete(0, buffer.length() - 40000);
+    textView.setText(buffer.toString());
+    scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+  }
+
+  // 递归删除目录
+  private void deleteDir(File file) {
+    if (file == null || !file.exists()) return;
+    if (file.isDirectory()) {
+      File[] files = file.listFiles();
+      if (files != null) {
+        for (File f : files) {
+          deleteDir(f);
+        }
+      }
+    }
+    file.delete();
   }
 
   private View createMinePage() {
@@ -1938,7 +3030,24 @@ public class MainActivity extends Activity {
   private void append(String s) {
     outputBuffer.append(s);
     if (outputBuffer.length() > 80000) outputBuffer.delete(0, outputBuffer.length() - 60000);
-    if (outputView != null) outputView.setText(outputBuffer.toString());
+    if (outputView != null) {
+      String fullText = outputBuffer.toString();
+      outputView.setText(fullText);
+      // 智能配色：错误红/成功绿/普通灰
+      if (fullText.contains("失败")
+          || fullText.contains("异常")
+          || fullText.contains("错误")
+          || fullText.contains("❌")) {
+        outputView.setTextColor(Color.rgb(255, 99, 71));
+      } else if (fullText.contains("运行")
+          || fullText.contains("成功")
+          || fullText.contains("✅")
+          || fullText.contains("就绪")) {
+        outputView.setTextColor(Color.rgb(81, 191, 101));
+      } else {
+        outputView.setTextColor(Color.rgb(200, 215, 225));
+      }
+    }
     scrollTerminalBottom();
   }
 
