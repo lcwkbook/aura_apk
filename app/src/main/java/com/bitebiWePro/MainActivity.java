@@ -70,6 +70,9 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
+import android.graphics.drawable.ClipDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
@@ -412,8 +415,8 @@ public class MainActivity extends Activity {
 
     // ===== 加载条动画 =====
     final ValueAnimator barAnim = ValueAnimator.ofFloat(0f, 1f);
-    barAnim.setDuration(1400);
-    barAnim.setStartDelay(1000);
+    barAnim.setDuration(800);
+    barAnim.setStartDelay(500);
     barAnim.setInterpolator(new DecelerateInterpolator(2.0f));
     barAnim.addUpdateListener(
         new ValueAnimator.AnimatorUpdateListener() {
@@ -450,8 +453,8 @@ public class MainActivity extends Activity {
         .animate()
         .alpha(1f)
         .translationY(0f)
-        .setDuration(550)
-        .setStartDelay(400)
+        .setDuration(400)
+        .setStartDelay(200)
         .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
         .start();
 
@@ -459,8 +462,8 @@ public class MainActivity extends Activity {
     subView
         .animate()
         .alpha(1f)
-        .setDuration(450)
-        .setStartDelay(800)
+        .setDuration(350)
+        .setStartDelay(500)
         .setInterpolator(new DecelerateInterpolator())
         .start();
 
@@ -489,7 +492,7 @@ public class MainActivity extends Activity {
                         .start();
                   }
                 },
-                400);
+                200);
           }
         });
     barAnim.start();
@@ -617,88 +620,143 @@ public class MainActivity extends Activity {
   }
 
   private void prepareScriptIfNeeded() {
-    if (scriptReady) return;
+  if (scriptReady) return;
 
-    // 检查本地文件
-    File scriptDir = new File(getFilesDir(), "scripts");
-    File scriptFile = new File(scriptDir, SCRIPT_NAME);
-    if (scriptFile.exists()) {
-      selectedFile = scriptFile;
-      selectedName = SCRIPT_NAME;
-      scriptReady = true;
-      updateRunButton();
-      append("脚本已就绪\n");
-      return;
-    }
-
-    // 需要下载
-    append("正在下载运行脚本...\n");
-    if (runButton != null) runButton.setEnabled(false);
-
-    new Thread(
-            () -> {
-              try {
-                if (!scriptDir.exists()) scriptDir.mkdirs();
-                File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
-
-                URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
-
-                // 如果证书有问题，临时忽略（上线前请申请正规证书）
-                if (conn instanceof HttpsURLConnection) {
-                  HttpsURLConnection sconn = (HttpsURLConnection) conn;
-                  TrustManager[] trustAll =
-                      new TrustManager[] {
-                        new X509TrustManager() {
-                          public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                          }
-
-                          public void checkClientTrusted(X509Certificate[] c, String a) {}
-
-                          public void checkServerTrusted(X509Certificate[] c, String a) {}
-                        }
-                      };
-                  SSLContext sc = SSLContext.getInstance("TLS");
-                  sc.init(null, trustAll, new SecureRandom());
-                  sconn.setSSLSocketFactory(sc.getSocketFactory());
-                  sconn.setHostnameVerifier((hostname, session) -> true);
-                }
-
-                InputStream in = new BufferedInputStream(conn.getInputStream());
-                FileOutputStream out = new FileOutputStream(tempFile);
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
-                out.flush();
-                out.close();
-                in.close();
-                conn.disconnect();
-
-                // 重命名为正式文件
-                tempFile.renameTo(scriptFile);
-                RunnerSupport.chmod777(scriptFile);
-
-                handler.post(
-                    () -> {
-                      selectedFile = scriptFile;
-                      selectedName = SCRIPT_NAME;
-                      scriptReady = true;
-                      append("运行脚本准备完毕\n");
-                      updateRunButton();
-                    });
-              } catch (Exception e) {
-                handler.post(
-                    () -> {
-                      append("脚本下载失败: " + e.getMessage() + "\n");
-                      updateRunButton();
-                    });
-              }
-            })
-        .start();
+  // 检查本地文件
+  File scriptDir = new File(getFilesDir(), "scripts");
+  File scriptFile = new File(scriptDir, SCRIPT_NAME);
+  if (scriptFile.exists()) {
+    selectedFile = scriptFile;
+    selectedName = SCRIPT_NAME;
+    scriptReady = true;
+    updateRunButton();
+    append("脚本已就绪\n");
+    return;
   }
+
+  // 需要下载
+  append("正在下载运行脚本...\n");
+  // 下载开始：禁用按钮 + 初始化进度样式
+  if (runButton != null) {
+    runButton.setEnabled(false);
+    runButton.setTag(round(primaryColor(), 14, 0, 0)); // 保存原始背景
+    updateDownloadProgress(runButton, 0); // 初始0%进度
+  }
+
+  new Thread(
+          () -> {
+            try {
+              if (!scriptDir.exists()) scriptDir.mkdirs();
+              File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
+
+              URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
+              HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+              conn.setConnectTimeout(15000);
+              conn.setReadTimeout(30000);
+
+              // HTTPS 证书忽略
+              if (conn instanceof HttpsURLConnection) {
+                HttpsURLConnection sconn = (HttpsURLConnection) conn;
+                TrustManager[] trustAll =
+                    new TrustManager[] {
+                      new X509TrustManager() {
+                        public X509Certificate[] getAcceptedIssuers() {
+                          return new X509Certificate[0];
+                        }
+                        public void checkClientTrusted(X509Certificate[] c, String a) {}
+                        public void checkServerTrusted(X509Certificate[] c, String a) {}
+                      }
+                    };
+                SSLContext sc = SSLContext.getInstance("TLS");
+                sc.init(null, trustAll, new SecureRandom());
+                sconn.setSSLSocketFactory(sc.getSocketFactory());
+                sconn.setHostnameVerifier((hostname, session) -> true);
+              }
+
+              int totalLength = conn.getContentLength();
+              InputStream in = new BufferedInputStream(conn.getInputStream());
+              FileOutputStream out = new FileOutputStream(tempFile);
+              byte[] buf = new byte[8192];
+              int len;
+              long downloadedSize = 0;
+
+              while ((len = in.read(buf)) != -1) {
+                out.write(buf, 0, len);
+                downloadedSize += len;
+                int progress = (int) ((downloadedSize * 100) / totalLength);
+                
+                // 主线程更新进度
+                handler.post(() -> {
+                  if (runButton != null) updateDownloadProgress(runButton, progress);
+                });
+              }
+
+              out.flush();
+              out.close();
+              in.close();
+              conn.disconnect();
+
+              tempFile.renameTo(scriptFile);
+              RunnerSupport.chmod777(scriptFile);
+
+              handler.post(
+                  () -> {
+                    selectedFile = scriptFile;
+                    selectedName = SCRIPT_NAME;
+                    scriptReady = true;
+                    append("运行脚本准备完毕\n");
+                    // 恢复按钮原始样式
+                    if (runButton != null) {
+                      runButton.setBackground((GradientDrawable) runButton.getTag());
+                    }
+                    updateRunButton();
+                  });
+            } catch (Exception e) {
+              handler.post(
+                  () -> {
+                    append("脚本下载失败: " + e.getMessage() + "\n");
+                    // 恢复按钮原始样式
+                    if (runButton != null) {
+                      runButton.setBackground((GradientDrawable) runButton.getTag());
+                    }
+                    updateRunButton();
+                  });
+            }
+          })
+      .start();
+}
+
+/**
+ * 更新按钮下载进度（左绿右灰，圆角）
+ * @param btn 目标按钮
+ * @param progress 进度 0-100
+ */
+private void updateDownloadProgress(Button btn, int progress) {
+    if (btn == null) return;
+    btn.post(() -> {
+        // 底层灰色圆角背景
+        GradientDrawable grayBg = new GradientDrawable();
+        grayBg.setColor(disabledColor());
+        grayBg.setCornerRadius(dp(14));
+
+        // 上层绿色进度背景
+        GradientDrawable greenBg = new GradientDrawable();
+        greenBg.setColor(MAIN_GREEN);
+        greenBg.setCornerRadius(dp(14));
+
+        // ClipDrawable 控制绿色区域的水平裁剪（从左到右）
+        ClipDrawable clip = new ClipDrawable(greenBg, Gravity.LEFT, ClipDrawable.HORIZONTAL);
+        clip.setLevel(progress * 100); // level 范围 0～10000
+
+        // 叠加图层
+        LayerDrawable layer = new LayerDrawable(new Drawable[]{grayBg, clip});
+        layer.setLayerInset(1, 0, 0, 0, 0); // 让绿色层填满按钮
+
+        btn.setBackground(layer);
+        btn.setText("加载文件脚本中 " + progress + "%");
+        btn.setTextColor(Color.WHITE);
+    });
+}
 
   private View createBottomNav() {
     LinearLayout wrap = new LinearLayout(this);
@@ -1164,7 +1222,7 @@ public class MainActivity extends Activity {
           // 重置UI状态
           progressTrack.setVisibility(View.VISIBLE);
           progressBar.setVisibility(View.VISIBLE);
-          downloadBtn.setText("下载中...");
+          downloadBtn.setText("加载文件脚本中...");
           downloadBtn.setEnabled(false);
           downloadBtn.setAlpha(0.6f);
           // 启动下载+解压任务
@@ -2134,6 +2192,43 @@ public class MainActivity extends Activity {
     TextView sub = text("设置、授权和快捷目录", 13, subTextColor(), Typeface.NORMAL);
     page.addView(sub, lp(-1, -2, 0, 0, 0, dp(18)));
 
+    // ====================== 【修改后】系统信息模块（保留左图标 + 无右箭头） ======================
+LinearLayout sysInfoCard = new LinearLayout(this);
+sysInfoCard.setOrientation(LinearLayout.VERTICAL);
+sysInfoCard.setPadding(dp(14), dp(8), dp(14), dp(8));
+sysInfoCard.setBackground(round(cardColor(), 24, borderColor(), 1));
+page.addView(sysInfoCard, lp(-1, -2, 0, 0, 0, dp(16)));
+
+// 每行都保留左侧图标，右侧无箭头
+View androidVer = sysInfoRow("安卓版本", getAndroidVersion(), "📱");
+sysInfoCard.addView(androidVer);
+addDivider(sysInfoCard);
+
+View sdkVer = sysInfoRow("SDK版本", getSdkVersion(), "⚙️");
+sysInfoCard.addView(sdkVer);
+addDivider(sysInfoCard);
+
+View deviceModel = sysInfoRow("设备型号", getDeviceModel(), "💻");
+sysInfoCard.addView(deviceModel);
+addDivider(sysInfoCard);
+
+View deviceManu = sysInfoRow("设备厂商", getDeviceManufacturer(), "🏭");
+sysInfoCard.addView(deviceManu);
+addDivider(sysInfoCard);
+
+View cpuArch = sysInfoRow("CPU架构", getCpuArchitecture(), "🖥️");
+sysInfoCard.addView(cpuArch);
+addDivider(sysInfoCard);
+
+View kernelVer = sysInfoRow("Linux内核", getLinuxKernelVersion(), "🐧");
+sysInfoCard.addView(kernelVer);
+addDivider(sysInfoCard);
+
+View selinuxStatus = sysInfoRow("SELinux状态", getSELinuxStatus(), "🛡️");
+sysInfoCard.addView(selinuxStatus);
+// =====================================================================================
+
+    // 原有设置卡片
     LinearLayout card = new LinearLayout(this);
     card.setOrientation(LinearLayout.VERTICAL);
     card.setPadding(dp(14), dp(8), dp(14), dp(8));
@@ -2198,7 +2293,7 @@ public class MainActivity extends Activity {
     tip.setLineSpacing(dp(2), 1f);
     page.addView(tip, lp(-1, -2, 0, dp(4), 0, 0));
     return scroll;
-  }
+}
 
   private View settingRow(String title, String desc, String mark) {
     LinearLayout row = new LinearLayout(this);
@@ -2225,6 +2320,35 @@ public class MainActivity extends Activity {
     row.addView(arrow, new LinearLayout.LayoutParams(dp(24), -2));
     return row;
   }
+
+  /**
+ * 系统信息专用行布局：左侧图标 + 标题 + 数值(右对齐) → 无右侧箭头
+ */
+private View sysInfoRow(String label, String value, String icon) {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(0, dp(13), 0, dp(13));
+
+    // 🔴 保留：左侧小图标（完全不动）
+    TextView tvIcon = text(icon, 16, textColor(), Typeface.BOLD);
+    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(24), -2);
+    row.addView(tvIcon, iconLp);
+
+    // 左侧标题
+    TextView tvLabel = text(label, 15, textColor(), Typeface.BOLD);
+    row.addView(tvLabel, new LinearLayout.LayoutParams(-2, -2));
+
+    // 右侧数值（自动占满、右对齐）
+    TextView tvValue = text(value, 14, subTextColor(), Typeface.NORMAL);
+    tvValue.setGravity(Gravity.END);
+    LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(0, -2, 1);
+    valueLp.setMargins(dp(12), 0, 0, 0);
+    row.addView(tvValue, valueLp);
+
+    // 🟢 已移除：右侧箭头 >
+    return row;
+}
 
   private void addDivider(LinearLayout parent) {
     View v = new View(this);
@@ -3027,6 +3151,61 @@ public class MainActivity extends Activity {
     }
   }
 
+  // ====================== 系统信息获取工具 ======================
+private String getAndroidVersion() {
+    return Build.VERSION.RELEASE;
+}
+
+private String getSdkVersion() {
+    return String.valueOf(Build.VERSION.SDK_INT);
+}
+
+private String getDeviceModel() {
+    return Build.MODEL;
+}
+
+private String getDeviceManufacturer() {
+    return Build.MANUFACTURER;
+}
+
+private String getCpuArchitecture() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        return Build.SUPPORTED_ABIS[0];
+    } else {
+        return Build.CPU_ABI;
+    }
+}
+
+private String getLinuxKernelVersion() {
+    String full = System.getProperty("os.version", "未知");
+    // 优先匹配三位版本号，如 5.10.43
+    java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+\\.\\d+\\.\\d+").matcher(full);
+    if (m.find()) {
+        return m.group();
+    }
+    // 如果只有两位，如 5.10
+    m = java.util.regex.Pattern.compile("\\d+\\.\\d+").matcher(full);
+    if (m.find()) {
+        return m.group();
+    }
+    return "未知";
+}
+
+private String getSELinuxStatus() {
+    try {
+        // 依赖Root权限获取SELinux状态
+        Process process = Runtime.getRuntime().exec("su -c getenforce");
+        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        String status = reader.readLine().trim();
+        reader.close();
+        process.destroy();
+        return "Enforcing".equals(status) ? "开启" : "关闭";
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    return "未知(需Root)";
+}
+
   private void append(String s) {
     outputBuffer.append(s);
     if (outputBuffer.length() > 80000) outputBuffer.delete(0, outputBuffer.length() - 60000);
@@ -3150,7 +3329,8 @@ public class MainActivity extends Activity {
   }
 
   private int primaryColor() {
-    return Color.rgb(22, 119, 255);
+    // return Color.rgb(22, 119, 255);
+    return MAIN_GREEN;
   }
 
   private int tagColor() {
