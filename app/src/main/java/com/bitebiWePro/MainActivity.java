@@ -857,10 +857,18 @@ private void updateDownloadProgress(Button btn, int progress) {
   }
 
   private View createHomePage() {
+     // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
+    ScrollView rootScroll = new ScrollView(this);
+    rootScroll.setVerticalScrollBarEnabled(false);
+    rootScroll.setFillViewport(false);
+    rootScroll.setBackgroundColor(bgColor());
+
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(18), dp(18), dp(18), dp(8));
     page.setBackgroundColor(bgColor());
+     // 把原page装入外层ScrollView
+    rootScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
     LinearLayout header = new LinearLayout(this);
     header.setOrientation(LinearLayout.HORIZONTAL);
@@ -1024,7 +1032,8 @@ private void updateDownloadProgress(Button btn, int progress) {
 
     updateRunButton();
     scrollTerminalBottom();
-    return page;
+    // 【最后】返回外层滚动容器，而非原page
+    return rootScroll;
   }
 
   // 驱动选项按钮样式
@@ -1165,6 +1174,7 @@ private void updateDownloadProgress(Button btn, int progress) {
   private View createDriverPage() {
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(false);
+     scroll.setVerticalScrollBarEnabled(false);
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(20), dp(22), dp(20), dp(20));
@@ -1942,6 +1952,7 @@ private void updateDownloadProgress(Button btn, int progress) {
     scrollView.setFillViewport(true);
     scrollView.setBackground(round(Color.rgb(5, 8, 12), 16, 0, 0));
     scrollView.setPadding(dp(16), dp(16), dp(16), dp(16));
+    scrollView.setVerticalScrollBarEnabled(false);
 
     final TextView outputView = new TextView(this);
     outputView.setTextSize(13);
@@ -2181,6 +2192,7 @@ private void updateDownloadProgress(Button btn, int progress) {
   private View createMinePage() {
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(true);
+    scroll.setVerticalScrollBarEnabled(false);
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(20), dp(22), dp(20), dp(20));
@@ -2755,6 +2767,7 @@ private View sysInfoRow(String label, String value, String icon) {
 
     ScrollView listScroll = new ScrollView(this);
     listScroll.setFillViewport(true);
+    listScroll.setVerticalScrollBarEnabled(false);
     listScroll.setBackground(round(cardColor(), 20, borderColor(), 1));
     LinearLayout list = new LinearLayout(this);
     list.setOrientation(LinearLayout.VERTICAL);
