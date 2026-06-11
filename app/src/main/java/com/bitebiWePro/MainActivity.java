@@ -2240,6 +2240,76 @@ View selinuxStatus = sysInfoRow("SELinux状态", getSELinuxStatus(), "🛡️");
 sysInfoCard.addView(selinuxStatus);
 // =====================================================================================
 
+ // ====================== 【新增 清理模块 开始】 ======================
+    LinearLayout cleanCard = new LinearLayout(this);
+    cleanCard.setOrientation(LinearLayout.VERTICAL);
+    cleanCard.setPadding(dp(14), dp(8), dp(14), dp(8));
+    cleanCard.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cleanCard, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    // 1. 清理配置
+    View cleanConfigRow = settingRow("清理配置", "自定义清理规则与目录", "⚙️");
+    cleanCard.addView(cleanConfigRow);
+    cleanConfigRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "清理配置", Toast.LENGTH_SHORT).show();
+        // 在此编写 清理配置 逻辑
+    });
+    addDivider(cleanCard);
+
+    // 2. 清理内核&驱动
+    View cleanKernelDriverRow = settingRow("清理内核&驱动", "清除已刷入内核、驱动文件", "🧹");
+    cleanCard.addView(cleanKernelDriverRow);
+    cleanKernelDriverRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "开始清理内核&驱动", Toast.LENGTH_SHORT).show();
+        // 在此编写 清理内核&驱动 逻辑
+    });
+    addDivider(cleanCard);
+
+    // 3. 低级清理
+    View cleanLowRow = settingRow("低级清理", "清理临时缓存、运行日志", "🧽");
+    cleanCard.addView(cleanLowRow);
+    cleanLowRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "执行低级清理", Toast.LENGTH_SHORT).show();
+        // 在此编写 低级清理 逻辑
+    });
+    addDivider(cleanCard);
+
+    // 4. 中级清理
+    View cleanMidRow = settingRow("中级清理", "清理残留配置、冗余文件", "🗑️");
+    cleanCard.addView(cleanMidRow);
+    cleanMidRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "执行中级清理", Toast.LENGTH_SHORT).show();
+        // 在此编写 中级清理 逻辑
+    });
+    addDivider(cleanCard);
+
+    // 5. 高级清理
+    View cleanHighRow = settingRow("高级清理", "深度清理全部残留数据", "🔥");
+    cleanCard.addView(cleanHighRow);
+    cleanHighRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "执行高级清理", Toast.LENGTH_SHORT).show();
+        // 在此编写 高级清理 逻辑
+    });
+    addDivider(cleanCard);
+
+    // 6. 更改ID
+    View changeIdRow = settingRow("更改ID", "修改设备/应用标识ID", "🔢");
+    cleanCard.addView(changeIdRow);
+    changeIdRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "更改ID", Toast.LENGTH_SHORT).show();
+        // 在此编写 更改ID 逻辑
+    });
+    addDivider(cleanCard);
+
+    // 7. 清理说明
+    View cleanDescRow = settingRow("清理说明", "查看各级清理功能介绍", "ℹ️");
+    cleanCard.addView(cleanDescRow);
+    cleanDescRow.setOnClickListener(v -> {
+        Toast.makeText(MainActivity.this, "打开清理说明", Toast.LENGTH_SHORT).show();
+        // 在此编写 清理说明 弹窗/页面逻辑
+    });
+    // ====================== 【新增 清理模块 结束】 ======================
+
     // 原有设置卡片
     LinearLayout card = new LinearLayout(this);
     card.setOrientation(LinearLayout.VERTICAL);
