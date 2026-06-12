@@ -74,6 +74,12 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
+import android.content.pm.PackageInfo;
+import android.content.pm.Signature;
+import java.security.MessageDigest;
+import java.util.Base64;
+import android.util.Log;
+
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
@@ -500,9 +506,48 @@ public class MainActivity extends Activity {
     }
   }
 
+  // ====================== 签名校验（防破解核心） ======================
+private boolean verifySignature() {
+    try {
+        PackageInfo pkgInfo = getPackageManager().getPackageInfo(
+            getPackageName(), PackageManager.GET_SIGNATURES);
+        
+        // 开发阶段：第一次运行自动打印真实哈希
+        boolean debugMode = false; // 发布时改为 false
+        
+        for (Signature sig : pkgInfo.signatures) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(sig.toByteArray());
+            String currentHash = Base64.getEncoder().encodeToString(digest);
+            
+            if (debugMode) {
+                Log.d("AURA_SIGNATURE", ">>> 当前签名哈希: " + currentHash);
+                return true; // 开发阶段跳过校验
+            }
+            
+            // 🔴 把这里替换为你的真实哈希
+            String releaseHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=";
+            
+            if (releaseHash.equals(currentHash)) {
+                return true;
+            }
+        }
+        return false;
+    } catch (Exception e) {
+        return false;
+    }
+}
+
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    // ✅ 签名校验 - 不通过直接退出
+    if (!verifySignature()) {
+        Toast.makeText(this, "应用已被篡改，无法运行", Toast.LENGTH_LONG).show();
+        new Handler().postDelayed(() -> finish(), 2000);
+        return;
+    }
     requestWindowFeature(Window.FEATURE_NO_TITLE);
     try {
       setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
