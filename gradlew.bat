@@ -1,7 +1,7 @@
 @echo off
 setlocal
 set APP_HOME=%~dp0
-set GRADLE_VERSION=7.2
+set GRADLE_VERSION=8.9
 set DIST_NAME=gradle-%GRADLE_VERSION%-bin
 set DIST_URL=https://services.gradle.org/distributions/%DIST_NAME%.zip
 set CACHE_DIR=%USERPROFILE%\.gradle\wrapper\dists\%DIST_NAME%\manual

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-GRADLE_VERSION=7.2
+GRADLE_VERSION=8.9
 DIST_NAME=gradle-${GRADLE_VERSION}-bin
 DIST_URL=https://services.gradle.org/distributions/${DIST_NAME}.zip
 CACHE_DIR=${HOME}/.gradle/wrapper/dists/${DIST_NAME}/manual

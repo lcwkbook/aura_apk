@@ -1,4 +1,4 @@
-package com.Aurakernel;
+package com.aa.Aurakernel;
 
 import android.Manifest;
 import android.animation.ValueAnimator;
@@ -32,6 +32,7 @@ import android.os.Handler;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -131,6 +132,9 @@ public class MainActivity extends Activity {
 
   private final Handler handler = new Handler();
   private final StringBuilder outputBuffer = new StringBuilder("就绪\n");
+  private ScrollView cleanTerminalScroll;
+  private TextView cleanOutputView;
+  private final StringBuilder cleanOutputBuffer = new StringBuilder();
   private boolean rootDenied = false;
 
   // ====================== 驱动模块 常量 & 全局控件 ======================
@@ -171,6 +175,331 @@ public class MainActivity extends Activity {
     FilePickCallback callback;
   }
 
+  // ====================== 清理脚本自动解压 ======================
+  private void extractCleanScriptsIfNeeded() {
+    File cleanDir = new File(getFilesDir(), "clean");
+    if (!cleanDir.exists()) {
+      cleanDir.mkdirs();
+    }
+
+    try {
+      String[] scriptFiles = getAssets().list("clean");
+      if (scriptFiles == null) return;
+
+      for (String fileName : scriptFiles) {
+        File outFile = new File(cleanDir, fileName);
+        // 如果文件已存在且大小一致，跳过解压
+        if (outFile.exists()
+            && outFile.length() == getAssets().open("clean/" + fileName).available()) {
+          continue;
+        }
+
+        // 解压文件
+        InputStream in = getAssets().open("clean/" + fileName);
+        FileOutputStream out = new FileOutputStream(outFile);
+        byte[] buffer = new byte[8192];
+        int len;
+        while ((len = in.read(buffer)) != -1) {
+          out.write(buffer, 0, len);
+        }
+        out.flush();
+        out.close();
+        in.close();
+
+        // 赋予执行权限
+        Runtime.getRuntime().exec("chmod 755 " + outFile.getAbsolutePath()).waitFor();
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  private boolean deleteDirContents(File dir) {
+    if (dir == null || !dir.exists()) return false;
+    File[] files = dir.listFiles();
+    if (files == null) return true;
+    boolean success = true;
+    for (File file : files) {
+      if (file.isDirectory()) {
+        success &= deleteDirContents(file);
+        success &= file.delete();
+      } else {
+        success &= file.delete();
+      }
+    }
+    return success;
+  }
+
+  private void runCleanScript(String scriptName, String displayName) {
+    if (running) return;
+    running = true;
+    updateRunButton();
+
+    // ===================== 创建悬浮终端弹窗 =====================
+    final Dialog dialog = new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
+
+    // 根布局
+    LinearLayout rootLayout = new LinearLayout(this);
+    rootLayout.setOrientation(LinearLayout.VERTICAL);
+    GradientDrawable dialogBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {Color.rgb(12, 16, 24), Color.rgb(8, 10, 16)});
+    dialogBg.setCornerRadius(dp(24));
+    rootLayout.setBackground(dialogBg);
+    rootLayout.setPadding(dp(16), dp(48), dp(16), dp(24));
+    dialog.setContentView(rootLayout);
+
+    Window window = dialog.getWindow();
+    if (window != null) {
+      WindowManager.LayoutParams lp = window.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      window.setAttributes(lp);
+      window.setWindowAnimations(android.R.style.Animation_Translucent);
+    }
+
+    // 标题栏
+    LinearLayout titleBar = new LinearLayout(this);
+    titleBar.setOrientation(LinearLayout.HORIZONTAL);
+    titleBar.setPadding(dp(20), dp(14), dp(20), dp(14));
+    titleBar.setGravity(Gravity.CENTER_VERTICAL);
+    GradientDrawable titleBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {Color.argb(40, 255, 255, 255), Color.argb(20, 255, 255, 255)});
+    titleBg.setCornerRadius(dp(16));
+    titleBar.setBackground(titleBg);
+
+    TextView titleText = new TextView(this);
+    titleText.setText("🧹 " + displayName);
+    titleText.setTextSize(18);
+    titleText.setTextColor(Color.WHITE);
+    titleText.setTypeface(Typeface.DEFAULT_BOLD);
+    titleBar.addView(titleText, new LinearLayout.LayoutParams(0, -2, 1));
+
+    Button closeBtn = new Button(this);
+    closeBtn.setText("✕");
+    closeBtn.setTextSize(16);
+    closeBtn.setTextColor(Color.WHITE);
+    closeBtn.setBackground(round(Color.argb(60, 255, 80, 80), 100, 0, 0));
+    closeBtn.setPadding(dp(2), 0, dp(2), 0);
+    closeBtn.setOnClickListener(
+        v -> {
+          dialog.dismiss();
+          running = false;
+          updateRunButton();
+        });
+    titleBar.addView(closeBtn, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+    LinearLayout.LayoutParams titleBarLp = new LinearLayout.LayoutParams(-1, -2);
+    titleBarLp.setMargins(0, 0, 0, dp(16));
+    rootLayout.addView(titleBar, titleBarLp);
+
+    // 终端输出区域
+    final ScrollView scrollView = new ScrollView(this);
+    scrollView.setFillViewport(true);
+    scrollView.setBackground(round(Color.rgb(5, 8, 12), 16, 0, 0));
+    scrollView.setPadding(dp(16), dp(16), dp(16), dp(16));
+    scrollView.setVerticalScrollBarEnabled(false);
+
+    final TextView outputView = new TextView(this);
+    outputView.setTextSize(13);
+    outputView.setTextColor(Color.rgb(220, 240, 225));
+    outputView.setTypeface(Typeface.MONOSPACE);
+    outputView.setLineSpacing(dp(4), 1.0f);
+    scrollView.addView(outputView);
+
+    LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(-1, 0, 1);
+    scrollLp.setMargins(0, 0, 0, dp(16));
+    rootLayout.addView(scrollView, scrollLp);
+
+    // 底部按钮
+    LinearLayout bottomBar = new LinearLayout(this);
+    bottomBar.setOrientation(LinearLayout.HORIZONTAL);
+    bottomBar.setGravity(Gravity.CENTER);
+    bottomBar.setPadding(dp(4), 0, dp(4), 0);
+
+    Button clearBtn = createModernButton("清除日志", Color.rgb(100, 149, 237));
+    Button copyBtn = createModernButton("复制输出", Color.rgb(81, 191, 101));
+    Button closeBottomBtn = createModernButton("关闭", Color.rgb(255, 80, 80));
+
+    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(50), 1);
+    btnLp.setMargins(dp(6), 0, dp(6), 0);
+    bottomBar.addView(clearBtn, btnLp);
+    bottomBar.addView(copyBtn, btnLp);
+    bottomBar.addView(closeBottomBtn, btnLp);
+    rootLayout.addView(bottomBar, new LinearLayout.LayoutParams(-1, -2));
+
+    // 显示弹窗
+    dialog.show();
+
+    // 输出缓冲区
+    final StringBuilder cleanOutputBuffer = new StringBuilder();
+
+    // 追加文本方法
+    java.util.function.Consumer<String> cleanAppend =
+        s -> {
+          cleanOutputBuffer.append(s);
+          if (cleanOutputBuffer.length() > 80000)
+            cleanOutputBuffer.delete(0, cleanOutputBuffer.length() - 60000);
+          outputView.setText(cleanOutputBuffer.toString());
+          // 自动滚动到底部
+          scrollView.post(
+              () -> {
+                int scrollY = outputView.getBottom() - scrollView.getHeight();
+                if (scrollY > 0) scrollView.scrollTo(0, scrollY);
+                else scrollView.fullScroll(View.FOCUS_DOWN);
+              });
+        };
+
+    java.util.function.Consumer<String> cleanPost =
+        s -> {
+          handler.post(() -> cleanAppend.accept(s));
+        };
+
+    // 按钮功能
+    clearBtn.setOnClickListener(
+        v -> {
+          outputBuffer.setLength(0);
+          outputView.setText("▶ 终端已清空\n");
+        });
+    copyBtn.setOnClickListener(
+        v -> {
+          android.content.ClipboardManager clipboard =
+              (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+          ClipData clip = ClipData.newPlainText("驱动终端日志", outputView.getText().toString());
+          clipboard.setPrimaryClip(clip);
+          Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show();
+        });
+    // 关闭按钮
+    closeBottomBtn.setOnClickListener(v -> dialog.dismiss());
+    // 弹窗关闭
+    dialog.setOnDismissListener(
+        di -> {
+          running = false;
+          updateRunButton();
+        });
+
+    // 初始文字
+    handler.post(
+        () -> {
+          outputView.setText("▶️ 开始执行: " + displayName + "\n");
+          outputView.append("脚本: " + scriptName + "\n\n");
+        });
+
+    // ===================== 执行脚本 =====================
+    new Thread(
+            () -> {
+              try {
+                File scriptFile = new File(getFilesDir(), "clean/" + scriptName);
+                if (!scriptFile.exists()) {
+                  cleanPost.accept("❌ 脚本文件不存在: " + scriptFile.getAbsolutePath() + "\n");
+                  cleanPost.accept("📌 请确认 assets/clean/ 目录下有 " + scriptName + "\n");
+                  return;
+                }
+
+                cleanPost.accept("📂 脚本路径: " + scriptFile.getAbsolutePath() + "\n");
+                cleanPost.accept("⏳ 正在执行，请稍候...\n\n");
+
+                cleanPost("🔑 尝试获取Root权限执行...\n");
+                Process process =
+                    Runtime.getRuntime().exec("su -c sh " + scriptFile.getAbsolutePath());
+
+                BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(process.getInputStream()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                  cleanPost.accept("  " + line + "\n");
+                }
+
+                BufferedReader errorReader =
+                    new BufferedReader(new InputStreamReader(process.getErrorStream()));
+                while ((line = errorReader.readLine()) != null) {
+                  cleanPost.accept("  ⚠️ " + line + "\n");
+                }
+
+                int exitCode = process.waitFor();
+                reader.close();
+                errorReader.close();
+
+                cleanPost.accept("\n");
+                if (exitCode == 0) {
+                  cleanPost.accept("✅ " + displayName + " 执行完成 (退出码: " + exitCode + ")\n");
+                } else {
+                  cleanPost.accept("❌ " + displayName + " 执行失败 (退出码: " + exitCode + ")\n");
+                }
+              } catch (Exception e) {
+                cleanPost.accept("❌ 执行异常: " + e.getMessage() + "\n");
+                e.printStackTrace();
+              }
+            })
+        .start();
+  }
+
+  // 清理终端专用追加文本
+  private void cleanAppend(String s) {
+    if (cleanOutputView == null) {
+      android.util.Log.e("CleanTerminal", "cleanOutputView is null!");
+      return;
+    }
+    cleanOutputBuffer.append(s);
+    if (cleanOutputBuffer.length() > 80000)
+      cleanOutputBuffer.delete(0, cleanOutputBuffer.length() - 60000);
+
+    // 🔍 诊断：如果 view 为 null，用 Toast 显示
+    if (cleanOutputView == null) {
+      android.util.Log.e("CleanTerminal", "cleanOutputView is null! Text: " + s);
+      // 改用主终端显示
+      if (outputView != null) {
+        handler.post(
+            () -> {
+              outputView.append("\n[清理] " + s);
+            });
+      }
+      return;
+    }
+
+    String fullText = cleanOutputBuffer.toString();
+    cleanOutputView.setText(fullText);
+    if (fullText.contains("失败")
+        || fullText.contains("异常")
+        || fullText.contains("错误")
+        || fullText.contains("❌")) {
+      cleanOutputView.setTextColor(Color.rgb(255, 99, 71));
+    } else if (fullText.contains("运行")
+        || fullText.contains("成功")
+        || fullText.contains("✅")
+        || fullText.contains("就绪")) {
+      cleanOutputView.setTextColor(Color.rgb(81, 191, 101));
+    } else {
+      cleanOutputView.setTextColor(Color.rgb(200, 215, 225));
+    }
+    scrollCleanTerminalBottom();
+  }
+
+  // 清理终端专用主线程post
+  private void cleanPost(final String s) {
+    handler.post(() -> cleanAppend(s));
+  }
+
+  // 清理终端滚动到底部
+  private void scrollCleanTerminalBottom() {
+    if (cleanTerminalScroll != null && cleanOutputView != null) {
+      cleanTerminalScroll.post(
+          () -> {
+            int scrollY = cleanOutputView.getBottom() - cleanTerminalScroll.getHeight();
+            if (scrollY > 0) {
+              cleanTerminalScroll.scrollTo(0, scrollY);
+            } else {
+              cleanTerminalScroll.fullScroll(View.FOCUS_DOWN);
+            }
+          });
+    }
+  }
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -180,6 +509,7 @@ public class MainActivity extends Activity {
     } catch (Exception ignored) {
     }
 
+    extractCleanScriptsIfNeeded();
     // ========== 新增：初始化驱动私有目录（files目录） ==========
     driverRootDir = new File(getFilesDir(), "drivers");
     driverZipFile = new File(getFilesDir(), "驱动.zip");
@@ -224,10 +554,16 @@ public class MainActivity extends Activity {
 
     new Thread(
             () -> {
-              boolean hasRoot = RunnerSupport.hasRoot();
+              boolean hasRoot = false;
+              try {
+                hasRoot = RunnerSupport.hasRoot();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
+              final boolean finalHasRoot = hasRoot;
               handler.post(
                   () -> {
-                    if (hasRoot) {
+                    if (finalHasRoot) {
                       // 有 Root，正常进入
                       showSplashThenMain();
                     } else {
@@ -1025,35 +1361,53 @@ public class MainActivity extends Activity {
     stopButton.setOnClickListener(v -> stopRunningProcess(true));
     // ====================== 拆分结束 ======================
 
-    // ====================== 半屏+毛玻璃终端 ======================
+    // ====================== 终端固定窗口大小（380dp × 240dp） ======================
     terminalScroll = new ScrollView(this);
     terminalScroll.setFillViewport(true);
+    // 禁止横向滚动，确保文字自动换行
+    terminalScroll.setHorizontalScrollBarEnabled(false);
+    terminalScroll.setVerticalScrollBarEnabled(false);
+    terminalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
     // 毛玻璃效果背景（半透明磨砂+圆角）+ 科技绿细边框
     GradientDrawable terminalBg =
         new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            // 毛玻璃核心：半透明黑色渐变，模拟磨砂模糊效果
             new int[] {Color.argb(180, 10, 15, 22), Color.argb(160, 5, 8, 12)});
     terminalBg.setCornerRadius(dp(18));
     terminalBg.setStroke(dp(1), Color.argb(30, 81, 191, 101));
     terminalScroll.setBackground(terminalBg);
-    // 隐藏原生滚动条，极简现代
-    terminalScroll.setVerticalScrollBarEnabled(false);
-    terminalScroll.setHorizontalScrollBarEnabled(false);
 
     outputView = text(outputBuffer.toString(), 12, Color.rgb(81, 191, 101), Typeface.NORMAL);
     outputView.setTypeface(Typeface.MONOSPACE);
-    // 文字优化：抗锯齿、行间距、字符间距
     outputView.getPaint().setAntiAlias(true);
-    outputView.setLineSpacing(dp(3), 1.0f);
+    outputView.setLineSpacing(dp(4), 1.0f);
     outputView.setLetterSpacing(0.02f);
-    // 内边距
-    outputView.setPadding(dp(14), dp(14), dp(14), dp(14));
+    outputView.setPadding(dp(16), dp(16), dp(16), dp(16));
+    // 强制文字在固定宽度内自动换行
+    outputView.setSingleLine(false);
+    outputView.setHorizontallyScrolling(false);
 
     terminalScroll.addView(outputView, new ScrollView.LayoutParams(-1, -2));
-    // 核心：半屏显示 → 权重设置为 0.5，占屏幕一半高度
-    page.addView(terminalScroll, new LinearLayout.LayoutParams(-1, 0, 0.5f));
-    // ==============================================================
+
+    // ✅ 核心：固定宽高 + 水平居中
+    // 可直接修改以下两个数值调整终端大小（单位：dp）
+    int TERMINAL_WIDTH = 380; // 固定宽度
+    int TERMINAL_HEIGHT = 200; // 固定高度
+
+    // 小屏保护：如果屏幕宽度小于设定值，则自动占满屏幕宽度
+    DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
+    float screenWidthDp = displayMetrics.widthPixels / displayMetrics.density;
+    int finalWidth =
+        screenWidthDp < TERMINAL_WIDTH
+            ? LinearLayout.LayoutParams.MATCH_PARENT
+            : dp(TERMINAL_WIDTH);
+
+    LinearLayout.LayoutParams terminalLp =
+        new LinearLayout.LayoutParams(finalWidth, dp(TERMINAL_HEIGHT));
+    terminalLp.gravity = Gravity.CENTER_HORIZONTAL; // 水平居中
+    terminalLp.setMargins(0, dp(14), 0, 0); // 顶部间距与其他卡片统一
+    page.addView(terminalScroll, terminalLp);
 
     updateRunButton();
     scrollTerminalBottom();
@@ -2018,21 +2372,43 @@ public class MainActivity extends Activity {
     bottomBar.setGravity(Gravity.CENTER);
     bottomBar.setPadding(dp(4), 0, dp(4), 0);
 
-    // 停止按钮
-    final Button stopButton = createModernButton("停止运行", Color.rgb(255, 80, 80));
-    // 清除按钮
-    final Button clearButton = createModernButton("清除日志", Color.rgb(100, 149, 237));
-    // 复制按钮
-    final Button copyButton = createModernButton("复制输出", Color.rgb(81, 191, 101));
+    // 清除日志按钮
+    final Button clearBtn = createModernButton("清除日志", Color.rgb(100, 149, 237));
+    // 复制输出按钮
+    final Button copyBtn = createModernButton("复制输出", Color.rgb(81, 191, 101));
+    // 关闭按钮
+    final Button closeBottomBtn = createModernButton("关闭", Color.rgb(255, 80, 80));
 
     // 按钮布局权重
     LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(50), 1);
     btnLp.setMargins(dp(6), 0, dp(6), 0);
-    bottomBar.addView(stopButton, btnLp);
-    bottomBar.addView(clearButton, btnLp);
-    bottomBar.addView(copyButton, btnLp);
+    bottomBar.addView(clearBtn, btnLp);
+    bottomBar.addView(copyBtn, btnLp);
+    bottomBar.addView(closeBottomBtn, btnLp);
 
     rootLayout.addView(bottomBar, new LinearLayout.LayoutParams(-1, -2));
+
+    closeBottomBtn.setOnClickListener(v -> dialog.dismiss());
+        // 清除日志按钮
+    clearBtn.setOnClickListener(
+        v -> {
+          outputBuffer.setLength(0);
+          outputView.setText("▶ 终端已清空\n");
+        });
+
+    // 复制输出按钮
+    copyBtn.setOnClickListener(
+        v -> {
+          android.content.ClipboardManager clipboard =
+              (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+          ClipData clip = ClipData.newPlainText("驱动终端日志", outputView.getText().toString());
+          clipboard.setPrimaryClip(clip);
+          Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show();
+        });
+
+    // 关闭按钮
+    closeBottomBtn.setOnClickListener(v -> dialog.dismiss());
+
 
     // ===================== 执行逻辑（原逻辑不变） =====================
     final Process[] processHolder = new Process[1];
@@ -2054,19 +2430,17 @@ public class MainActivity extends Activity {
           } catch (Exception ignored) {
           }
           appendTerminalText(outputView, outputBuffer, "\n⏹️ 已手动停止运行\n", scrollView);
-          stopButton.setText("已停止");
-          stopButton.setEnabled(false);
         });
 
     // 清除日志按钮
-    clearButton.setOnClickListener(
+    clearBtn.setOnClickListener(
         v -> {
           outputBuffer.setLength(0);
           outputView.setText("▶ 终端已清空\n");
         });
 
     // 复制输出按钮
-    copyButton.setOnClickListener(
+    copyBtn.setOnClickListener(
         v -> {
           android.content.ClipboardManager clipboard =
               (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -2076,18 +2450,12 @@ public class MainActivity extends Activity {
         });
 
     // 弹窗关闭销毁进程
-    dialog.setOnDismissListener(
-        di -> {
-          isRunning[0] = false;
-          try {
-            if (writerHolder[0] != null) writerHolder[0].close();
-          } catch (Exception ignored) {
-          }
-          try {
-            if (processHolder[0] != null) processHolder[0].destroy();
-          } catch (Exception ignored) {
-          }
-        });
+        // 弹窗关闭
+    dialog.setOnDismissListener(di -> {
+      running = false;
+      updateRunButton();
+    });
+
 
     dialog.show();
 
@@ -2293,12 +2661,29 @@ public class MainActivity extends Activity {
     page.addView(cleanCard, lp(-1, -2, 0, 0, 0, dp(16)));
 
     // 1. 清理配置
-    View cleanConfigRow = settingRow("清理配置", "自定义清理规则与目录", "⚙️");
+    View cleanConfigRow = settingRow("清理配置", "删除AuraKernel选择配置文件", "⚙️");
     cleanCard.addView(cleanConfigRow);
     cleanConfigRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "清理配置", Toast.LENGTH_SHORT).show();
-          // 在此编写 清理配置 逻辑
+          new Thread(
+                  () -> {
+                    File configFile = new File("/storage/emulated/0/AuraKernel/Aura选择配置.json");
+                    boolean deleted = false;
+                    if (configFile.exists()) {
+                      deleted = configFile.delete();
+                    }
+                    final boolean finalDeleted = deleted;
+                    handler.post(
+                        () -> {
+                          if (finalDeleted) {
+                            Toast.makeText(MainActivity.this, "配置文件已删除", Toast.LENGTH_SHORT).show();
+                          } else {
+                            Toast.makeText(MainActivity.this, "配置文件不存在或删除失败", Toast.LENGTH_SHORT)
+                                .show();
+                          }
+                        });
+                  })
+              .start();
         });
     addDivider(cleanCard);
 
@@ -2307,8 +2692,26 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanKernelDriverRow);
     cleanKernelDriverRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "开始清理内核&驱动", Toast.LENGTH_SHORT).show();
-          // 在此编写 清理内核&驱动 逻辑
+          new Thread(
+                  () -> {
+                    // 删除drivers目录下所有内容，但保留clean目录
+                    File driversDir = new File(getFilesDir(), "drivers");
+                    boolean success = deleteDirContents(driversDir);
+                    handler.post(
+                        () -> {
+                          if (success) {
+                            Toast.makeText(MainActivity.this, "内核和驱动已清理", Toast.LENGTH_SHORT)
+                                .show();
+                            // 刷新驱动页面列表
+                            if (currentPage == 1) {
+                              refreshDriverFileList();
+                            }
+                          } else {
+                            Toast.makeText(MainActivity.this, "清理失败", Toast.LENGTH_SHORT).show();
+                          }
+                        });
+                  })
+              .start();
         });
     addDivider(cleanCard);
 
@@ -2317,8 +2720,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanLowRow);
     cleanLowRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "执行低级清理", Toast.LENGTH_SHORT).show();
-          // 在此编写 低级清理 逻辑
+          runCleanScript("clean_low.sh", "低级清理");
         });
     addDivider(cleanCard);
 
@@ -2327,8 +2729,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanMidRow);
     cleanMidRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "执行中级清理", Toast.LENGTH_SHORT).show();
-          // 在此编写 中级清理 逻辑
+          runCleanScript("clean_mid.sh", "中级清理");
         });
     addDivider(cleanCard);
 
@@ -2337,8 +2738,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanHighRow);
     cleanHighRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "执行高级清理", Toast.LENGTH_SHORT).show();
-          // 在此编写 高级清理 逻辑
+          runCleanScript("clean_high.sh", "高级清理");
         });
     addDivider(cleanCard);
 
@@ -2347,8 +2747,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(changeIdRow);
     changeIdRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "更改ID", Toast.LENGTH_SHORT).show();
-          // 在此编写 更改ID 逻辑
+          runCleanScript("change_id.sh", "更改ID");
         });
     addDivider(cleanCard);
 
@@ -2357,8 +2756,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanDescRow);
     cleanDescRow.setOnClickListener(
         v -> {
-          Toast.makeText(MainActivity.this, "打开清理说明", Toast.LENGTH_SHORT).show();
-          // 在此编写 清理说明 弹窗/页面逻辑
+          Toast.makeText(MainActivity.this, "清理说明开发中", Toast.LENGTH_SHORT).show();
         });
     // ====================== 【新增 清理模块 结束】 ======================
 
@@ -3404,10 +3802,14 @@ public class MainActivity extends Activity {
   }
 
   private void scrollTerminalBottom() {
-    if (terminalScroll != null) {
+    if (terminalScroll != null && outputView != null) {
       terminalScroll.post(
-          new Runnable() {
-            public void run() {
+          () -> {
+            // 精确滚动到底部，修复固定宽度后滚动不准的问题
+            int scrollY = outputView.getBottom() - terminalScroll.getHeight();
+            if (scrollY > 0) {
+              terminalScroll.scrollTo(0, scrollY);
+            } else {
               terminalScroll.fullScroll(View.FOCUS_DOWN);
             }
           });

@@ -1,4 +1,4 @@
-package com.Aurakernel;
+package com.aa.Aurakernel;
 
 import android.animation.ValueAnimator;
 import android.graphics.Canvas;
