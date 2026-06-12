@@ -17,7 +17,10 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.ClipDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -70,9 +73,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.graphics.drawable.ClipDrawable;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
   private LinearLayout pageHost;
   private TextView navHome;
   private TextView navMine;
-  private TextView driverBtnKpm, driverBtnParadise, driverBtnBackup;
+  private TextView driverBtnKpm, driverBtnDitpro, driverBtnParadise, driverBtnBackup;
   private TextView antiRecordBtn, noBackgroundBtn;
 
   private TextView outputView;
@@ -620,143 +620,148 @@ public class MainActivity extends Activity {
   }
 
   private void prepareScriptIfNeeded() {
-  if (scriptReady) return;
+    if (scriptReady) return;
 
-  // 检查本地文件
-  File scriptDir = new File(getFilesDir(), "scripts");
-  File scriptFile = new File(scriptDir, SCRIPT_NAME);
-  if (scriptFile.exists()) {
-    selectedFile = scriptFile;
-    selectedName = SCRIPT_NAME;
-    scriptReady = true;
-    updateRunButton();
-    append("脚本已就绪\n");
-    return;
-  }
+    // 检查本地文件
+    File scriptDir = new File(getFilesDir(), "scripts");
+    File scriptFile = new File(scriptDir, SCRIPT_NAME);
+    if (scriptFile.exists()) {
+      selectedFile = scriptFile;
+      selectedName = SCRIPT_NAME;
+      scriptReady = true;
+      updateRunButton();
+      append("脚本已就绪\n");
+      return;
+    }
 
-  // 需要下载
-  append("正在下载运行脚本...\n");
-  // 下载开始：禁用按钮 + 初始化进度样式
-  if (runButton != null) {
-    runButton.setEnabled(false);
-    runButton.setTag(round(primaryColor(), 14, 0, 0)); // 保存原始背景
-    updateDownloadProgress(runButton, 0); // 初始0%进度
-  }
+    // 需要下载
+    append("正在下载运行脚本...\n");
+    // 下载开始：禁用按钮 + 初始化进度样式
+    if (runButton != null) {
+      runButton.setEnabled(false);
+      runButton.setTag(round(primaryColor(), 14, 0, 0)); // 保存原始背景
+      updateDownloadProgress(runButton, 0); // 初始0%进度
+    }
 
-  new Thread(
-          () -> {
-            try {
-              if (!scriptDir.exists()) scriptDir.mkdirs();
-              File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
+    new Thread(
+            () -> {
+              try {
+                if (!scriptDir.exists()) scriptDir.mkdirs();
+                File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
 
-              URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
-              HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-              conn.setConnectTimeout(15000);
-              conn.setReadTimeout(30000);
+                URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
 
-              // HTTPS 证书忽略
-              if (conn instanceof HttpsURLConnection) {
-                HttpsURLConnection sconn = (HttpsURLConnection) conn;
-                TrustManager[] trustAll =
-                    new TrustManager[] {
-                      new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                          return new X509Certificate[0];
+                // HTTPS 证书忽略
+                if (conn instanceof HttpsURLConnection) {
+                  HttpsURLConnection sconn = (HttpsURLConnection) conn;
+                  TrustManager[] trustAll =
+                      new TrustManager[] {
+                        new X509TrustManager() {
+                          public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[0];
+                          }
+
+                          public void checkClientTrusted(X509Certificate[] c, String a) {}
+
+                          public void checkServerTrusted(X509Certificate[] c, String a) {}
                         }
-                        public void checkClientTrusted(X509Certificate[] c, String a) {}
-                        public void checkServerTrusted(X509Certificate[] c, String a) {}
+                      };
+                  SSLContext sc = SSLContext.getInstance("TLS");
+                  sc.init(null, trustAll, new SecureRandom());
+                  sconn.setSSLSocketFactory(sc.getSocketFactory());
+                  sconn.setHostnameVerifier((hostname, session) -> true);
+                }
+
+                int totalLength = conn.getContentLength();
+                InputStream in = new BufferedInputStream(conn.getInputStream());
+                FileOutputStream out = new FileOutputStream(tempFile);
+                byte[] buf = new byte[8192];
+                int len;
+                long downloadedSize = 0;
+
+                while ((len = in.read(buf)) != -1) {
+                  out.write(buf, 0, len);
+                  downloadedSize += len;
+                  int progress = (int) ((downloadedSize * 100) / totalLength);
+
+                  // 主线程更新进度
+                  handler.post(
+                      () -> {
+                        if (runButton != null) updateDownloadProgress(runButton, progress);
+                      });
+                }
+
+                out.flush();
+                out.close();
+                in.close();
+                conn.disconnect();
+
+                tempFile.renameTo(scriptFile);
+                RunnerSupport.chmod777(scriptFile);
+
+                handler.post(
+                    () -> {
+                      selectedFile = scriptFile;
+                      selectedName = SCRIPT_NAME;
+                      scriptReady = true;
+                      append("运行脚本准备完毕\n");
+                      // 恢复按钮原始样式
+                      if (runButton != null) {
+                        runButton.setBackground((GradientDrawable) runButton.getTag());
                       }
-                    };
-                SSLContext sc = SSLContext.getInstance("TLS");
-                sc.init(null, trustAll, new SecureRandom());
-                sconn.setSSLSocketFactory(sc.getSocketFactory());
-                sconn.setHostnameVerifier((hostname, session) -> true);
+                      updateRunButton();
+                    });
+              } catch (Exception e) {
+                handler.post(
+                    () -> {
+                      append("脚本下载失败: " + e.getMessage() + "\n");
+                      // 恢复按钮原始样式
+                      if (runButton != null) {
+                        runButton.setBackground((GradientDrawable) runButton.getTag());
+                      }
+                      updateRunButton();
+                    });
               }
+            })
+        .start();
+  }
 
-              int totalLength = conn.getContentLength();
-              InputStream in = new BufferedInputStream(conn.getInputStream());
-              FileOutputStream out = new FileOutputStream(tempFile);
-              byte[] buf = new byte[8192];
-              int len;
-              long downloadedSize = 0;
-
-              while ((len = in.read(buf)) != -1) {
-                out.write(buf, 0, len);
-                downloadedSize += len;
-                int progress = (int) ((downloadedSize * 100) / totalLength);
-                
-                // 主线程更新进度
-                handler.post(() -> {
-                  if (runButton != null) updateDownloadProgress(runButton, progress);
-                });
-              }
-
-              out.flush();
-              out.close();
-              in.close();
-              conn.disconnect();
-
-              tempFile.renameTo(scriptFile);
-              RunnerSupport.chmod777(scriptFile);
-
-              handler.post(
-                  () -> {
-                    selectedFile = scriptFile;
-                    selectedName = SCRIPT_NAME;
-                    scriptReady = true;
-                    append("运行脚本准备完毕\n");
-                    // 恢复按钮原始样式
-                    if (runButton != null) {
-                      runButton.setBackground((GradientDrawable) runButton.getTag());
-                    }
-                    updateRunButton();
-                  });
-            } catch (Exception e) {
-              handler.post(
-                  () -> {
-                    append("脚本下载失败: " + e.getMessage() + "\n");
-                    // 恢复按钮原始样式
-                    if (runButton != null) {
-                      runButton.setBackground((GradientDrawable) runButton.getTag());
-                    }
-                    updateRunButton();
-                  });
-            }
-          })
-      .start();
-}
-
-/**
- * 更新按钮下载进度（左绿右灰，圆角）
- * @param btn 目标按钮
- * @param progress 进度 0-100
- */
-private void updateDownloadProgress(Button btn, int progress) {
+  /**
+   * 更新按钮下载进度（左绿右灰，圆角）
+   *
+   * @param btn 目标按钮
+   * @param progress 进度 0-100
+   */
+  private void updateDownloadProgress(Button btn, int progress) {
     if (btn == null) return;
-    btn.post(() -> {
-        // 底层灰色圆角背景
-        GradientDrawable grayBg = new GradientDrawable();
-        grayBg.setColor(disabledColor());
-        grayBg.setCornerRadius(dp(14));
+    btn.post(
+        () -> {
+          // 底层灰色圆角背景
+          GradientDrawable grayBg = new GradientDrawable();
+          grayBg.setColor(disabledColor());
+          grayBg.setCornerRadius(dp(14));
 
-        // 上层绿色进度背景
-        GradientDrawable greenBg = new GradientDrawable();
-        greenBg.setColor(MAIN_GREEN);
-        greenBg.setCornerRadius(dp(14));
+          // 上层绿色进度背景
+          GradientDrawable greenBg = new GradientDrawable();
+          greenBg.setColor(MAIN_GREEN);
+          greenBg.setCornerRadius(dp(14));
 
-        // ClipDrawable 控制绿色区域的水平裁剪（从左到右）
-        ClipDrawable clip = new ClipDrawable(greenBg, Gravity.LEFT, ClipDrawable.HORIZONTAL);
-        clip.setLevel(progress * 100); // level 范围 0～10000
+          // ClipDrawable 控制绿色区域的水平裁剪（从左到右）
+          ClipDrawable clip = new ClipDrawable(greenBg, Gravity.LEFT, ClipDrawable.HORIZONTAL);
+          clip.setLevel(progress * 100); // level 范围 0～10000
 
-        // 叠加图层
-        LayerDrawable layer = new LayerDrawable(new Drawable[]{grayBg, clip});
-        layer.setLayerInset(1, 0, 0, 0, 0); // 让绿色层填满按钮
+          // 叠加图层
+          LayerDrawable layer = new LayerDrawable(new Drawable[] {grayBg, clip});
+          layer.setLayerInset(1, 0, 0, 0, 0); // 让绿色层填满按钮
 
-        btn.setBackground(layer);
-        btn.setText("加载文件脚本中 " + progress + "%");
-        btn.setTextColor(Color.WHITE);
-    });
-}
+          btn.setBackground(layer);
+          btn.setText("加载文件脚本中 " + progress + "%");
+          btn.setTextColor(Color.WHITE);
+        });
+  }
 
   private View createBottomNav() {
     LinearLayout wrap = new LinearLayout(this);
@@ -857,7 +862,7 @@ private void updateDownloadProgress(Button btn, int progress) {
   }
 
   private View createHomePage() {
-     // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
+    // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
     ScrollView rootScroll = new ScrollView(this);
     rootScroll.setVerticalScrollBarEnabled(false);
     rootScroll.setFillViewport(false);
@@ -867,7 +872,7 @@ private void updateDownloadProgress(Button btn, int progress) {
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(18), dp(18), dp(18), dp(8));
     page.setBackgroundColor(bgColor());
-     // 把原page装入外层ScrollView
+    // 把原page装入外层ScrollView
     rootScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
     LinearLayout header = new LinearLayout(this);
@@ -915,7 +920,7 @@ private void updateDownloadProgress(Button btn, int progress) {
     if (!savedKey.isEmpty()) keyEdit.setText(savedKey);
     cardKey.addView(keyEdit, lp(-1, -2, 0, dp(6), 0, 0));
 
-    // 2. 驱动选择模块 - 独立卡片
+    // 2. 驱动选择模块 - 独立卡片（横向滑动版）
     LinearLayout cardDriver = new LinearLayout(this);
     cardDriver.setOrientation(LinearLayout.VERTICAL);
     cardDriver.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -925,20 +930,40 @@ private void updateDownloadProgress(Button btn, int progress) {
     TextView driverTitle = text("选择驱动", 15, textColor(), Typeface.BOLD);
     cardDriver.addView(driverTitle, lp(-1, -2, 0, 0, 0, dp(8)));
 
+    // ✅ 横向滑动容器（解决拥挤问题）
+    HorizontalScrollView driverScroll = new HorizontalScrollView(this);
+    driverScroll.setHorizontalScrollBarEnabled(false); // 隐藏滚动条
+    driverScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); // 去掉边缘光晕
+    cardDriver.addView(driverScroll, lp(-1, dp(42), 0, 0, 0, 0));
+
+    // 滑动内部的按钮容器
     LinearLayout driverRow = new LinearLayout(this);
     driverRow.setOrientation(LinearLayout.HORIZONTAL);
-    cardDriver.addView(driverRow, lp(-1, dp(42), 0, 0, 0, 0));
+    driverRow.setGravity(Gravity.CENTER_VERTICAL);
+    driverRow.setPadding(dp(8), 0, dp(8), 0); // 左右内边距，避免按钮贴边
+    driverScroll.addView(driverRow, new HorizontalScrollView.LayoutParams(-2, -1));
 
+    // 按钮通用布局参数（固定宽度+间距，不再挤压）
+    LinearLayout.LayoutParams driverBtnLp = new LinearLayout.LayoutParams(dp(120), -1);
+    driverBtnLp.setMargins(dp(4), 0, dp(4), 0); // 按钮之间左右间距4dp
+
+    // 初始化4个驱动按钮（顺序不变）
     driverBtnKpm = driverOptionButton("KMA-KPM驱动", driverType == 0);
-    driverBtnParadise = driverOptionButton("Paradise驱动", driverType == 1);
-    driverBtnBackup = driverOptionButton("备用驱动", driverType == 2);
-    driverRow.addView(driverBtnKpm, new LinearLayout.LayoutParams(0, -1, 1));
-    driverRow.addView(driverBtnParadise, new LinearLayout.LayoutParams(0, -1, 1));
-    driverRow.addView(driverBtnBackup, new LinearLayout.LayoutParams(0, -1, 1));
+    driverBtnDitpro = driverOptionButton("Ditpro_KPM驱动", driverType == 1);
+    driverBtnParadise = driverOptionButton("Paradise驱动", driverType == 2);
+    driverBtnBackup = driverOptionButton("备用驱动", driverType == 3);
 
+    // 添加到滑动容器
+    driverRow.addView(driverBtnKpm, driverBtnLp);
+    driverRow.addView(driverBtnDitpro, driverBtnLp);
+    driverRow.addView(driverBtnParadise, driverBtnLp);
+    driverRow.addView(driverBtnBackup, driverBtnLp);
+
+    // 点击事件（编号严格对应）
     driverBtnKpm.setOnClickListener(v -> selectDriverType(0));
-    driverBtnParadise.setOnClickListener(v -> selectDriverType(1));
-    driverBtnBackup.setOnClickListener(v -> selectDriverType(2));
+    driverBtnDitpro.setOnClickListener(v -> selectDriverType(1));
+    driverBtnParadise.setOnClickListener(v -> selectDriverType(2));
+    driverBtnBackup.setOnClickListener(v -> selectDriverType(3));
 
     // 3. 内核配置（防录屏+无后台）- 独立卡片【已修改标题】
     LinearLayout cardSwitch = new LinearLayout(this);
@@ -1075,32 +1100,52 @@ private void updateDownloadProgress(Button btn, int progress) {
   }
 
   private void updateDriverButtons() {
+    // 1. KMA-KPM驱动（索引0）
     if (driverBtnKpm != null) {
-      driverBtnKpm.setTextColor(driverType == 0 ? Color.WHITE : subTextColor());
+      boolean active = driverType == 0;
+      driverBtnKpm.setTextColor(active ? Color.WHITE : subTextColor());
       driverBtnKpm.setBackground(
           round(
-              driverType == 0 ? primaryColor() : tagColor(),
+              active ? primaryColor() : tagColor(),
               16,
-              driverType == 0 ? 0 : borderColor(),
-              driverType == 0 ? 0 : 1));
+              active ? 0 : borderColor(),
+              active ? 0 : 1));
     }
+
+    // 2. Ditpro_KPM驱动（索引1）
+    if (driverBtnDitpro != null) {
+      boolean active = driverType == 1;
+      driverBtnDitpro.setTextColor(active ? Color.WHITE : subTextColor());
+      driverBtnDitpro.setBackground(
+          round(
+              active ? primaryColor() : tagColor(),
+              16,
+              active ? 0 : borderColor(),
+              active ? 0 : 1));
+    }
+
+    // 3. Paradise驱动（索引2）
     if (driverBtnParadise != null) {
-      driverBtnParadise.setTextColor(driverType == 1 ? Color.WHITE : subTextColor());
+      boolean active = driverType == 2;
+      driverBtnParadise.setTextColor(active ? Color.WHITE : subTextColor());
       driverBtnParadise.setBackground(
           round(
-              driverType == 1 ? primaryColor() : tagColor(),
+              active ? primaryColor() : tagColor(),
               16,
-              driverType == 1 ? 0 : borderColor(),
-              driverType == 1 ? 0 : 1));
+              active ? 0 : borderColor(),
+              active ? 0 : 1));
     }
+
+    // 4. 备用驱动（索引3）
     if (driverBtnBackup != null) {
-      driverBtnBackup.setTextColor(driverType == 2 ? Color.WHITE : subTextColor());
+      boolean active = driverType == 3;
+      driverBtnBackup.setTextColor(active ? Color.WHITE : subTextColor());
       driverBtnBackup.setBackground(
           round(
-              driverType == 2 ? primaryColor() : tagColor(),
+              active ? primaryColor() : tagColor(),
               16,
-              driverType == 2 ? 0 : borderColor(),
-              driverType == 2 ? 0 : 1));
+              active ? 0 : borderColor(),
+              active ? 0 : 1));
     }
   }
 
@@ -1174,7 +1219,7 @@ private void updateDownloadProgress(Button btn, int progress) {
   private View createDriverPage() {
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(false);
-     scroll.setVerticalScrollBarEnabled(false);
+    scroll.setVerticalScrollBarEnabled(false);
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(20), dp(22), dp(20), dp(20));
@@ -2205,42 +2250,42 @@ private void updateDownloadProgress(Button btn, int progress) {
     page.addView(sub, lp(-1, -2, 0, 0, 0, dp(18)));
 
     // ====================== 【修改后】系统信息模块（保留左图标 + 无右箭头） ======================
-LinearLayout sysInfoCard = new LinearLayout(this);
-sysInfoCard.setOrientation(LinearLayout.VERTICAL);
-sysInfoCard.setPadding(dp(14), dp(8), dp(14), dp(8));
-sysInfoCard.setBackground(round(cardColor(), 24, borderColor(), 1));
-page.addView(sysInfoCard, lp(-1, -2, 0, 0, 0, dp(16)));
+    LinearLayout sysInfoCard = new LinearLayout(this);
+    sysInfoCard.setOrientation(LinearLayout.VERTICAL);
+    sysInfoCard.setPadding(dp(14), dp(8), dp(14), dp(8));
+    sysInfoCard.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(sysInfoCard, lp(-1, -2, 0, 0, 0, dp(16)));
 
-// 每行都保留左侧图标，右侧无箭头
-View androidVer = sysInfoRow("安卓版本", getAndroidVersion(), "📱");
-sysInfoCard.addView(androidVer);
-addDivider(sysInfoCard);
+    // 每行都保留左侧图标，右侧无箭头
+    View androidVer = sysInfoRow("安卓版本", getAndroidVersion(), "📱");
+    sysInfoCard.addView(androidVer);
+    addDivider(sysInfoCard);
 
-View sdkVer = sysInfoRow("SDK版本", getSdkVersion(), "⚙️");
-sysInfoCard.addView(sdkVer);
-addDivider(sysInfoCard);
+    View sdkVer = sysInfoRow("SDK版本", getSdkVersion(), "⚙️");
+    sysInfoCard.addView(sdkVer);
+    addDivider(sysInfoCard);
 
-View deviceModel = sysInfoRow("设备型号", getDeviceModel(), "💻");
-sysInfoCard.addView(deviceModel);
-addDivider(sysInfoCard);
+    View deviceModel = sysInfoRow("设备型号", getDeviceModel(), "💻");
+    sysInfoCard.addView(deviceModel);
+    addDivider(sysInfoCard);
 
-View deviceManu = sysInfoRow("设备厂商", getDeviceManufacturer(), "🏭");
-sysInfoCard.addView(deviceManu);
-addDivider(sysInfoCard);
+    View deviceManu = sysInfoRow("设备厂商", getDeviceManufacturer(), "🏭");
+    sysInfoCard.addView(deviceManu);
+    addDivider(sysInfoCard);
 
-View cpuArch = sysInfoRow("CPU架构", getCpuArchitecture(), "🖥️");
-sysInfoCard.addView(cpuArch);
-addDivider(sysInfoCard);
+    View cpuArch = sysInfoRow("CPU架构", getCpuArchitecture(), "🖥️");
+    sysInfoCard.addView(cpuArch);
+    addDivider(sysInfoCard);
 
-View kernelVer = sysInfoRow("Linux内核", getLinuxKernelVersion(), "🐧");
-sysInfoCard.addView(kernelVer);
-addDivider(sysInfoCard);
+    View kernelVer = sysInfoRow("Linux内核", getLinuxKernelVersion(), "🐧");
+    sysInfoCard.addView(kernelVer);
+    addDivider(sysInfoCard);
 
-View selinuxStatus = sysInfoRow("SELinux状态", getSELinuxStatus(), "🛡️");
-sysInfoCard.addView(selinuxStatus);
-// =====================================================================================
+    View selinuxStatus = sysInfoRow("SELinux状态", getSELinuxStatus(), "🛡️");
+    sysInfoCard.addView(selinuxStatus);
+    // =====================================================================================
 
- // ====================== 【新增 清理模块 开始】 ======================
+    // ====================== 【新增 清理模块 开始】 ======================
     LinearLayout cleanCard = new LinearLayout(this);
     cleanCard.setOrientation(LinearLayout.VERTICAL);
     cleanCard.setPadding(dp(14), dp(8), dp(14), dp(8));
@@ -2250,64 +2295,71 @@ sysInfoCard.addView(selinuxStatus);
     // 1. 清理配置
     View cleanConfigRow = settingRow("清理配置", "自定义清理规则与目录", "⚙️");
     cleanCard.addView(cleanConfigRow);
-    cleanConfigRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "清理配置", Toast.LENGTH_SHORT).show();
-        // 在此编写 清理配置 逻辑
-    });
+    cleanConfigRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "清理配置", Toast.LENGTH_SHORT).show();
+          // 在此编写 清理配置 逻辑
+        });
     addDivider(cleanCard);
 
     // 2. 清理内核&驱动
     View cleanKernelDriverRow = settingRow("清理内核&驱动", "清除已刷入内核、驱动文件", "🧹");
     cleanCard.addView(cleanKernelDriverRow);
-    cleanKernelDriverRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "开始清理内核&驱动", Toast.LENGTH_SHORT).show();
-        // 在此编写 清理内核&驱动 逻辑
-    });
+    cleanKernelDriverRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "开始清理内核&驱动", Toast.LENGTH_SHORT).show();
+          // 在此编写 清理内核&驱动 逻辑
+        });
     addDivider(cleanCard);
 
     // 3. 低级清理
     View cleanLowRow = settingRow("低级清理", "清理临时缓存、运行日志", "🧽");
     cleanCard.addView(cleanLowRow);
-    cleanLowRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "执行低级清理", Toast.LENGTH_SHORT).show();
-        // 在此编写 低级清理 逻辑
-    });
+    cleanLowRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "执行低级清理", Toast.LENGTH_SHORT).show();
+          // 在此编写 低级清理 逻辑
+        });
     addDivider(cleanCard);
 
     // 4. 中级清理
     View cleanMidRow = settingRow("中级清理", "清理残留配置、冗余文件", "🗑️");
     cleanCard.addView(cleanMidRow);
-    cleanMidRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "执行中级清理", Toast.LENGTH_SHORT).show();
-        // 在此编写 中级清理 逻辑
-    });
+    cleanMidRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "执行中级清理", Toast.LENGTH_SHORT).show();
+          // 在此编写 中级清理 逻辑
+        });
     addDivider(cleanCard);
 
     // 5. 高级清理
     View cleanHighRow = settingRow("高级清理", "深度清理全部残留数据", "🔥");
     cleanCard.addView(cleanHighRow);
-    cleanHighRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "执行高级清理", Toast.LENGTH_SHORT).show();
-        // 在此编写 高级清理 逻辑
-    });
+    cleanHighRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "执行高级清理", Toast.LENGTH_SHORT).show();
+          // 在此编写 高级清理 逻辑
+        });
     addDivider(cleanCard);
 
     // 6. 更改ID
     View changeIdRow = settingRow("更改ID", "修改设备/应用标识ID", "🔢");
     cleanCard.addView(changeIdRow);
-    changeIdRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "更改ID", Toast.LENGTH_SHORT).show();
-        // 在此编写 更改ID 逻辑
-    });
+    changeIdRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "更改ID", Toast.LENGTH_SHORT).show();
+          // 在此编写 更改ID 逻辑
+        });
     addDivider(cleanCard);
 
     // 7. 清理说明
     View cleanDescRow = settingRow("清理说明", "查看各级清理功能介绍", "ℹ️");
     cleanCard.addView(cleanDescRow);
-    cleanDescRow.setOnClickListener(v -> {
-        Toast.makeText(MainActivity.this, "打开清理说明", Toast.LENGTH_SHORT).show();
-        // 在此编写 清理说明 弹窗/页面逻辑
-    });
+    cleanDescRow.setOnClickListener(
+        v -> {
+          Toast.makeText(MainActivity.this, "打开清理说明", Toast.LENGTH_SHORT).show();
+          // 在此编写 清理说明 弹窗/页面逻辑
+        });
     // ====================== 【新增 清理模块 结束】 ======================
 
     // 原有设置卡片
@@ -2375,7 +2427,7 @@ sysInfoCard.addView(selinuxStatus);
     tip.setLineSpacing(dp(2), 1f);
     page.addView(tip, lp(-1, -2, 0, dp(4), 0, 0));
     return scroll;
-}
+  }
 
   private View settingRow(String title, String desc, String mark) {
     LinearLayout row = new LinearLayout(this);
@@ -2403,10 +2455,8 @@ sysInfoCard.addView(selinuxStatus);
     return row;
   }
 
-  /**
- * 系统信息专用行布局：左侧图标 + 标题 + 数值(右对齐) → 无右侧箭头
- */
-private View sysInfoRow(String label, String value, String icon) {
+  /** 系统信息专用行布局：左侧图标 + 标题 + 数值(右对齐) → 无右侧箭头 */
+  private View sysInfoRow(String label, String value, String icon) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
@@ -2430,7 +2480,7 @@ private View sysInfoRow(String label, String value, String icon) {
 
     // 🟢 已移除：右侧箭头 >
     return row;
-}
+  }
 
   private void addDivider(LinearLayout parent) {
     View v = new View(this);
@@ -2600,11 +2650,27 @@ private View sysInfoRow(String label, String value, String icon) {
   }
 
   private void sendDriverOptionsWithoutKami() {
-    String driverNum = driverType == 0 ? "2" : (driverType == 1 ? "3" : "1");
+    String driverNum;
+    switch (driverType) {
+      case 0:
+        driverNum = "1";
+        break; // KMA-KPM驱动 → 输出1
+      case 1:
+        driverNum = "2";
+        break; // Ditpro_KPM驱动 → 输出2
+      case 2:
+        driverNum = "3";
+        break; // Paradise驱动 → 输出3
+      case 3:
+        driverNum = "4";
+        break; // 备用驱动 → 输出4
+      default:
+        driverNum = "1";
+    }
+    int baseDelay = 600;
+
     String antiNum = antiRecord ? "1" : "2";
     String bgNum = noBackground ? "2" : "1";
-
-    int baseDelay = 600;
 
     // 1. 驱动选择
     handler.postDelayed(
@@ -2695,8 +2761,23 @@ private View sysInfoRow(String label, String value, String icon) {
     runButton.setEnabled(ok);
     runButton.setAlpha(ok ? 1f : 0.55f);
     // 按钮文字根据驱动类型变化
-    String label =
-        (driverType == 0 ? "直接运行 (KPM)" : driverType == 1 ? "直接运行 (Paradise)" : "直接运行 (备用)");
+    String label;
+    switch (driverType) {
+      case 0:
+        label = "直接运行 (KPM)";
+        break;
+      case 1:
+        label = "直接运行 (Ditpro_KPM)";
+        break;
+      case 2:
+        label = "直接运行 (Paradise)";
+        break;
+      case 3:
+        label = "直接运行 (备用)";
+        break;
+      default:
+        label = "直接运行";
+    }
     runButton.setText(running ? "运行中..." : label);
     runButton.setBackground(round(ok ? primaryColor() : disabledColor(), 14, 0, 0));
     runButton.setTextColor(ok ? Color.WHITE : subTextColor());
@@ -3235,59 +3316,59 @@ private View sysInfoRow(String label, String value, String icon) {
   }
 
   // ====================== 系统信息获取工具 ======================
-private String getAndroidVersion() {
+  private String getAndroidVersion() {
     return Build.VERSION.RELEASE;
-}
+  }
 
-private String getSdkVersion() {
+  private String getSdkVersion() {
     return String.valueOf(Build.VERSION.SDK_INT);
-}
+  }
 
-private String getDeviceModel() {
+  private String getDeviceModel() {
     return Build.MODEL;
-}
+  }
 
-private String getDeviceManufacturer() {
+  private String getDeviceManufacturer() {
     return Build.MANUFACTURER;
-}
+  }
 
-private String getCpuArchitecture() {
+  private String getCpuArchitecture() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-        return Build.SUPPORTED_ABIS[0];
+      return Build.SUPPORTED_ABIS[0];
     } else {
-        return Build.CPU_ABI;
+      return Build.CPU_ABI;
     }
-}
+  }
 
-private String getLinuxKernelVersion() {
+  private String getLinuxKernelVersion() {
     String full = System.getProperty("os.version", "未知");
     // 优先匹配三位版本号，如 5.10.43
     java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+\\.\\d+\\.\\d+").matcher(full);
     if (m.find()) {
-        return m.group();
+      return m.group();
     }
     // 如果只有两位，如 5.10
     m = java.util.regex.Pattern.compile("\\d+\\.\\d+").matcher(full);
     if (m.find()) {
-        return m.group();
+      return m.group();
     }
     return "未知";
-}
+  }
 
-private String getSELinuxStatus() {
+  private String getSELinuxStatus() {
     try {
-        // 依赖Root权限获取SELinux状态
-        Process process = Runtime.getRuntime().exec("su -c getenforce");
-        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        String status = reader.readLine().trim();
-        reader.close();
-        process.destroy();
-        return "Enforcing".equals(status) ? "开启" : "关闭";
+      // 依赖Root权限获取SELinux状态
+      Process process = Runtime.getRuntime().exec("su -c getenforce");
+      BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+      String status = reader.readLine().trim();
+      reader.close();
+      process.destroy();
+      return "Enforcing".equals(status) ? "开启" : "关闭";
     } catch (Exception e) {
-        e.printStackTrace();
+      e.printStackTrace();
     }
     return "未知(需Root)";
-}
+  }
 
   private void append(String s) {
     outputBuffer.append(s);
