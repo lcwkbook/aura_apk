@@ -1114,6 +1114,7 @@ public class MainActivity extends Activity {
                 String token = authResult.getString("token");
                 String scriptDownloadUrl = authResult.getString("scriptUrl");
                 String serverScriptHash = authResult.optString("scriptHash", "");
+                String serverBinaryHash = authResult.optString("binaryHash", "");
 
                 handler.post(() -> append("✅ 授权通过，正在下载脚本...\n"));
 
@@ -1190,6 +1191,7 @@ public class MainActivity extends Activity {
 
                 // 保存哈希供运行时校验
                 final String hashToSave = serverScriptHash;
+                final String binaryHashToSave = serverBinaryHash;
                 handler.post(
                     () -> {
                       SharedPreferences.Editor editor =
@@ -3077,27 +3079,7 @@ public class MainActivity extends Activity {
     parent.addView(v, new LinearLayout.LayoutParams(-1, 1));
   }
 
-  private void runSelectedFile() {
-   // ================= 🛡️ 校验 C++ 二进制完整性 =================
-String expectedBinaryHash = StringGuard.get(7);
-if (!expectedBinaryHash.isEmpty()) {
-    try {                                                         // ← 加上 try
-        String actualHash = getFileSha256(selectedFile);          // ← 第3089行
-        if (!actualHash.equals(expectedBinaryHash)) {
-            append("❌ 核心文件已被替换，拒绝执行！\n");
-            selectedFile.delete();
-            selectedFile = null;
-            scriptReady = false;
-            updateRunButton();
-            return;
-        }
-    } catch (Exception e) {                                       // ← 加上 catch
-        append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
-        return;
-    }
-}
-// ==========================================================
-
+    private void runSelectedFile() {
 
     // ===== 🛡️ 运行前再校验一次签名 =====
     if (!SignatureGuard.isSignatureValid(this)) {
@@ -3117,9 +3099,32 @@ if (!expectedBinaryHash.isEmpty()) {
 
     if (running) return;
 
-    // ================= 🛡️ 新增：运行时哈希校验 =================
-    // 从 SharedPreferences 读取下载时保存的期望哈希
+    // ================= 🛡️ 运行时哈希校验 =================
     SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+
+    // ----- 校验二进制哈希（服务端下发，回退 StringGuard） -----
+    String expectedBinaryHash = prefs.getString("expected_binary_hash", "");
+    if (expectedBinaryHash.isEmpty()) {
+        expectedBinaryHash = StringGuard.get(7);
+    }
+    if (!expectedBinaryHash.isEmpty()) {
+        try {
+            String actualHash = getFileSha256(selectedFile);
+            if (!actualHash.equals(expectedBinaryHash)) {
+                append("❌ 核心文件已被替换，拒绝执行！\n");
+                selectedFile.delete();
+                selectedFile = null;
+                scriptReady = false;
+                updateRunButton();
+                return;
+            }
+        } catch (Exception e) {
+            append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
+            return;
+        }
+    }
+
+    // ----- 校验脚本哈希（从服务器下载时保存的） -----
     String expectedHash = prefs.getString("expected_script_hash", "");
     if (!expectedHash.isEmpty()) {
       try {
@@ -3128,12 +3133,10 @@ if (!expectedBinaryHash.isEmpty()) {
           append("❌ 脚本已被篡改，已拦截执行！\n");
           append("  期望: " + expectedHash + "\n");
           append("  实际: " + localHash + "\n");
-          // 删除被篡改的文件，触发重新下载
           selectedFile.delete();
           selectedFile = null;
           scriptReady = false;
           updateRunButton();
-          // 自动触发重新下载
           prepareScriptIfNeeded();
           return;
         }
@@ -3150,7 +3153,6 @@ if (!expectedBinaryHash.isEmpty()) {
     if (outputView != null) outputView.setText("");
     running = true;
     updateRunButton();
-    // updateInputState();
     append("开始运行脚本\n");
 
     new Thread(
