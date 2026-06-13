@@ -79,8 +79,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.util.Log;
-
+import android.util.Log; 
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
@@ -556,10 +555,12 @@ public class MainActivity extends Activity {
     super.onCreate(savedInstanceState);
 
     if (!SignatureGuard.isSignatureValid(this)) {
-        // 签名不匹配，APK 被篡改过，直接退出
-        finish();
-        return;
+      // 签名不匹配，APK 被篡改过，直接退出
+      finish();
+      return;
     }
+
+    requestWindowFeature(Window.FEATURE_NO_TITLE);
 
     SignatureGuard.initExpectedHash("VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=");
     if (!SignatureGuard.isSignatureValid(this)) {
@@ -1031,7 +1032,7 @@ public class MainActivity extends Activity {
       append("正在下载中，请稍候...\n");
       return;
     }
-    // 检查本地文件
+
     File scriptDir = new File(getFilesDir(), "scripts");
     File scriptFile = new File(scriptDir, SCRIPT_NAME);
     if (scriptFile.exists()) {
@@ -1043,13 +1044,11 @@ public class MainActivity extends Activity {
       return;
     }
 
-    // 需要下载
-    append("正在下载运行脚本...\n");
-    // 下载开始：禁用按钮 + 初始化进度样式
+    append("正在验证授权...\n");
     if (runButton != null) {
       runButton.setEnabled(false);
-      runButton.setTag(round(primaryColor(), 14, 0, 0)); // 保存原始背景
-      updateDownloadProgress(runButton, 0); // 初始0%进度
+      runButton.setTag(round(primaryColor(), 14, 0, 0));
+      updateDownloadProgress(runButton, 0);
     }
 
     isDownloading = true;
@@ -1060,65 +1059,71 @@ public class MainActivity extends Activity {
                 if (!scriptDir.exists()) scriptDir.mkdirs();
                 File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
 
-                // ========== 第一步：下载 update.json，获取脚本地址和哈希 ==========
-                URL metaUrl = new URL(StringGuard.get(2)); // update.json 地址
-                HttpURLConnection metaConn = (HttpURLConnection) metaUrl.openConnection();
-                metaConn.setConnectTimeout(10000);
-                metaConn.setReadTimeout(10000);
+                // ========== 第一步：获取签名哈希，请求服务器验证 ==========
+                String signatureHash = SignatureGuard.getApkSignatureHashBase64(this);
 
-                // HTTPS 证书忽略
-                if (metaConn instanceof HttpsURLConnection) {
-                  HttpsURLConnection sconn = (HttpsURLConnection) metaConn;
-                  TrustManager[] trustAll =
-                      new TrustManager[] {
-                        new X509TrustManager() {
-                          public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                          }
+                URL authUrl = new URL("https://aura.xiaon.sbs/update/verify.php");
+                HttpURLConnection authConn = (HttpURLConnection) authUrl.openConnection();
+                authConn.setRequestMethod("POST");
+                authConn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                authConn.setConnectTimeout(10000);
+                authConn.setReadTimeout(10000);
+                authConn.setDoOutput(true);
 
-                          public void checkClientTrusted(X509Certificate[] c, String a) {}
+                // 发送签名哈希
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("signature", signatureHash);
+                OutputStreamWriter writer = new OutputStreamWriter(authConn.getOutputStream());
+                writer.write(requestBody.toString());
+                writer.flush();
+                writer.close();
 
-                          public void checkServerTrusted(X509Certificate[] c, String a) {}
+                int responseCode = authConn.getResponseCode();
+                if (responseCode != 200) {
+                  // 服务器拒绝（签名不匹配）
+                  BufferedReader errorReader =
+                      new BufferedReader(new InputStreamReader(authConn.getErrorStream()));
+                  StringBuilder errorMsg = new StringBuilder();
+                  String line;
+                  while ((line = errorReader.readLine()) != null) errorMsg.append(line);
+                  errorReader.close();
+                  authConn.disconnect();
+
+                  handler.post(
+                      () -> {
+                        append("❌ 授权验证失败：" + errorMsg.toString() + "\n");
+                        if (runButton != null) {
+                          runButton.setBackground((GradientDrawable) runButton.getTag());
                         }
-                      };
-                  SSLContext sc = SSLContext.getInstance("TLS");
-                  sc.init(null, trustAll, new SecureRandom());
-                  sconn.setSSLSocketFactory(sc.getSocketFactory());
-                  sconn.setHostnameVerifier((hostname, session) -> true);
+                        isDownloading = false;
+                        updateRunButton();
+                      });
+                  return;
                 }
 
-                BufferedReader metaReader =
-                    new BufferedReader(new InputStreamReader(metaConn.getInputStream()));
-                StringBuilder jsonStr = new StringBuilder();
-                String metaLine;
-                while ((metaLine = metaReader.readLine()) != null) {
-                  jsonStr.append(metaLine);
-                }
-                metaReader.close();
-                metaConn.disconnect();
+                // 解析服务器返回
+                BufferedReader authReader =
+                    new BufferedReader(new InputStreamReader(authConn.getInputStream()));
+                StringBuilder authJson = new StringBuilder();
+                String line;
+                while ((line = authReader.readLine()) != null) authJson.append(line);
+                authReader.close();
+                authConn.disconnect();
 
-                // 解析 JSON
-                JSONObject json = new JSONObject(jsonStr.toString());
-                String scriptUrlRaw = json.optString("scriptUrl", "");
-                String scriptDownloadUrl =
-                    scriptUrlRaw.isEmpty()
-                        ? StringGuard.get(0)
-                        : (scriptUrlRaw.startsWith("http")
-                            ? scriptUrlRaw
-                            : StringGuard.decrypt(scriptUrlRaw));
-                String serverScriptHash = json.optString("scriptHash", ""); // 预期的哈希值
+                JSONObject authResult = new JSONObject(authJson.toString());
+                String token = authResult.getString("token");
+                String scriptDownloadUrl = authResult.getString("scriptUrl");
+                String serverScriptHash = authResult.optString("scriptHash", "");
 
-                if (serverScriptHash.isEmpty()) {
-                  handler.post(() -> append("⚠️ 服务器未返回脚本哈希，跳过校验\n"));
-                }
+                handler.post(() -> append("✅ 授权通过，正在下载脚本...\n"));
 
-                // ========== 第二步：下载实际脚本文件 ==========
+                // ========== 第二步：用 Token 下载脚本 ==========
                 URL url = new URL(scriptDownloadUrl);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(30000);
 
-                // HTTPS 证书忽略
+                // HTTPS 证书忽略（如果不需要可以删掉）
                 if (conn instanceof HttpsURLConnection) {
                   HttpsURLConnection sconn = (HttpsURLConnection) conn;
                   TrustManager[] trustAll =
@@ -1150,8 +1155,6 @@ public class MainActivity extends Activity {
                   out.write(buf, 0, len);
                   downloadedSize += len;
                   int progress = (int) ((downloadedSize * 100) / totalLength);
-
-                  // 主线程更新进度
                   final int p = progress;
                   handler.post(
                       () -> {
@@ -1164,11 +1167,10 @@ public class MainActivity extends Activity {
                 in.close();
                 conn.disconnect();
 
-                // ========== 第三步：重命名并校验文件完整性 ==========
+                // ========== 第三步：重命名并校验哈希 ==========
                 tempFile.renameTo(scriptFile);
                 RunnerSupport.chmod777(scriptFile);
 
-                // ✅ 哈希校验
                 if (!serverScriptHash.isEmpty()) {
                   String localHash = getFileSha256(scriptFile);
                   if (!localHash.equals(serverScriptHash)) {
@@ -1179,31 +1181,27 @@ public class MainActivity extends Activity {
                           if (runButton != null) {
                             runButton.setBackground((GradientDrawable) runButton.getTag());
                           }
+                          isDownloading = false;
                           updateRunButton();
                         });
-                    return; // 退出线程
+                    return;
                   }
-                  // ================= 🛡️ 新增：持久化保存哈希 =================
-                  // 存入 SharedPreferences，供运行时校验使用
-                  final String hashToSave = serverScriptHash;
-                  handler.post(
-                      () -> {
-                        SharedPreferences.Editor editor =
-                            getSharedPreferences(PREFS, MODE_PRIVATE).edit();
-                        editor.putString("expected_script_hash", hashToSave);
-                        editor.apply();
-                      });
-                  // ==========================================================
                 }
 
-                // 校验通过，通知主线程
+                // 保存哈希供运行时校验
+                final String hashToSave = serverScriptHash;
                 handler.post(
                     () -> {
+                      SharedPreferences.Editor editor =
+                          getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+                      editor.putString("expected_script_hash", hashToSave);
+                      editor.apply();
+
                       selectedFile = scriptFile;
                       selectedName = SCRIPT_NAME;
                       scriptReady = true;
+                      isDownloading = false;
                       append("运行脚本准备完毕\n");
-                      // 恢复按钮原始样式
                       if (runButton != null) {
                         runButton.setBackground((GradientDrawable) runButton.getTag());
                       }
@@ -1213,27 +1211,50 @@ public class MainActivity extends Activity {
               } catch (Exception e) {
                 handler.post(
                     () -> {
-                      append("❌ 脚本下载失败: " + e.getMessage() + "\n");
-                      append("👉 点击「重试下载」按钮重新下载\n");
-                      // 恢复按钮为可点击状态，让用户可以重试下载
+                      append("❌ 下载失败：" + e.getMessage() + "\n");
                       if (runButton != null) {
-                        runButton.setEnabled(true);
-                        runButton.setAlpha(1f);
-                        GradientDrawable bg = (GradientDrawable) runButton.getTag();
-                        if (bg != null) {
-                          runButton.setBackground(bg);
-                        } else {
-                          runButton.setBackground(round(primaryColor(), 14, 0, 0));
-                        }
-                        runButton.setText("重试下载");
-                        runButton.setTextColor(Color.WHITE);
+                        runButton.setBackground((GradientDrawable) runButton.getTag());
                       }
+                      isDownloading = false;
+                      updateRunButton();
                     });
-              } finally {
-                isDownloading = false; // ← 新增，确保无论成功还是失败都重置
               }
             })
         .start();
+  }
+
+  // ========== 🛡️ 运行前校验 C++ 二进制文件身份 ==========
+  private boolean verifyBinarySignature(File binaryFile) {
+    try {
+      FileInputStream fis = new FileInputStream(binaryFile);
+      byte[] buffer = new byte[(int) binaryFile.length()];
+      fis.read(buffer);
+      fis.close();
+
+      // 在二进制文件中搜索身份标记字符串
+      String marker = "AURAKERNEL_V1_";
+      byte[] markerBytes = marker.getBytes();
+
+      // 在文件内容中搜索标记
+      for (int i = 0; i <= buffer.length - markerBytes.length; i++) {
+        boolean found = true;
+        for (int j = 0; j < markerBytes.length; j++) {
+          if (buffer[i + j] != markerBytes[j]) {
+            found = false;
+            break;
+          }
+        }
+        if (found) {
+          // 找到标记，再检查后面的签名哈希是否正确
+          String sigMarker = new String(buffer, i + markerBytes.length, 44); // Base64长度
+          String expectedSig = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=";
+          return sigMarker.equals(expectedSig);
+        }
+      }
+      return false; // 没找到标记
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   /**
@@ -3057,6 +3078,27 @@ public class MainActivity extends Activity {
   }
 
   private void runSelectedFile() {
+   // ================= 🛡️ 校验 C++ 二进制完整性 =================
+String expectedBinaryHash = StringGuard.get(7);
+if (!expectedBinaryHash.isEmpty()) {
+    try {                                                         // ← 加上 try
+        String actualHash = getFileSha256(selectedFile);          // ← 第3089行
+        if (!actualHash.equals(expectedBinaryHash)) {
+            append("❌ 核心文件已被替换，拒绝执行！\n");
+            selectedFile.delete();
+            selectedFile = null;
+            scriptReady = false;
+            updateRunButton();
+            return;
+        }
+    } catch (Exception e) {                                       // ← 加上 catch
+        append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
+        return;
+    }
+}
+// ==========================================================
+
+
     // ===== 🛡️ 运行前再校验一次签名 =====
     if (!SignatureGuard.isSignatureValid(this)) {
       append("❌ 应用签名校验失败，已阻止执行\n");
@@ -3773,10 +3815,33 @@ public class MainActivity extends Activity {
     @Override
     protected String doInBackground(Void... voids) {
       try {
-        URL url = new URL(StringGuard.get(2));
+        MainActivity activity = activityRef.get();
+        if (activity == null) return null;
+
+        // 获取签名哈希
+        String signatureHash = SignatureGuard.getApkSignatureHashBase64(activity);
+
+        // 请求服务器验证
+        URL url = new URL("https://aura.xiaon.sbs/update/verify.php");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(8000);
+        conn.setDoOutput(true);
+
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("signature", signatureHash);
+        OutputStreamWriter writer = new OutputStreamWriter(conn.getOutputStream());
+        writer.write(requestBody.toString());
+        writer.flush();
+        writer.close();
+
+        if (conn.getResponseCode() != 200) {
+          conn.disconnect();
+          return null; // 盗版，不返回任何更新信息
+        }
+
         BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
         StringBuilder sb = new StringBuilder();
         String line;
