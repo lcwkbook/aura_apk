@@ -14,7 +14,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 public final class RunnerSupport {
-    private static final String ROOT_RUN_DIR = "/data/local/tmp/wepro_runner";
+    private static final String ROOT_RUN_DIR = StringGuard.get(5);
 
     private RunnerSupport() {}
 

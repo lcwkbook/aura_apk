@@ -11,7 +11,9 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -54,6 +56,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -61,9 +64,11 @@ import java.io.OutputStreamWriter;
 import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -74,22 +79,23 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.content.pm.PackageInfo;
-import android.content.pm.Signature;
-import java.security.MessageDigest;
-import java.util.Base64;
 import android.util.Log;
 
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
-  private static final String REMOTE_SCRIPT_URL = "https://aura.xiaon.sbs/update/Aurakernel.sh";
-  private static final String REMOTE_SCRIPT_NAME = "Aurakernel.sh";
-  private static final String SCRIPT_NAME = "Aurakernel.sh";
+
+  private String getScriptUrl() {
+    return StringGuard.get(0);
+  }
+
+  private static final String REMOTE_SCRIPT_NAME = StringGuard.get(4);
+  private static final String SCRIPT_NAME = StringGuard.get(4);
   private int driverType = 0;
   private boolean antiRecord = false; // 防录屏，默认关闭
   private boolean noBackground = false; // 无后台，默认关闭
   private boolean scriptReady = false;
+  private boolean isDownloading = false;
   private static final int REQUEST_MANAGE_STORAGE = 9999;
   private static final int REQ_STORAGE = 3001;
   private static final String PREFS = "app_prefs";
@@ -144,8 +150,6 @@ public class MainActivity extends Activity {
   private boolean rootDenied = false;
 
   // ====================== 驱动模块 常量 & 全局控件 ======================
-  // 驱动ZIP下载地址
-  private static final String DRIVER_ZIP_URL = "https://aura.xiaon.sbs/update/驱动.zip";
   // 应用私有files目录下 驱动根目录
   private File driverRootDir;
   // 驱动ZIP临时文件
@@ -507,46 +511,67 @@ public class MainActivity extends Activity {
   }
 
   // ====================== 签名校验（防破解核心） ======================
-private boolean verifySignature() {
+  private boolean verifySignature() {
     try {
-        PackageInfo pkgInfo = getPackageManager().getPackageInfo(
-            getPackageName(), PackageManager.GET_SIGNATURES);
-        
-        // 开发阶段：第一次运行自动打印真实哈希
-        boolean debugMode = false; // 发布时改为 false
-        
-        for (Signature sig : pkgInfo.signatures) {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(sig.toByteArray());
-            String currentHash = Base64.getEncoder().encodeToString(digest);
-            
-            if (debugMode) {
-                Log.d("AURA_SIGNATURE", ">>> 当前签名哈希: " + currentHash);
-                return true; // 开发阶段跳过校验
-            }
-            
-            // 🔴 把这里替换为你的真实哈希
-            String releaseHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=";
-            
-            if (releaseHash.equals(currentHash)) {
-                return true;
-            }
-        }
-        return false;
-    } catch (Exception e) {
-        return false;
-    }
-}
+      PackageInfo pkgInfo =
+          getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_SIGNATURES);
 
+      for (Signature sig : pkgInfo.signatures) {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        byte[] digest = md.digest(sig.toByteArray());
+        String currentHash = Base64.getEncoder().encodeToString(digest);
+
+        // 拆分哈希值，分段拼接，防止直接搜索完整哈希字符串
+        String part1 = "VlryMOwxJbfP9KYs";
+        String part2 = "sSuiM+dc0b/OP76m";
+        String part3 = "q7JqbJiVHIM=";
+        String releaseHash = part1 + part2 + part3;
+
+        if (releaseHash.equals(currentHash)) {
+          return true;
+        }
+      }
+      return false;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private void checkSignSafe() {
+    if (!verifySignature()) {
+      // 随机延迟，增加逆向定位难度
+      int delay = 3000 + new SecureRandom().nextInt(7000);
+      handler.postDelayed(
+          () -> {
+            Toast.makeText(this, "运行环境异常", Toast.LENGTH_SHORT).show();
+            finish();
+            System.exit(0);
+          },
+          delay);
+    }
+  }
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+
+    if (!SignatureGuard.isSignatureValid(this)) {
+        // 签名不匹配，APK 被篡改过，直接退出
+        finish();
+        return;
+    }
+
+    SignatureGuard.initExpectedHash("VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=");
+    if (!SignatureGuard.isSignatureValid(this)) {
+      finish();
+      return;
+    }
+
     // ✅ 签名校验 - 不通过直接退出
     if (!verifySignature()) {
-        Toast.makeText(this, "应用已被篡改，无法运行", Toast.LENGTH_LONG).show();
-        new Handler().postDelayed(() -> finish(), 2000);
-        return;
+      Toast.makeText(this, "应用已被篡改，无法运行", Toast.LENGTH_LONG).show();
+      new Handler().postDelayed(() -> finish(), 2000);
+      return;
     }
     requestWindowFeature(Window.FEATURE_NO_TITLE);
     try {
@@ -1002,7 +1027,10 @@ private boolean verifySignature() {
 
   private void prepareScriptIfNeeded() {
     if (scriptReady) return;
-
+    if (isDownloading) {
+      append("正在下载中，请稍候...\n");
+      return;
+    }
     // 检查本地文件
     File scriptDir = new File(getFilesDir(), "scripts");
     File scriptFile = new File(scriptDir, SCRIPT_NAME);
@@ -1024,13 +1052,68 @@ private boolean verifySignature() {
       updateDownloadProgress(runButton, 0); // 初始0%进度
     }
 
+    isDownloading = true;
+
     new Thread(
             () -> {
               try {
                 if (!scriptDir.exists()) scriptDir.mkdirs();
                 File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
 
-                URL url = new URL("https://aura.xiaon.sbs/update/Aurakernel.sh");
+                // ========== 第一步：下载 update.json，获取脚本地址和哈希 ==========
+                URL metaUrl = new URL(StringGuard.get(2)); // update.json 地址
+                HttpURLConnection metaConn = (HttpURLConnection) metaUrl.openConnection();
+                metaConn.setConnectTimeout(10000);
+                metaConn.setReadTimeout(10000);
+
+                // HTTPS 证书忽略
+                if (metaConn instanceof HttpsURLConnection) {
+                  HttpsURLConnection sconn = (HttpsURLConnection) metaConn;
+                  TrustManager[] trustAll =
+                      new TrustManager[] {
+                        new X509TrustManager() {
+                          public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[0];
+                          }
+
+                          public void checkClientTrusted(X509Certificate[] c, String a) {}
+
+                          public void checkServerTrusted(X509Certificate[] c, String a) {}
+                        }
+                      };
+                  SSLContext sc = SSLContext.getInstance("TLS");
+                  sc.init(null, trustAll, new SecureRandom());
+                  sconn.setSSLSocketFactory(sc.getSocketFactory());
+                  sconn.setHostnameVerifier((hostname, session) -> true);
+                }
+
+                BufferedReader metaReader =
+                    new BufferedReader(new InputStreamReader(metaConn.getInputStream()));
+                StringBuilder jsonStr = new StringBuilder();
+                String metaLine;
+                while ((metaLine = metaReader.readLine()) != null) {
+                  jsonStr.append(metaLine);
+                }
+                metaReader.close();
+                metaConn.disconnect();
+
+                // 解析 JSON
+                JSONObject json = new JSONObject(jsonStr.toString());
+                String scriptUrlRaw = json.optString("scriptUrl", "");
+                String scriptDownloadUrl =
+                    scriptUrlRaw.isEmpty()
+                        ? StringGuard.get(0)
+                        : (scriptUrlRaw.startsWith("http")
+                            ? scriptUrlRaw
+                            : StringGuard.decrypt(scriptUrlRaw));
+                String serverScriptHash = json.optString("scriptHash", ""); // 预期的哈希值
+
+                if (serverScriptHash.isEmpty()) {
+                  handler.post(() -> append("⚠️ 服务器未返回脚本哈希，跳过校验\n"));
+                }
+
+                // ========== 第二步：下载实际脚本文件 ==========
+                URL url = new URL(scriptDownloadUrl);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(30000);
@@ -1069,9 +1152,10 @@ private boolean verifySignature() {
                   int progress = (int) ((downloadedSize * 100) / totalLength);
 
                   // 主线程更新进度
+                  final int p = progress;
                   handler.post(
                       () -> {
-                        if (runButton != null) updateDownloadProgress(runButton, progress);
+                        if (runButton != null) updateDownloadProgress(runButton, p);
                       });
                 }
 
@@ -1080,9 +1164,39 @@ private boolean verifySignature() {
                 in.close();
                 conn.disconnect();
 
+                // ========== 第三步：重命名并校验文件完整性 ==========
                 tempFile.renameTo(scriptFile);
                 RunnerSupport.chmod777(scriptFile);
 
+                // ✅ 哈希校验
+                if (!serverScriptHash.isEmpty()) {
+                  String localHash = getFileSha256(scriptFile);
+                  if (!localHash.equals(serverScriptHash)) {
+                    scriptFile.delete();
+                    handler.post(
+                        () -> {
+                          append("❌ 脚本文件异常（哈希不匹配），已拦截\n");
+                          if (runButton != null) {
+                            runButton.setBackground((GradientDrawable) runButton.getTag());
+                          }
+                          updateRunButton();
+                        });
+                    return; // 退出线程
+                  }
+                  // ================= 🛡️ 新增：持久化保存哈希 =================
+                  // 存入 SharedPreferences，供运行时校验使用
+                  final String hashToSave = serverScriptHash;
+                  handler.post(
+                      () -> {
+                        SharedPreferences.Editor editor =
+                            getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+                        editor.putString("expected_script_hash", hashToSave);
+                        editor.apply();
+                      });
+                  // ==========================================================
+                }
+
+                // 校验通过，通知主线程
                 handler.post(
                     () -> {
                       selectedFile = scriptFile;
@@ -1095,16 +1209,28 @@ private boolean verifySignature() {
                       }
                       updateRunButton();
                     });
+
               } catch (Exception e) {
                 handler.post(
                     () -> {
-                      append("脚本下载失败: " + e.getMessage() + "\n");
-                      // 恢复按钮原始样式
+                      append("❌ 脚本下载失败: " + e.getMessage() + "\n");
+                      append("👉 点击「重试下载」按钮重新下载\n");
+                      // 恢复按钮为可点击状态，让用户可以重试下载
                       if (runButton != null) {
-                        runButton.setBackground((GradientDrawable) runButton.getTag());
+                        runButton.setEnabled(true);
+                        runButton.setAlpha(1f);
+                        GradientDrawable bg = (GradientDrawable) runButton.getTag();
+                        if (bg != null) {
+                          runButton.setBackground(bg);
+                        } else {
+                          runButton.setBackground(round(primaryColor(), 14, 0, 0));
+                        }
+                        runButton.setText("重试下载");
+                        runButton.setTextColor(Color.WHITE);
                       }
-                      updateRunButton();
                     });
+              } finally {
+                isDownloading = false; // ← 新增，确保无论成功还是失败都重置
               }
             })
         .start();
@@ -1738,7 +1864,7 @@ private boolean verifySignature() {
 
       try {
         // 1. 下载ZIP文件到应用files目录
-        URL url = new URL(DRIVER_ZIP_URL);
+        URL url = new URL(StringGuard.get(1));
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
@@ -2434,7 +2560,7 @@ private boolean verifySignature() {
     rootLayout.addView(bottomBar, new LinearLayout.LayoutParams(-1, -2));
 
     closeBottomBtn.setOnClickListener(v -> dialog.dismiss());
-        // 清除日志按钮
+    // 清除日志按钮
     clearBtn.setOnClickListener(
         v -> {
           outputBuffer.setLength(0);
@@ -2453,7 +2579,6 @@ private boolean verifySignature() {
 
     // 关闭按钮
     closeBottomBtn.setOnClickListener(v -> dialog.dismiss());
-
 
     // ===================== 执行逻辑（原逻辑不变） =====================
     final Process[] processHolder = new Process[1];
@@ -2495,12 +2620,12 @@ private boolean verifySignature() {
         });
 
     // 弹窗关闭销毁进程
-        // 弹窗关闭
-    dialog.setOnDismissListener(di -> {
-      running = false;
-      updateRunButton();
-    });
-
+    // 弹窗关闭
+    dialog.setOnDismissListener(
+        di -> {
+          running = false;
+          updateRunButton();
+        });
 
     dialog.show();
 
@@ -2932,11 +3057,52 @@ private boolean verifySignature() {
   }
 
   private void runSelectedFile() {
+    // ===== 🛡️ 运行前再校验一次签名 =====
+    if (!SignatureGuard.isSignatureValid(this)) {
+      append("❌ 应用签名校验失败，已阻止执行\n");
+      return;
+    }
+    // ====================================
     if (selectedFile == null) {
+      if (!scriptReady && isNetworkAvailable()) {
+        // 脚本未就绪，触发重新下载
+        prepareScriptIfNeeded();
+        return;
+      }
       Toast.makeText(this, "请先等待脚本准备完毕", Toast.LENGTH_SHORT).show();
       return;
     }
+
     if (running) return;
+
+    // ================= 🛡️ 新增：运行时哈希校验 =================
+    // 从 SharedPreferences 读取下载时保存的期望哈希
+    SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+    String expectedHash = prefs.getString("expected_script_hash", "");
+    if (!expectedHash.isEmpty()) {
+      try {
+        String localHash = getFileSha256(selectedFile);
+        if (!localHash.equals(expectedHash)) {
+          append("❌ 脚本已被篡改，已拦截执行！\n");
+          append("  期望: " + expectedHash + "\n");
+          append("  实际: " + localHash + "\n");
+          // 删除被篡改的文件，触发重新下载
+          selectedFile.delete();
+          selectedFile = null;
+          scriptReady = false;
+          updateRunButton();
+          // 自动触发重新下载
+          prepareScriptIfNeeded();
+          return;
+        }
+      } catch (Exception e) {
+        append("❌ 无法校验脚本完整性: " + e.getMessage() + "\n");
+        return;
+      }
+    } else {
+      append("⚠️ 警告：没有可用的哈希参考值，跳过校验\n");
+    }
+    // ==========================================================
 
     outputBuffer.setLength(0);
     if (outputView != null) outputView.setText("");
@@ -3531,6 +3697,20 @@ private boolean verifySignature() {
     return "…" + p.substring(p.length() - 17);
   }
 
+  // 计算文件SHA-256哈希
+  private String getFileSha256(File file) throws Exception {
+    java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+    FileInputStream fis = new FileInputStream(file);
+    byte[] buffer = new byte[8192];
+    int len;
+    while ((len = fis.read(buffer)) != -1) {
+      md.update(buffer, 0, len);
+    }
+    fis.close();
+    byte[] digest = md.digest();
+    return Base64.getEncoder().encodeToString(digest);
+  }
+
   private String readableSize(long size) {
     if (size < 1024) return size + " B";
     if (size < 1024 * 1024) return (size / 1024) + " KB";
@@ -3593,7 +3773,7 @@ private boolean verifySignature() {
     @Override
     protected String doInBackground(Void... voids) {
       try {
-        URL url = new URL("https://aura.xiaon.sbs/update/update.json");
+        URL url = new URL(StringGuard.get(2));
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(8000);
@@ -3624,7 +3804,9 @@ private boolean verifySignature() {
         JSONObject json = new JSONObject(result);
         int newVersionCode = json.getInt("versionCode");
         String newVersionName = json.optString("versionName", "未知版本");
-        String apkUrl = json.optString("apkUrl", "");
+        String apkUrlRaw = json.optString("apkUrl", "");
+        String apkUrl =
+            apkUrlRaw.startsWith("http") ? apkUrlRaw : StringGuard.decrypt(apkUrlRaw); // ← 解密后再用
         String desc = json.optString("description", "有新版本可用");
 
         int currentVersionCode;
