@@ -4,10 +4,8 @@ import android.Manifest;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.Dialog;
-import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -35,6 +33,7 @@ import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -79,7 +78,9 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.util.Log; 
+import android.widget.ProgressBar;
+import java.io.BufferedInputStream;
+
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
@@ -182,6 +183,138 @@ public class MainActivity extends Activity {
     String lastDirPref;
     Dialog dialog;
     FilePickCallback callback;
+  }
+
+  // ===== 在 MainActivity.java 中替换原来的 DASHBOARD_URL =====
+
+  private void reportToDashboard() {
+    new Thread(
+            () -> {
+              try {
+                String baseUrl = StringGuard.get(8);
+                if (baseUrl == null || baseUrl.isEmpty()) return;
+
+                String deviceId =
+                    Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+
+                // ===== 收集设备信息 =====
+                String manufacturer = Build.MANUFACTURER; // 厂商：Xiaomi
+                String model = Build.MODEL; // 型号：Mi 13
+                String deviceName = Build.BRAND + " " + Build.MODEL; // 名称：Xiaomi Mi 13
+                String androidVer = Build.VERSION.RELEASE; // Android 版本：14
+                String kernelVer = System.getProperty("os.version"); // 内核版本：5.15.148-android14
+
+                // 获取 IP 地址
+                String ipAddr = getDeviceIpAddress();
+
+                // 构造 JSON
+                JSONObject deviceInfo = new JSONObject();
+                deviceInfo.put("device_id", deviceId);
+                deviceInfo.put("device_name", deviceName);
+                deviceInfo.put("manufacturer", manufacturer);
+                deviceInfo.put("model", model);
+                deviceInfo.put("android_version", androidVer);
+                deviceInfo.put("kernel_version", kernelVer);
+                deviceInfo.put("ip_address", ipAddr);
+
+                // 1. 上报启用次数
+                URL url1 = new URL(baseUrl + "/api.php?action=report_launch");
+                HttpURLConnection conn1 = (HttpURLConnection) url1.openConnection();
+                conn1.setRequestMethod("POST");
+                conn1.setRequestProperty("Content-Type", "application/json");
+                conn1.setDoOutput(true);
+                conn1.getOutputStream().write(("{\"device_id\":\"" + deviceId + "\"}").getBytes());
+                conn1.getResponseCode();
+                conn1.disconnect();
+
+                // 2. 上报使用人数（每日去重）
+                URL url2 = new URL(baseUrl + "/api.php?action=report_user");
+                HttpURLConnection conn2 = (HttpURLConnection) url2.openConnection();
+                conn2.setRequestMethod("POST");
+                conn2.setRequestProperty("Content-Type", "application/json");
+                conn2.setDoOutput(true);
+                conn2.getOutputStream().write(("{\"device_id\":\"" + deviceId + "\"}").getBytes());
+                conn2.getResponseCode();
+                conn2.disconnect();
+
+                // ===== 3. 上报详细设备信息（新增） =====
+                URL url3 = new URL(baseUrl + "/api.php?action=report_device_info");
+                HttpURLConnection conn3 = (HttpURLConnection) url3.openConnection();
+                conn3.setRequestMethod("POST");
+                conn3.setRequestProperty("Content-Type", "application/json");
+                conn3.setDoOutput(true);
+                conn3.getOutputStream().write(deviceInfo.toString().getBytes());
+                int code3 = conn3.getResponseCode();
+                conn3.disconnect();
+
+                Log.d("DASHBOARD", "设备信息上报完成, code=" + code3);
+
+              } catch (Exception e) {
+                Log.e("DASHBOARD", "上报失败: " + e.getMessage());
+              }
+            })
+        .start();
+  }
+
+  // ===== 在 onCreate 里启动心跳（跟 reportToDashboard 放一起） =====
+  private Handler heartbeatHandler = new Handler();
+  private Runnable heartbeatRunnable =
+      new Runnable() {
+        @Override
+        public void run() {
+          sendHeartbeat();
+          heartbeatHandler.postDelayed(this, 10000); // 每 10 秒一次
+        }
+      };
+
+  private void startHeartbeat() {
+    heartbeatHandler.post(heartbeatRunnable);
+  }
+
+  private void stopHeartbeat() {
+    heartbeatHandler.removeCallbacks(heartbeatRunnable);
+  }
+
+  private void sendHeartbeat() {
+    new Thread(
+            () -> {
+              try {
+                String baseUrl = StringGuard.get(8);
+                if (baseUrl == null || baseUrl.isEmpty()) return;
+
+                String deviceId =
+                    Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+
+                URL url = new URL(baseUrl + "/api.php?action=heartbeat");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                conn.getOutputStream().write(("{\"device_id\":\"" + deviceId + "\"}").getBytes());
+                conn.getResponseCode();
+                conn.disconnect();
+              } catch (Exception ignored) {
+              }
+            })
+        .start();
+  }
+
+  // ===== 获取设备 IP 地址的辅助方法 =====
+  private String getDeviceIpAddress() {
+    try {
+      for (java.net.NetworkInterface ni :
+          java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+        if (ni.isLoopback() || !ni.isUp()) continue;
+        for (java.net.InetAddress addr : java.util.Collections.list(ni.getInetAddresses())) {
+          if (addr instanceof java.net.Inet4Address) {
+            String ip = addr.getHostAddress();
+            if (!ip.equals("127.0.0.1")) return ip;
+          }
+        }
+      }
+    } catch (Exception ignored) {
+    }
+    return "未知";
   }
 
   // ====================== 清理脚本自动解压 ======================
@@ -608,8 +741,9 @@ public class MainActivity extends Activity {
       return;
     }
 
-    setContentView(root);
-    // 检查 Root 权限，通过后再进入主界面
+    setContentView(root); // 检查 Root 权限，通过后再进入主界面
+    reportToDashboard();
+    startHeartbeat();
     checkRootAndProceed();
   }
 
@@ -730,6 +864,7 @@ public class MainActivity extends Activity {
 
   @Override
   protected void onDestroy() {
+    stopHeartbeat(); // 👈 加上这一行
     if (updateTask != null && !updateTask.isCancelled()) {
       updateTask.cancel(true);
     }
@@ -3079,7 +3214,7 @@ public class MainActivity extends Activity {
     parent.addView(v, new LinearLayout.LayoutParams(-1, 1));
   }
 
-    private void runSelectedFile() {
+  private void runSelectedFile() {
 
     // ===== 🛡️ 运行前再校验一次签名 =====
     if (!SignatureGuard.isSignatureValid(this)) {
@@ -3105,23 +3240,23 @@ public class MainActivity extends Activity {
     // ----- 校验二进制哈希（服务端下发，回退 StringGuard） -----
     String expectedBinaryHash = prefs.getString("expected_binary_hash", "");
     if (expectedBinaryHash.isEmpty()) {
-        expectedBinaryHash = StringGuard.get(7);
+      expectedBinaryHash = StringGuard.get(7);
     }
     if (!expectedBinaryHash.isEmpty()) {
-        try {
-            String actualHash = getFileSha256(selectedFile);
-            if (!actualHash.equals(expectedBinaryHash)) {
-                append("❌ 核心文件已被替换，拒绝执行！\n");
-                selectedFile.delete();
-                selectedFile = null;
-                scriptReady = false;
-                updateRunButton();
-                return;
-            }
-        } catch (Exception e) {
-            append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
-            return;
+      try {
+        String actualHash = getFileSha256(selectedFile);
+        if (!actualHash.equals(expectedBinaryHash)) {
+          append("❌ 核心文件已被替换，拒绝执行！\n");
+          selectedFile.delete();
+          selectedFile = null;
+          scriptReady = false;
+          updateRunButton();
+          return;
         }
+      } catch (Exception e) {
+        append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
+        return;
+      }
     }
 
     // ----- 校验脚本哈希（从服务器下载时保存的） -----
@@ -3898,11 +4033,12 @@ public class MainActivity extends Activity {
           currentVersionName = "";
         }
 
-        if (newVersionName.equals(currentVersionName)) {
-          return; // 静默，已是最新
-        }
-
+        // 修复版本比较：优先用 versionCode 数字比较
         if (newVersionCode > currentVersionCode) {
+          activity.showUpdateDialog(newVersionName, desc, apkUrl);
+        }
+        // 如果 versionCode 相同但 versionName 不同，也视为有新版本
+        else if (!newVersionName.equals(currentVersionName)) {
           activity.showUpdateDialog(newVersionName, desc, apkUrl);
         }
       } catch (Exception ignored) {
@@ -3926,64 +4062,320 @@ public class MainActivity extends Activity {
     updateTask.execute();
   }
 
-  // 显示更新弹窗 - 修复可能的编译兼容性问题
+  // ====================== 【美化版】显示更新弹窗 ======================
   private void showUpdateDialog(String newVersion, String desc, final String apkUrl) {
-    new android.app.AlertDialog.Builder(this)
-        .setTitle("发现新版本 v" + newVersion)
-        .setMessage(desc)
-        .setPositiveButton(
-            "立即更新",
-            new DialogInterface.OnClickListener() {
-              @Override
-              public void onClick(DialogInterface dialog, int which) {
-                downloadApk(apkUrl);
-              }
-            })
-        .setNegativeButton("稍后再说", null)
-        .show();
+    // 创建自定义弹窗
+    final Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+    // 根布局
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(Color.TRANSPARENT);
+    root.setGravity(Gravity.CENTER);
+    root.setPadding(dp(24), dp(24), dp(24), dp(24));
+
+    // 卡片容器
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setBackground(
+        round(
+            nightMode ? Color.rgb(28, 32, 44) : Color.rgb(250, 250, 252),
+            dp(20),
+            nightMode ? Color.rgb(48, 54, 70) : Color.rgb(225, 230, 240),
+            1));
+    card.setPadding(dp(24), dp(28), dp(24), dp(24));
+    card.setGravity(Gravity.CENTER_HORIZONTAL);
+
+    int accentColor = Color.rgb(22, 119, 255); // 主题蓝
+
+    // ===== 顶部图标 =====
+    TextView iconView = new TextView(this);
+    iconView.setText("🎉");
+    iconView.setTextSize(48);
+    iconView.setGravity(Gravity.CENTER);
+    card.addView(iconView, lp(-1, -2, 0, 0, 0, dp(8)));
+
+    // ===== 标题 =====
+    TextView titleView = new TextView(this);
+    titleView.setText("发现新版本");
+    titleView.setTextSize(22);
+    titleView.setTypeface(Typeface.DEFAULT_BOLD);
+    titleView.setTextColor(nightMode ? Color.rgb(225, 228, 235) : Color.rgb(30, 32, 42));
+    titleView.setGravity(Gravity.CENTER);
+    card.addView(titleView, lp(-1, -2, 0, 0, 0, dp(4)));
+
+    // ===== 版本号标签 =====
+    TextView versionView = new TextView(this);
+    versionView.setText("v" + newVersion);
+    versionView.setTextSize(14);
+    versionView.setTypeface(Typeface.DEFAULT_BOLD);
+    versionView.setTextColor(Color.WHITE);
+    versionView.setGravity(Gravity.CENTER);
+    versionView.setBackground(round(accentColor, dp(14), 0, 0));
+    versionView.setPadding(dp(20), dp(6), dp(20), dp(6));
+    LinearLayout.LayoutParams vlp = lp(-2, -2, 0, 0, 0, dp(16));
+    card.addView(versionView, vlp);
+
+    // ===== 更新内容区域 =====
+    ScrollView descScroll = new ScrollView(this);
+    descScroll.setVerticalScrollBarEnabled(false);
+
+    TextView descView = new TextView(this);
+    descView.setText(desc);
+    descView.setTextSize(14);
+    descView.setLineSpacing(dp(4), 1f);
+    descView.setTextColor(nightMode ? Color.rgb(180, 188, 200) : Color.rgb(80, 86, 102));
+    descView.setPadding(dp(4), dp(8), dp(4), dp(8));
+    descScroll.addView(descView, lp(-1, -2, 0, 0, 0, 0));
+    card.addView(descScroll, lp(-1, -2, 0, 0, 0, dp(20)));
+
+    // ===== 按钮区域 =====
+    LinearLayout btnRow = new LinearLayout(this);
+    btnRow.setOrientation(LinearLayout.HORIZONTAL);
+    btnRow.setGravity(Gravity.CENTER);
+
+    // 稍后再说按钮
+    Button laterBtn = new Button(this);
+    laterBtn.setText("稍后再说");
+    laterBtn.setTextSize(14);
+    laterBtn.setTypeface(Typeface.DEFAULT_BOLD);
+    laterBtn.setTextColor(nightMode ? Color.rgb(148, 157, 174) : Color.rgb(103, 114, 132));
+    laterBtn.setBackground(
+        round(
+            Color.TRANSPARENT,
+            dp(12),
+            nightMode ? Color.rgb(48, 54, 70) : Color.rgb(215, 220, 230),
+            1));
+    laterBtn.setPadding(0, dp(12), 0, dp(12));
+    laterBtn.setOnClickListener(v -> dialog.dismiss());
+
+    LinearLayout.LayoutParams laterLp = new LinearLayout.LayoutParams(0, dp(46), 1);
+    laterLp.setMargins(0, 0, dp(8), 0);
+    btnRow.addView(laterBtn, laterLp);
+
+    // 立即更新按钮
+    Button updateBtn = new Button(this);
+    updateBtn.setText("🚀 立即更新");
+    updateBtn.setTextSize(14);
+    updateBtn.setTypeface(Typeface.DEFAULT_BOLD);
+    updateBtn.setTextColor(Color.WHITE);
+    updateBtn.setBackground(round(accentColor, dp(12), 0, 0));
+    updateBtn.setPadding(0, dp(12), 0, dp(12));
+    updateBtn.setOnClickListener(
+        v -> {
+          dialog.dismiss();
+          downloadApk(apkUrl);
+        });
+
+    LinearLayout.LayoutParams updateLp = new LinearLayout.LayoutParams(0, dp(46), 1);
+    updateLp.setMargins(dp(8), 0, 0, 0);
+    btnRow.addView(updateBtn, updateLp);
+
+    card.addView(btnRow, lp(-1, -2, 0, 0, 0, 0));
+
+    root.addView(card, lp(-1, -2, 0, 0, 0, 0));
+
+    dialog.setContentView(root);
+    dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+    dialog
+        .getWindow()
+        .setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+    dialog.setCancelable(true);
+    dialog.setCanceledOnTouchOutside(true);
+    dialog.show();
   }
 
-  // 下载APK - 彻底修复：使用浏览器打开下载链接，避免DownloadManager各种兼容性问题
+    // ====================== 带进度条的下载更新（修复版） ======================
   private void downloadApk(String apkUrl) {
-    // ① 检查 apkUrl 是否有效
-    if (apkUrl == null || apkUrl.trim().isEmpty()) {
-      Toast.makeText(this, "更新链接无效，请稍后重试", Toast.LENGTH_SHORT).show();
+    if (apkUrl == null || apkUrl.isEmpty()) {
+      Toast.makeText(this, "下载链接无效", Toast.LENGTH_SHORT).show();
       return;
     }
 
-    // ② 使用系统浏览器打开下载链接（最稳定、最兼容的方式）
-    try {
-      Uri uri = Uri.parse(apkUrl);
-      if (uri == null) {
-        Toast.makeText(this, "更新地址格式错误", Toast.LENGTH_SHORT).show();
-        return;
-      }
+    // 创建进度弹窗
+    final Dialog progressDialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar);
+    progressDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    progressDialog.setCancelable(false);
 
-      Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(Color.TRANSPARENT);
+    root.setGravity(Gravity.CENTER);
+    root.setPadding(dp(24), dp(24), dp(24), dp(24));
 
-      // 检查是否有浏览器能处理这个链接
-      if (intent.resolveActivity(getPackageManager()) != null) {
-        startActivity(intent);
-        Toast.makeText(this, "已打开浏览器，请下载APK后手动安装", Toast.LENGTH_LONG).show();
-      } else {
-        Toast.makeText(this, "未找到浏览器，请复制链接到浏览器下载", Toast.LENGTH_LONG).show();
-        // 可选：复制链接到剪贴板
-        android.content.ClipboardManager clipboard =
-            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clipboard != null) {
-          clipboard.setPrimaryClip(ClipData.newPlainText("下载链接", apkUrl));
-          Toast.makeText(this, "链接已复制到剪贴板", Toast.LENGTH_SHORT).show();
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setBackground(round(nightMode ? Color.rgb(28, 32, 44) : Color.rgb(250, 250, 252), dp(20),
+                       nightMode ? Color.rgb(48, 54, 70) : Color.rgb(225, 230, 240), 1));
+    card.setPadding(dp(28), dp(28), dp(28), dp(28));
+    card.setGravity(Gravity.CENTER);
+
+    // 标题
+    TextView titleView = new TextView(this);
+    titleView.setText("⏬ 正在下载更新");
+    titleView.setTextSize(18);
+    titleView.setTypeface(Typeface.DEFAULT_BOLD);
+    titleView.setTextColor(nightMode ? Color.rgb(225, 228, 235) : Color.rgb(30, 32, 42));
+    titleView.setGravity(Gravity.CENTER);
+    card.addView(titleView, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    // 进度条
+    ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+    progressBar.setMax(100);
+    progressBar.setProgress(0);
+    progressBar.getProgressDrawable().setColorFilter(
+        Color.rgb(22, 119, 255), android.graphics.PorterDuff.Mode.SRC_IN);
+    LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, dp(22));
+    pblp.setMargins(0, 0, 0, dp(10));
+    card.addView(progressBar, pblp);
+
+    // 百分比文字
+    TextView percentView = new TextView(this);
+    percentView.setText("0%");
+    percentView.setTextSize(14);
+    percentView.setTypeface(Typeface.DEFAULT_BOLD);
+    percentView.setTextColor(Color.rgb(22, 119, 255));
+    percentView.setGravity(Gravity.CENTER);
+    card.addView(percentView, lp(-1, -2, 0, 0, 0, dp(4)));
+
+    // 提示文字
+    TextView tipView = new TextView(this);
+    tipView.setText("请勿关闭此页面...");
+    tipView.setTextSize(12);
+    tipView.setTextColor(Color.rgb(107, 114, 128));
+    tipView.setGravity(Gravity.CENTER);
+    card.addView(tipView, lp(-1, -2, 0, dp(4), 0, 0));
+
+    root.addView(card, lp(-1, -2, 0, 0, 0, 0));
+    progressDialog.setContentView(root);
+    progressDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+    progressDialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+    progressDialog.show();
+
+    // 开始下载
+    new AsyncTask<Void, Integer, File>() {
+      private Exception error = null;
+
+      @Override
+      protected File doInBackground(Void... voids) {
+        try {
+          File downloadDir = new File(getCacheDir(), "update");
+          if (!downloadDir.exists()) downloadDir.mkdirs();
+          File apkFile = new File(downloadDir, "Aurakernel_update.apk");
+          if (apkFile.exists()) apkFile.delete();
+
+          URL url = new URL(apkUrl);
+          HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+          conn.setConnectTimeout(15000);
+          conn.setReadTimeout(30000);
+          conn.connect();
+
+          int totalSize = conn.getContentLength();
+          FileOutputStream fos = new FileOutputStream(apkFile);
+          BufferedInputStream bis = new BufferedInputStream(conn.getInputStream());
+
+          byte[] buf = new byte[8192];
+          int len;
+          int downloaded = 0;
+          while ((len = bis.read(buf)) != -1) {
+            fos.write(buf, 0, len);
+            downloaded += len;
+            if (totalSize > 0) {
+              int progress = (int) ((downloaded / (float) totalSize) * 100);
+              publishProgress(progress);
+            }
+          }
+          fos.flush();
+          fos.close();
+          bis.close();
+          conn.disconnect();
+
+          return apkFile;
+        } catch (Exception e) {
+          error = e;
+          return null;
         }
       }
-    } catch (ActivityNotFoundException e) {
-      Toast.makeText(this, "未找到可用的浏览器应用", Toast.LENGTH_SHORT).show();
-      e.printStackTrace();
+
+      @Override
+      protected void onProgressUpdate(Integer... values) {
+        int p = values[0];
+        progressBar.setProgress(p);
+        percentView.setText(p + "%");
+        tipView.setText(p < 50 ? "正在下载，请稍候..." : "即将下载完成...");
+      }
+
+      @Override
+      protected void onPostExecute(File apkFile) {
+        progressDialog.dismiss();
+
+        if (error != null || apkFile == null || !apkFile.exists()) {
+          Toast.makeText(MainActivity.this,
+            "❌ 下载失败: " + (error != null ? error.getMessage() : "未知错误"),
+            Toast.LENGTH_LONG).show();
+          return;
+        }
+
+        Toast.makeText(MainActivity.this, "✅ 下载完成，准备安装...", Toast.LENGTH_SHORT).show();
+        installApk(apkFile);
+      }
+    }.execute();
+  }
+
+
+    // ====================== 安装 APK（兼容所有版本） ======================
+  private void installApk(File apkFile) {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        // Android 8.0+ 用 PackageInstaller
+        // 先检查是否有安装未知应用的权限
+        if (!getPackageManager().canRequestPackageInstalls()) {
+          // 没有权限，引导用户去开启
+          Toast.makeText(this, 
+            "⚠️ 需要允许安装未知来源应用", Toast.LENGTH_LONG).show();
+          Intent intent = new Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:" + getPackageName()));
+          startActivity(intent);
+          return;
+        }
+      }
+
+      // 使用 FileProvider 安装
+      Intent intent = new Intent(Intent.ACTION_VIEW);
+      intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        // Android 7.0+ 必须用 FileProvider
+        Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
+            this, getPackageName() + ".fileprovider", apkFile);
+        intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+      } else {
+        intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+      }
+
+      startActivity(intent);
+
     } catch (Exception e) {
-      Toast.makeText(this, "打开下载链接失败", Toast.LENGTH_SHORT).show();
-      e.printStackTrace();
+      // 如果 FileProvider 方式失败，试试用旧方式
+      try {
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+      } catch (Exception e2) {
+        Toast.makeText(this,
+          "⚠️ 安装失败，请在文件管理器中手动安装：\n" + apkFile.getAbsolutePath(),
+          Toast.LENGTH_LONG).show();
+        Log.e("INSTALL", "安装失败", e2);
+      }
     }
   }
+
 
   // 判断网络是否可用
   private boolean isNetworkAvailable() {

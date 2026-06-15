@@ -22,6 +22,7 @@ public class CipherTool {
     String scriptHash = "+WvWlL5NztnZwrtL4d+r3CJ0B/R9h28SZcifGnpd468="; // 脚本SHA256
     String sigHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=";
     String binaryHash = "+WvWlL5NztnZwrtL4d+r3CJ0B/R9h28SZcifGnpd468=";
+    String dashboardUrl = "https://mt.xiaon.sbs/";
     
 
     System.out.println("=== 填入 StringGuard.java ===");
@@ -36,5 +37,6 @@ public class CipherTool {
     System.out.println("scriptHash: " + scriptHash);
     System.out.println("索引6 (签名哈希): " + encrypt(sigHash));
     System.out.println("索引7 (C++二进制哈希): " + encrypt(binaryHash));
+    System.out.println("索引8 (Dashboard): " + encrypt(dashboardUrl));
   }
 }
