@@ -81,10 +81,14 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.widget.ImageView;
+
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
-
+  private static Bitmap cachedAvatar = null;
   private String getScriptUrl() {
     return StringGuard.get(0);
   }
@@ -1255,7 +1259,7 @@ public class MainActivity extends Activity {
                 // ========== 第一步：获取签名哈希，请求服务器验证 ==========
                 String signatureHash = SignatureGuard.getApkSignatureHashBase64(this);
 
-                URL authUrl = new URL("https://aura.xiaon.sbs/update/verify.php");
+                URL authUrl = new URL(StringGuard.get(10));
                 HttpURLConnection authConn = (HttpURLConnection) authUrl.openConnection();
                 authConn.setRequestMethod("POST");
                 authConn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
@@ -1307,7 +1311,6 @@ public class MainActivity extends Activity {
                 String token = authResult.getString("token");
                 String scriptDownloadUrl = authResult.getString("scriptUrl");
                 String serverScriptHash = authResult.optString("scriptHash", "");
-                String serverBinaryHash = authResult.optString("binaryHash", "");
 
                 handler.post(() -> append("✅ 授权通过，正在下载脚本...\n"));
 
@@ -1383,14 +1386,13 @@ public class MainActivity extends Activity {
                 }
 
                 // 保存哈希供运行时校验
-                final String hashToSave = serverScriptHash;
-                final String binaryHashToSave = serverBinaryHash;
-                handler.post(
-                    () -> {
-                      SharedPreferences.Editor editor =
-                          getSharedPreferences(PREFS, MODE_PRIVATE).edit();
-                      editor.putString("expected_script_hash", hashToSave);
-                      editor.apply();
+               final String hashToSave = serverScriptHash;
+handler.post(
+    () -> {
+      SharedPreferences.Editor editor =
+          getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+      editor.putString("expected_script_hash", hashToSave);
+      editor.apply();
 
                       selectedFile = scriptFile;
                       selectedName = SCRIPT_NAME;
@@ -1584,6 +1586,16 @@ public class MainActivity extends Activity {
     }
   }
 
+  private int getStatusBarHeight() {
+  int result = 0;
+  int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+  if (resourceId > 0) {
+    result = getResources().getDimensionPixelSize(resourceId);
+  }
+  return result;
+}
+
+
   private View createHomePage() {
     // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
     ScrollView rootScroll = new ScrollView(this);
@@ -1593,7 +1605,7 @@ public class MainActivity extends Activity {
 
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
-    page.setPadding(dp(18), dp(18), dp(18), dp(8));
+    page.setPadding(dp(18), dp(18) + getStatusBarHeight(), dp(18), dp(8));
     page.setBackgroundColor(bgColor());
     // 把原page装入外层ScrollView
     rootScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
@@ -1603,10 +1615,14 @@ public class MainActivity extends Activity {
     header.setGravity(Gravity.CENTER_VERTICAL);
     page.addView(header, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    TextView logo = text("A", 18, Color.WHITE, Typeface.BOLD);
-    logo.setGravity(Gravity.CENTER);
-    logo.setBackground(round(primaryColor(), 18, 0, 0));
-    header.addView(logo, new LinearLayout.LayoutParams(dp(46), dp(46)));
+    ImageView avatarView = new ImageView(this);
+    avatarView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+    avatarView.setBackground(round(cardColor(), 23, borderColor(), 1));
+    LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(46), dp(46));
+    header.addView(avatarView, avatarLp);
+    // 异步加载随机头像
+    loadRandomAvatar(avatarView);
+
 
     LinearLayout ht = new LinearLayout(this);
     ht.setOrientation(LinearLayout.VERTICAL);
@@ -1802,6 +1818,57 @@ public class MainActivity extends Activity {
     return rootScroll;
   }
 
+  private void loadRandomAvatar(final ImageView imageView) {
+  // ★ 如果已经有缓存，直接显示，不再请求网络
+  if (cachedAvatar != null) {
+imageView.setImageBitmap(getCircularBitmap(cachedAvatar));
+imageView.setBackground(null);
+    return;
+  }
+
+  final String avatarUrl = StringGuard.get(9);
+  if (avatarUrl.isEmpty()) return;
+
+  new Thread(
+      () -> {
+        try {
+          URL url = new URL(avatarUrl);
+          HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+          conn.setConnectTimeout(8000);
+          conn.setReadTimeout(8000);
+          Bitmap bitmap = BitmapFactory.decodeStream(conn.getInputStream());
+          conn.disconnect();
+
+          if (bitmap != null) {
+            // ★ 存入缓存
+            cachedAvatar = bitmap;
+
+            runOnUiThread(
+                () -> {
+imageView.setImageBitmap(getCircularBitmap(bitmap));
+imageView.setBackground(null);
+                });
+          }
+        } catch (Exception e) {
+          Log.w("AVATAR", "加载头像失败: " + e.getMessage());
+        }
+      })
+      .start();
+}
+
+private Bitmap getCircularBitmap(Bitmap bitmap) {
+  int size = Math.min(bitmap.getWidth(), bitmap.getHeight());
+  float r = size / 2f;
+  Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+  Canvas canvas = new Canvas(output);
+  Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+  canvas.drawCircle(r, r, r, paint);
+  paint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN));
+  canvas.drawBitmap(bitmap, new android.graphics.Rect(0, 0, size, size), new android.graphics.RectF(0, 0, size, size), paint);
+  return output;
+}
+
+
   // 驱动选项按钮样式
   private TextView driverOptionButton(String text, boolean active) {
     TextView v = new TextView(this);
@@ -1963,7 +2030,7 @@ public class MainActivity extends Activity {
     scroll.setVerticalScrollBarEnabled(false);
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
-    page.setPadding(dp(20), dp(22), dp(20), dp(20));
+    page.setPadding(dp(20), dp(22) + getStatusBarHeight(), dp(20), dp(20));
     page.setBackgroundColor(bgColor());
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
@@ -2994,7 +3061,7 @@ public class MainActivity extends Activity {
     scroll.setVerticalScrollBarEnabled(false);
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
-    page.setPadding(dp(20), dp(22), dp(20), dp(20));
+    page.setPadding(dp(20), dp(22) + getStatusBarHeight(), dp(20), dp(20));
     page.setBackgroundColor(bgColor());
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
@@ -3292,54 +3359,30 @@ public class MainActivity extends Activity {
 
     if (running) return;
 
-    // ================= 🛡️ 运行时哈希校验 =================
-    SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+  // ================= 🛡️ 运行时哈希校验 =================
+// 只校验一次，从 prefs 读取服务端下发的哈希
+SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+String expectedHash = prefs.getString("expected_script_hash", "");
 
-    // ----- 校验二进制哈希（服务端下发，回退 StringGuard） -----
-    String expectedBinaryHash = prefs.getString("expected_binary_hash", "");
-    if (expectedBinaryHash.isEmpty()) {
-      expectedBinaryHash = StringGuard.get(7);
+if (!expectedHash.isEmpty()) {
+  try {
+    String localHash = getFileSha256(selectedFile);
+    if (!localHash.equals(expectedHash)) {
+      append("ℹ️ 检测到脚本已更新，正在重新获取...\n");
+      selectedFile.delete();
+      selectedFile = null;
+      scriptReady = false;
+      updateRunButton();
+      prepareScriptIfNeeded();  // 重新下载
+      return;
     }
-    if (!expectedBinaryHash.isEmpty()) {
-      try {
-        String actualHash = getFileSha256(selectedFile);
-        if (!actualHash.equals(expectedBinaryHash)) {
-          append("❌ 核心文件已被替换，拒绝执行！\n");
-          selectedFile.delete();
-          selectedFile = null;
-          scriptReady = false;
-          updateRunButton();
-          return;
-        }
-      } catch (Exception e) {
-        append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
-        return;
-      }
-    }
-
-    // ----- 校验脚本哈希（从服务器下载时保存的） -----
-    String expectedHash = prefs.getString("expected_script_hash", "");
-    if (!expectedHash.isEmpty()) {
-      try {
-        String localHash = getFileSha256(selectedFile);
-        if (!localHash.equals(expectedHash)) {
-          append("❌ 脚本已被篡改，已拦截执行！\n");
-          append("  期望: " + expectedHash + "\n");
-          append("  实际: " + localHash + "\n");
-          selectedFile.delete();
-          selectedFile = null;
-          scriptReady = false;
-          updateRunButton();
-          prepareScriptIfNeeded();
-          return;
-        }
-      } catch (Exception e) {
-        append("❌ 无法校验脚本完整性: " + e.getMessage() + "\n");
-        return;
-      }
-    } else {
-      append("⚠️ 警告：没有可用的哈希参考值，跳过校验\n");
-    }
+  } catch (Exception e) {
+    append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
+    return;
+  }
+} else {
+  append("⚠️ 跳过校验（首次运行或网络不可用）\n");
+}
     // ==========================================================
 
     outputBuffer.setLength(0);
@@ -4017,7 +4060,7 @@ public class MainActivity extends Activity {
         String signatureHash = SignatureGuard.getApkSignatureHashBase64(activity);
 
         // 请求服务器验证
-        URL url = new URL("https://aura.xiaon.sbs/update/verify.php");
+        URL url = new URL(StringGuard.get(10));
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

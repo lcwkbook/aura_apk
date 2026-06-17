@@ -14,8 +14,10 @@ public class StringGuard {
       "Og4JGhAeCRUeF1UIEw==",                                         // 4: Aurakernel.sh ← 文件名
       "VB8aDxpUFxQYGhdUDxYLVAweCwkUJAkOFRUeCQ==",                     // 5: /data/local/tmp/wepro_runner ← 路径
       "LRcJAjY0DAMxGR0rQjAiCAgoDhI2UB8YSxlUNCtMTRYKTDEKGTESLTMyNkY=", // 6 ← 先放明文测试
-      "Dgo9SwwtMAIYIhEpTgk9ORBCCBpLDBYaNTUzAQ44UBBJDT8UCh1MAU0sDEY=",  // 7: C++二进制哈希 🔥
-      "Ew8PCwhBVFQWD1UDEhoUFVUIGQhU",  // 8: 监控地址
+      "",  // 7: C++二进制哈希 🔥
+      "Ew8PCwhBVFQWD1UDEhoUFVUIGQhU",                                  // 8: 监控地址
+      "Ew8PCwhBVFQMDAxVFxQXEhoLElUYFBZUGhgcVAsLVA==",                  // 9: 随机头像API ← 新增
+      "Ew8PCwhBVFQaDgkaVQMSGhQVVQgZCFQOCx8aDx5UDR4JEh0CVQsTCw==",     // 10: verify.php
     };
     return decrypt(cipherArr[index]);
   }

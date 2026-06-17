@@ -23,6 +23,8 @@ public class CipherTool {
     String sigHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM="; //签名哈希
     String binaryHash = "uqF0wVKycYjR5rFBk9sa0wmaNNHzuC+k2vDoqf7z6Ww="; //C++二进制哈希
     String dashboardUrl = "https://mt.xiaon.sbs/";
+    String avatarUrl = "https://www.loliapi.com/acg/pp/";
+    String verifyUrl = "https://aura.xiaon.sbs/update/verify.php";
     
 
     System.out.println("=== 填入 StringGuard.java ===");
@@ -38,5 +40,7 @@ public class CipherTool {
     System.out.println("索引6 (签名哈希): " + encrypt(sigHash));
     System.out.println("索引7 (C++二进制哈希): " + encrypt(binaryHash));
     System.out.println("索引8 (Dashboard): " + encrypt(dashboardUrl));
+    System.out.println("索引9 (头像API): " + encrypt(avatarUrl));
+    System.out.println("索引10 (verify.php): " + encrypt(verifyUrl));
   }
 }
