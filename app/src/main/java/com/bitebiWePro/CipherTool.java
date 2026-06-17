@@ -19,9 +19,9 @@ public class CipherTool {
     String updateUrl = "https://aura.xiaon.sbs/update/update.json";
     String apkUrl = "https://aura.xiaon.sbs/update/Aurakernel.apk";
     String apkUrl2 = "https://aura.xiaon.sbs/update/Aurakernel.apk"; // update.json里的apkUrl
-    String scriptHash = "+WvWlL5NztnZwrtL4d+r3CJ0B/R9h28SZcifGnpd468="; // 脚本SHA256
-    String sigHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=";
-    String binaryHash = "+WvWlL5NztnZwrtL4d+r3CJ0B/R9h28SZcifGnpd468=";
+    String scriptHash = "uqF0wVKycYjR5rFBk9sa0wmaNNHzuC+k2vDoqf7z6Ww="; // 脚本SHA256
+    String sigHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM="; //签名哈希
+    String binaryHash = "uqF0wVKycYjR5rFBk9sa0wmaNNHzuC+k2vDoqf7z6Ww="; //C++二进制哈希
     String dashboardUrl = "https://mt.xiaon.sbs/";
     
 

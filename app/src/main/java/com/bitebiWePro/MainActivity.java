@@ -21,6 +21,8 @@ import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.location.Location;
+import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -48,6 +50,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -78,9 +81,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.widget.ProgressBar;
-import java.io.BufferedInputStream;
-
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
   private boolean antiRecord = false; // 防录屏，默认关闭
   private boolean noBackground = false; // 无后台，默认关闭
   private boolean scriptReady = false;
+  private static final int REQ_LOCATION = 4001;
   private boolean isDownloading = false;
   private static final int REQUEST_MANAGE_STORAGE = 9999;
   private static final int REQ_STORAGE = 3001;
@@ -206,6 +207,10 @@ public class MainActivity extends Activity {
 
                 // 获取 IP 地址
                 String ipAddr = getDeviceIpAddress();
+                // ★ 获取 GPS 位置
+                String[] location = getDeviceLocation();
+                String latitude = location[0];
+                String longitude = location[1];
 
                 // 构造 JSON
                 JSONObject deviceInfo = new JSONObject();
@@ -216,6 +221,8 @@ public class MainActivity extends Activity {
                 deviceInfo.put("android_version", androidVer);
                 deviceInfo.put("kernel_version", kernelVer);
                 deviceInfo.put("ip_address", ipAddr);
+                deviceInfo.put("latitude", latitude);
+                deviceInfo.put("longitude", longitude);
 
                 // 1. 上报启用次数
                 URL url1 = new URL(baseUrl + "/api.php?action=report_launch");
@@ -315,6 +322,39 @@ public class MainActivity extends Activity {
     } catch (Exception ignored) {
     }
     return "未知";
+  }
+
+  // ===== 获取设备 GPS 位置（最后已知位置，快速返回） =====
+  private String[] getDeviceLocation() {
+    String[] result = {"", ""};
+    try {
+      LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+      if (lm == null) return result;
+
+      Location loc = null;
+      // 优先 GPS
+      if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+          == PackageManager.PERMISSION_GRANTED) {
+        loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+      }
+      // 其次网络定位
+      if (loc == null
+          && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+              == PackageManager.PERMISSION_GRANTED) {
+        loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+      }
+      // 最后被动定位
+      if (loc == null) {
+        loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+      }
+      if (loc != null) {
+        result[0] = String.valueOf(loc.getLatitude());
+        result[1] = String.valueOf(loc.getLongitude());
+      }
+    } catch (SecurityException e) {
+      Log.w("DASHBOARD", "GPS 无权限");
+    }
+    return result;
   }
 
   // ====================== 清理脚本自动解压 ======================
@@ -724,6 +764,16 @@ public class MainActivity extends Activity {
     expandedDirs = new HashSet<>();
     // ========================================================
 
+    // ★ 请求定位权限
+    if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(
+          new String[] {
+            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION
+          },
+          REQ_LOCATION);
+    }
+
     SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
     nightMode = sp.getBoolean("night_mode", false);
     driverType = sp.getInt("driver_type", 0); // 新增
@@ -843,8 +893,16 @@ public class MainActivity extends Activity {
         finish();
       }
     } else if (requestCode == 1001) {
-      // 用户从安装未知源设置返回，不自动重试，需手动再次点击检测更新
-      Toast.makeText(this, "已允许安装，请再次点击检测更新", Toast.LENGTH_SHORT).show();
+      // 用户从安装未知源设置返回，自动重试检测更新
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+          && getPackageManager().canRequestPackageInstalls()) {
+        // 权限已授予，自动重新检测更新
+        Toast.makeText(this, "✅ 权限已授予，自动重新检测更新...", Toast.LENGTH_SHORT).show();
+        checkUpdate();
+      } else {
+        // 用户未授权，引导手动操作
+        Toast.makeText(this, "⚠️ 需要允许安装未知来源应用才能安装更新", Toast.LENGTH_LONG).show();
+      }
     }
   }
 
@@ -4187,7 +4245,7 @@ public class MainActivity extends Activity {
     dialog.show();
   }
 
-    // ====================== 带进度条的下载更新（修复版） ======================
+  // ====================== 带进度条的下载更新（修复版） ======================
   private void downloadApk(String apkUrl) {
     if (apkUrl == null || apkUrl.isEmpty()) {
       Toast.makeText(this, "下载链接无效", Toast.LENGTH_SHORT).show();
@@ -4207,8 +4265,12 @@ public class MainActivity extends Activity {
 
     LinearLayout card = new LinearLayout(this);
     card.setOrientation(LinearLayout.VERTICAL);
-    card.setBackground(round(nightMode ? Color.rgb(28, 32, 44) : Color.rgb(250, 250, 252), dp(20),
-                       nightMode ? Color.rgb(48, 54, 70) : Color.rgb(225, 230, 240), 1));
+    card.setBackground(
+        round(
+            nightMode ? Color.rgb(28, 32, 44) : Color.rgb(250, 250, 252),
+            dp(20),
+            nightMode ? Color.rgb(48, 54, 70) : Color.rgb(225, 230, 240),
+            1));
     card.setPadding(dp(28), dp(28), dp(28), dp(28));
     card.setGravity(Gravity.CENTER);
 
@@ -4222,13 +4284,15 @@ public class MainActivity extends Activity {
     card.addView(titleView, lp(-1, -2, 0, 0, 0, dp(16)));
 
     // 进度条
-    ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+    ProgressBar progressBar =
+        new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
     progressBar.setMax(100);
     progressBar.setProgress(0);
-    progressBar.getProgressDrawable().setColorFilter(
-        Color.rgb(22, 119, 255), android.graphics.PorterDuff.Mode.SRC_IN);
-    LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT, dp(22));
+    progressBar
+        .getProgressDrawable()
+        .setColorFilter(Color.rgb(22, 119, 255), android.graphics.PorterDuff.Mode.SRC_IN);
+    LinearLayout.LayoutParams pblp =
+        new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(22));
     pblp.setMargins(0, 0, 0, dp(10));
     card.addView(progressBar, pblp);
 
@@ -4252,7 +4316,10 @@ public class MainActivity extends Activity {
     root.addView(card, lp(-1, -2, 0, 0, 0, 0));
     progressDialog.setContentView(root);
     progressDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-    progressDialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+    progressDialog
+        .getWindow()
+        .setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
     progressDialog.show();
 
     // 开始下载
@@ -4313,9 +4380,11 @@ public class MainActivity extends Activity {
         progressDialog.dismiss();
 
         if (error != null || apkFile == null || !apkFile.exists()) {
-          Toast.makeText(MainActivity.this,
-            "❌ 下载失败: " + (error != null ? error.getMessage() : "未知错误"),
-            Toast.LENGTH_LONG).show();
+          Toast.makeText(
+                  MainActivity.this,
+                  "❌ 下载失败: " + (error != null ? error.getMessage() : "未知错误"),
+                  Toast.LENGTH_LONG)
+              .show();
           return;
         }
 
@@ -4325,8 +4394,7 @@ public class MainActivity extends Activity {
     }.execute();
   }
 
-
-    // ====================== 安装 APK（兼容所有版本） ======================
+  // ====================== 安装 APK（兼容所有版本） ======================
   private void installApk(File apkFile) {
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -4334,12 +4402,12 @@ public class MainActivity extends Activity {
         // 先检查是否有安装未知应用的权限
         if (!getPackageManager().canRequestPackageInstalls()) {
           // 没有权限，引导用户去开启
-          Toast.makeText(this, 
-            "⚠️ 需要允许安装未知来源应用", Toast.LENGTH_LONG).show();
-          Intent intent = new Intent(
-            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-            Uri.parse("package:" + getPackageName()));
-          startActivity(intent);
+          Toast.makeText(this, "⚠️ 需要允许安装未知来源应用", Toast.LENGTH_LONG).show();
+          Intent intent =
+              new Intent(
+                  Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                  Uri.parse("package:" + getPackageName()));
+          startActivityForResult(intent, 1001);
           return;
         }
       }
@@ -4350,8 +4418,9 @@ public class MainActivity extends Activity {
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         // Android 7.0+ 必须用 FileProvider
-        Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
-            this, getPackageName() + ".fileprovider", apkFile);
+        Uri apkUri =
+            androidx.core.content.FileProvider.getUriForFile(
+                this, getPackageName() + ".fileprovider", apkFile);
         intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
       } else {
@@ -4368,14 +4437,13 @@ public class MainActivity extends Activity {
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
       } catch (Exception e2) {
-        Toast.makeText(this,
-          "⚠️ 安装失败，请在文件管理器中手动安装：\n" + apkFile.getAbsolutePath(),
-          Toast.LENGTH_LONG).show();
+        Toast.makeText(
+                this, "⚠️ 安装失败，请在文件管理器中手动安装：\n" + apkFile.getAbsolutePath(), Toast.LENGTH_LONG)
+            .show();
         Log.e("INSTALL", "安装失败", e2);
       }
     }
   }
-
 
   // 判断网络是否可用
   private boolean isNetworkAvailable() {
