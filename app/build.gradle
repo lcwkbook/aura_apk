@@ -34,8 +34,8 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-             minifyEnabled true
-        shrinkResources true
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -49,9 +49,22 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
+
+    // ====== 新增：排除 hutool 的 META-INF 冲突文件 ======
+    packaging {
+        resources {
+            excludes += ['META-INF/INDEX.LIST', 'META-INF/DEPENDENCIES']
+        }
+    }
 }
 
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
     implementation 'androidx.core:core:1.13.1'
+    implementation 'org.bouncycastle:bcprov-jdk15on:1.70'
+    // ====== hutool 依赖 ======
+    implementation 'cn.hutool:hutool-core:5.8.38'
+    implementation 'cn.hutool:hutool-crypto:5.8.38'
+    implementation 'cn.hutool:hutool-http:5.8.38'
+    implementation 'cn.hutool:hutool-json:5.8.38'
 }

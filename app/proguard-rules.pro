@@ -52,3 +52,16 @@
     public static ** valueOf(java.lang.String);
 }
 
+# ===== 保留 hutool 库（SDK必需） =====
+-keep class cn.hutool.** { *; }
+-keepclassmembers class cn.hutool.** { *; }
+-dontwarn cn.hutool.**
+
+# ===== 保留 verify SDK =====
+-keep class com.verify.sdk.** { *; }
+-keepclassmembers class com.verify.sdk.** { *; }
+-dontwarn com.verify.sdk.**
+
+# ===== 保留 javax.crypto（DH密钥交换用到） =====
+-keep class javax.crypto.** { *; }
+-dontwarn javax.crypto.**

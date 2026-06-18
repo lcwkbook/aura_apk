@@ -84,6 +84,13 @@ import org.json.JSONObject;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.widget.ImageView;
+// ===== 验证SDK相关 =====
+import com.verify.sdk.api.SingleInfoEntity;
+import com.verify.sdk.config.ApiBaseEntity;
+import com.verify.sdk.config.VerifyConfig;
+import com.verify.sdk.framework.FrameworkTool;
+import com.verify.sdk.framework.ReqBuilder;
+
 
 
 public class MainActivity extends Activity {
@@ -149,6 +156,7 @@ public class MainActivity extends Activity {
 
   private final Handler handler = new Handler();
   private final StringBuilder outputBuffer = new StringBuilder("就绪\n");
+  private TextView announcementText;
   private ScrollView cleanTerminalScroll;
   private TextView cleanOutputView;
   private final StringBuilder cleanOutputBuffer = new StringBuilder();
@@ -266,6 +274,97 @@ public class MainActivity extends Activity {
             })
         .start();
   }
+
+      // ============================================================
+    // 卡密验证（对接 verify SDK）
+    // ============================================================
+    private void initVerifySdk() {
+    VerifyConfig.verifyConfig.setApiUrl("http://api.jsyz.asia");
+    VerifyConfig.verifyConfig.setAppId("3575");
+    VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
+    VerifyConfig.verifyConfig.setSecretType(new String[]{"不加密"});
+    VerifyConfig.verifyConfig.setSecretKey(new String[]{""});
+    VerifyConfig.verifyConfig.setEncodeType("Base64编码");
+    VerifyConfig.verifyConfig.setReqType("不加密");
+    VerifyConfig.verifyConfig.setResType("不加密");
+    VerifyConfig.verifyConfig.setRandomType("关");
+    VerifyConfig.verifyConfig.setSignType("不计算");
+    VerifyConfig.verifyConfig.setSignRule("不计算");
+    VerifyConfig.verifyConfig.setLocalTimeVerify("0");
+    VerifyConfig.verifyConfig.setLogicCode("1");
+    VerifyConfig.verifyConfig.setHeartOpen("关");
+
+    }
+
+    /**
+     * 从服务器验证卡密信息（异步）
+     *
+     * @param card  卡密字符串
+     * @param callback 回调接口（主线程调用）
+     */
+
+    /**
+     * 卡密验证回调接口
+     */
+    private interface VerifyCallback {
+    void onSuccess(String type, String endTime);
+    void onError(String errorMsg);
+    }
+
+    private void verifyCardFromServer(final String card, final VerifyCallback callback) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    SingleInfoEntity req = new SingleInfoEntity(card);
+                            // ===== 补充签名需要的空值字段（服务端方式二需要） ====
+
+                    ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
+                    cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
+                    cn.hutool.json.JSONObject data = entries.getJSONObject("data");
+                    final String typeStr = data.getInt("type") == 0 ? "普通卡密" : "会员卡密";
+                    final String endTime = data.getStr("endTime");
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (callback != null) callback.onSuccess(typeStr, endTime);
+                        }
+                    });
+                                } catch (final Throwable e) {
+                    Log.e("VERIFY_SDK", "卡密验证失败", e);
+                    final String errMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (callback != null) callback.onError(errMsg);
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
+      if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
+      View child = card.getChildAt(rowIndex);
+      if (child instanceof LinearLayout) {
+          LinearLayout row = (LinearLayout) child;
+          if (row.getChildCount() >= 2) {
+              View valueView = row.getChildAt(1);
+              if (valueView instanceof TextView) {
+                  ((TextView) valueView).setText(newValue);
+              }
+          }
+          if (row.getChildCount() >= 1) {
+              View emojiView = row.getChildAt(0);
+              if (emojiView instanceof TextView) {
+                  ((TextView) emojiView).setText(emoji);
+              }
+          }
+      }
+  }
+
+
 
   // ===== 在 onCreate 里启动心跳（跟 reportToDashboard 放一起） =====
   private Handler heartbeatHandler = new Handler();
@@ -730,7 +829,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-
+        initVerifySdk();
     if (!SignatureGuard.isSignatureValid(this)) {
       // 签名不匹配，APK 被篡改过，直接退出
       finish();
@@ -1636,6 +1735,20 @@ handler.post(
     ht.addView(desc);
 
     // ====================== 拆分开始：每个模块独立卡片 ======================
+    // ★ 0. 公告模块 - 独立卡片（放在最前面）
+    LinearLayout cardAnnounce = new LinearLayout(this);
+    cardAnnounce.setOrientation(LinearLayout.VERTICAL);
+    cardAnnounce.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardAnnounce.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardAnnounce, lp(-1, -2, 0, 0, 0, dp(14)));
+
+    TextView announceTitle = text("📢 公告", 15, textColor(), Typeface.BOLD);
+    cardAnnounce.addView(announceTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+
+    announcementText = text("欢迎使用 AuraKernel！请先输入卡密并选择驱动后运行。", 13, subTextColor(), Typeface.NORMAL);
+    announcementText.setLineSpacing(dp(4), 1f);
+    cardAnnounce.addView(announcementText, lp(-1, -2, 0, 0, 0, 0));
+
     // 1. 卡密模块 - 独立卡片
     LinearLayout cardKey = new LinearLayout(this);
     cardKey.setOrientation(LinearLayout.VERTICAL);
@@ -1658,6 +1771,102 @@ handler.post(
     String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
     if (!savedKey.isEmpty()) keyEdit.setText(savedKey);
     cardKey.addView(keyEdit, lp(-1, -2, 0, dp(6), 0, 0));
+
+        // ====== 卡密验证按钮 + 状态提示 ======
+    LinearLayout keyBtnRow = new LinearLayout(this);
+    keyBtnRow.setOrientation(LinearLayout.HORIZONTAL);
+    keyBtnRow.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+    cardKey.addView(keyBtnRow, lp(-1, -2, 0, dp(8), 0, 0));
+
+    final Button verifyBtn = new Button(this);
+    verifyBtn.setText("✅ 验证卡密");
+    verifyBtn.setTextSize(13);
+    verifyBtn.setTextColor(Color.WHITE);
+    verifyBtn.setPadding(dp(16), dp(0), dp(16), dp(0));
+    verifyBtn.setBackground(round(Color.rgb(22, 119, 255), 10, 0, 0));
+    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-2, dp(36));
+    keyBtnRow.addView(verifyBtn, btnLp);
+
+    final TextView keyStatus = new TextView(this);
+    keyStatus.setTextSize(12);
+    keyStatus.setGravity(Gravity.CENTER_VERTICAL);
+    keyStatus.setPadding(dp(12), 0, 0, 0);
+    String stsKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
+    if (!stsKey.isEmpty()) keyStatus.setText("✅ 已保存"); else keyStatus.setText("");
+    keyStatus.setTextColor(subTextColor());
+    LinearLayout.LayoutParams stsLp = new LinearLayout.LayoutParams(0, -2, 1f);
+    keyBtnRow.addView(keyStatus, stsLp);
+
+    // 验证按钮点击事件
+    verifyBtn.setOnClickListener(new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            final String card = keyEdit.getText().toString().trim();
+            if (card.isEmpty()) {
+                Toast.makeText(MainActivity.this, "请先输入卡密", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            verifyBtn.setEnabled(false);
+            verifyBtn.setText("⏳ 验证中...");
+            keyStatus.setText("⏳ 验证中...");
+
+            verifyCardFromServer(card, new VerifyCallback() {
+                @Override
+                public void onSuccess(String type, String endTime) {
+                    verifyBtn.setText("✅ 已验证");
+                    verifyBtn.setEnabled(true);
+                    keyStatus.setText("✅ " + type + " | " + endTime);
+                    // 保存卡密
+                    getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .edit().putString("key_value", card).apply();
+                }
+
+                @Override
+                public void onError(String errorMsg) {
+                    verifyBtn.setText("❌ 重试");
+                    verifyBtn.setEnabled(true);
+                    keyStatus.setText("❌ " + errorMsg);
+                }
+            });
+        }
+    });
+
+    // ====== 从文件读取卡密 ======
+    Button readFileBtn = new Button(this);
+    readFileBtn.setText("📂 从文件读取");
+    readFileBtn.setTextSize(12);
+    readFileBtn.setTextColor(subTextColor());
+    readFileBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
+    readFileBtn.setBackground(round(cardColor(), 10, borderColor(), 1));
+    LinearLayout.LayoutParams rfLp = new LinearLayout.LayoutParams(-2, dp(34));
+    rfLp.topMargin = dp(6);
+    cardKey.addView(readFileBtn, rfLp);
+
+    readFileBtn.setOnClickListener(new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            try {
+                File kmFile = new File(Environment.getExternalStorageDirectory()
+                    .getAbsolutePath() + "/AuraKernel/Aura.km");
+                if (!kmFile.exists()) {
+                    Toast.makeText(MainActivity.this, "文件不存在: " + kmFile.getPath(), Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(kmFile)));
+                String fileCard = reader.readLine();
+                reader.close();
+                if (fileCard != null && !fileCard.trim().isEmpty()) {
+                    keyEdit.setText(fileCard.trim());
+                    keyStatus.setText("📂 已读取文件");
+                } else {
+                    Toast.makeText(MainActivity.this, "文件中没有卡密", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "读取失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
+    });
+
 
     // 2. 驱动选择模块 - 独立卡片（横向滑动版）
     LinearLayout cardDriver = new LinearLayout(this);
@@ -3069,6 +3278,69 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
     page.addView(title, lp(-1, -2, 0, 0, 0, dp(6)));
     TextView sub = text("设置、授权和快捷目录", 13, subTextColor(), Typeface.NORMAL);
     page.addView(sub, lp(-1, -2, 0, 0, 0, dp(18)));
+
+    // ★ 卡密信息模块 - 独立卡片
+    LinearLayout kamiInfoCard = new LinearLayout(this);
+    kamiInfoCard.setOrientation(LinearLayout.VERTICAL);
+    kamiInfoCard.setPadding(dp(14), dp(8), dp(14), dp(8));
+    kamiInfoCard.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(kamiInfoCard, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
+    boolean hasKey = !savedKey.isEmpty();
+
+    // 1. 卡密卡号（已打码）
+    String kamiNumber = hasKey ? savedKey.substring(0, Math.min(4, savedKey.length())) + "****" : "暂无";
+    View rowNumber = sysInfoRow("卡密卡号", kamiNumber, "🔑");
+    kamiInfoCard.addView(rowNumber);
+    addDivider(kamiInfoCard);
+
+    // 2. 卡密状态（初始显示"验证中..."，异步验证后更新）
+    final TextView statusValue = new TextView(this);
+    statusValue.setText("⏳ 验证中...");
+    statusValue.setTextSize(13);
+    statusValue.setTextColor(subTextColor());
+    // 这里需要用到 sysInfoRow 的形式，但我们动态更新
+    // 先创建静态行，稍后通过 handler 更新
+
+    String kamiStatus = hasKey ? "⏳ 验证中..." : "❌ 未设置";
+    View rowStatus = sysInfoRow("卡密状态", kamiStatus, "📌");
+    kamiInfoCard.addView(rowStatus);
+    addDivider(kamiInfoCard);
+
+    // 3. 卡密类型（动态更新）
+    final TextView typeLabel = new TextView(this);
+    typeLabel.setText("🏷️");
+    typeLabel.setTextSize(13);
+    // 创建行时留空
+    View rowType = sysInfoRow("卡密类型", hasKey ? "⏳ 查询中..." : "-", "🏷️");
+    kamiInfoCard.addView(rowType);
+    addDivider(kamiInfoCard);
+
+    // 4. 到期时间（动态更新）
+    View rowExpiry = sysInfoRow("到期时间", hasKey ? "⏳ 查询中..." : "-", "📅");
+    kamiInfoCard.addView(rowExpiry);
+
+    // ===== 如果有卡密，异步从服务器拉取 =====
+    if (hasKey) {
+        verifyCardFromServer(savedKey, new VerifyCallback() {
+            @Override
+            public void onSuccess(String type, String endTime) {
+                // 更新 "卡密状态" → ✅ 已验证
+                updateRowValue(kamiInfoCard, 1, "✅ 已验证", "📌");
+                // 更新 "卡密类型"
+                updateRowValue(kamiInfoCard, 2, type, "🏷️");
+                // 更新 "到期时间"
+                updateRowValue(kamiInfoCard, 3, endTime, "📅");
+            }
+
+            @Override
+            public void onError(String errorMsg) {
+                updateRowValue(kamiInfoCard, 1, "❌ " + errorMsg, "📌");
+            }
+        });
+    }
+
 
     // ====================== 【修改后】系统信息模块（保留左图标 + 无右箭头） ======================
     LinearLayout sysInfoCard = new LinearLayout(this);
