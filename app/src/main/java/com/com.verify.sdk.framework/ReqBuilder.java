@@ -49,67 +49,69 @@ public class ReqBuilder {
         return apiBaseEntity;
     }
 
-    // ===== DH模式专用请求构建（query string格式） =====
     private static ApiBaseEntity builderReqDH(ApiBaseEntity apiBaseEntity) {
-        // 1. 生成安全参数
-        String safeCode = RandomUtil.randomNumbers(32);
-        String timestamp = System.currentTimeMillis() + "";
-        apiBaseEntity.setSafeCode(safeCode);
-        apiBaseEntity.setTimestamp(timestamp);
-        apiBaseEntity.setAppId(VerifyConfig.verifyConfig.getAppId());
+    String safeCode = RandomUtil.randomNumbers(32);
+    String timestamp = System.currentTimeMillis() + "";
+    apiBaseEntity.setSafeCode(safeCode);
+    apiBaseEntity.setTimestamp(timestamp);
+    apiBaseEntity.setAppId(VerifyConfig.verifyConfig.getAppId());
 
-        // 2. 构建 query string 格式的 params（不含bob和signature）
-        Map<String, String> paramMap = new TreeMap<>(); // TreeMap自动排序
-        paramMap.put("appId", VerifyConfig.verifyConfig.getAppId());
-        paramMap.put("timestamp", timestamp);
-        paramMap.put("safeCode", safeCode);
-        paramMap.put("card", getFieldValue(apiBaseEntity, "card"));
-        paramMap.put("mac", getFieldValue(apiBaseEntity, "mac"));
-        paramMap.put("token", "");
+    // ★ 1. 动态获取实体类的字段（只包含非空、有值的字段，排除 apiUrl/encryptParams） ★
+    Map<String, Object> allFields = toMap(apiBaseEntity);
+    allFields.remove("apiUrl");
+    allFields.remove("encryptParams");
+    allFields.remove("appId");       // C++ 签名不含 appId
+    allFields.remove("signature");   // 签名自己不算自己
 
-        // 3. DH密钥交换，生成bob
-        try {
-            String serverPubKey = VerifyConfig.verifyConfig.getSecretKey()[0];
-            DHHelper.DHResult dhResult = DHHelper.generateAndDeriveKey(serverPubKey);
-            apiBaseEntity.setBob(dhResult.clientPublicKeyBase64);
-            VerifyConfig.verifyConfig.setCurrentDHKey(dhResult.aesKeyBytes);
+    // ★ 2. DH 密钥交换 ★
+    try {
+        String serverPubKey = VerifyConfig.verifyConfig.getSecretKey()[0];
+        DHHelper.DHResult dhResult = DHHelper.generateAndDeriveKey(serverPubKey);
+        apiBaseEntity.setBob(dhResult.clientPublicKeyBase64);
+        VerifyConfig.verifyConfig.setCurrentDHKey(dhResult.aesKeyBytes);
 
-            // 4. bob加入排序（C++代码：sort_dict_req(params + "&bob=" + bob_hex)）
-            paramMap.put("bob", dhResult.clientPublicKeyBase64);
+        // 3. bob 参与签名（C++ 如此）
+        allFields.put("bob", dhResult.clientPublicKeyBase64);
 
-            // 5. 构建签名原文并计算签名
-            StringBuilder sb = new StringBuilder();
-            for (Map.Entry<String, String> e : paramMap.entrySet()) {
-                sb.append(e.getKey()).append("=").append(e.getValue() == null ? "" : e.getValue()).append("&");
-            }
-            if (sb.length() > 0) sb.setLength(sb.length() - 1);
-            String sortedParams = sb.toString();
-            String signStr = sortedParams + VerifyConfig.verifyConfig.getAppKey();
-            String signature = cn.hutool.crypto.digest.DigestUtil.md5Hex(signStr);
-            apiBaseEntity.setSignature(signature);
-
-            // 6. 构建待加密字符串: params + "&signature=" + md5_str
-            // 注意：待加密的不含appId和bob
-            StringBuilder encryptSb = new StringBuilder();
-            encryptSb.append("card=").append(paramMap.get("card"));
-            encryptSb.append("&mac=").append(paramMap.get("mac"));
-            encryptSb.append("&safeCode=").append(safeCode);
-            encryptSb.append("&timestamp=").append(timestamp);
-            encryptSb.append("&token=").append(paramMap.get("token"));
-            encryptSb.append("&signature=").append(signature);
-            String toEncrypt = encryptSb.toString();
-
-            // 7. DH加密（AES-128-ECB → Base64）
-            String encrypted = EncryptBuilder.builderEncryptParams(toEncrypt, dhResult.aesKeyBytes);
-            apiBaseEntity.setEncryptParams(encrypted);
-
-        } catch (Exception e) {
-            Console.error("DH密钥交换失败: " + e.getMessage());
-            throw new RuntimeException("DH密钥交换失败", e);
+        // 4. ★ ASCII排序签名（同C++ sort_dict_req + app_secret）★
+        Map<String, String> sortedMap = new TreeMap<>();
+        for (Map.Entry<String, Object> e : allFields.entrySet()) {
+            sortedMap.put(e.getKey(), e.getValue() == null ? "" : e.getValue().toString());
         }
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : sortedMap.entrySet()) {
+            sb.append(e.getKey()).append("=").append(e.getValue()).append("&");
+        }
+        if (sb.length() > 0) sb.setLength(sb.length() - 1);
+        String signedStr = sb.toString();
+        String signature = cn.hutool.crypto.digest.DigestUtil.md5Hex(
+            signedStr + VerifyConfig.verifyConfig.getAppKey()
+        );
+        apiBaseEntity.setSignature(signature);
 
-        return apiBaseEntity;
+        // 5. ★ 加密数据 = (除bob外的字段) + &signature=... ★
+        //    C++ 加密的是: 原始params + "&signature=" + md5
+        //    原始params不含bob和appId
+        StringBuilder encryptSb = new StringBuilder();
+        for (Map.Entry<String, String> e : sortedMap.entrySet()) {
+            if (!e.getKey().equals("bob")) {  // bob不加密，仅签名
+                encryptSb.append(e.getKey()).append("=").append(e.getValue()).append("&");
+            }
+        }
+        encryptSb.append("signature=").append(signature);
+        String toEncrypt = encryptSb.toString();
+
+        // 6. DH加密 → Base64
+        String encrypted = EncryptBuilder.builderEncryptParams(toEncrypt, dhResult.aesKeyBytes);
+        apiBaseEntity.setEncryptParams(encrypted);
+
+    } catch (Exception e) {
+        throw new RuntimeException("DH密钥交换失败", e);
     }
+
+    return apiBaseEntity;
+}
+
 
     private static String getFieldValue(ApiBaseEntity entity, String fieldName) {
         try {

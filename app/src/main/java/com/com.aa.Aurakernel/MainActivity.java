@@ -386,14 +386,21 @@ public class MainActivity extends Activity {
   }
 
   private void verifyCardFromServer(final String card, final VerifyCallback callback) {
+    // ★ 先检查缓存：如果这张卡之前查过，直接用缓存
+    if (CacheManager.hasCachedCard(card)) {
+        CacheManager.CardCache cached = CacheManager.getCachedCard(card);
+        runOnUiThread(() -> {
+            if (callback != null) callback.onSuccess(cached.type, cached.endTime, cached.status);
+        });
+        return;
+    }
+
     new Thread(
             new Runnable() {
               @Override
               public void run() {
                 try {
                   SingleInfoEntity req = new SingleInfoEntity(card);
-                  // ===== 补充签名需要的空值字段（服务端方式二需要） ====
-
                   ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
                   cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
                   cn.hutool.json.JSONObject data = entries.getJSONObject("data");
@@ -401,6 +408,10 @@ public class MainActivity extends Activity {
                   final String typeStr = getCardTypeName(typeInt);
                   final String endTime = data.getStr("endTime");
                   final String status = getCardStatus(endTime);
+                  
+                  // ★ 写入缓存
+                  CacheManager.cacheCard(card, typeStr, endTime, status);
+                  
                   runOnUiThread(
                       new Runnable() {
                         @Override
@@ -422,30 +433,44 @@ public class MainActivity extends Activity {
               }
             })
         .start();
-  }
+}
+
 
   private void fetchNoticeFromServer() {
-    new Thread(
-            () -> {
-              try {
-                CommonVariableEntity req = new CommonVariableEntity(null, "1971");
-                ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
-                cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
-                cn.hutool.json.JSONObject data = entries.getJSONObject("data");
-                final String content = data.getStr("variable");
-                runOnUiThread(
-                    () -> {
-                      if (content != null && !content.isEmpty()) {
-                        announcementText.setText(content);
-                      }
-                    });
-              } catch (Exception e) {
-                Log.e("NOTICE", "获取公告失败", e);
-                // 失败时保留默认文字
-              }
-            })
-        .start();
+      // ★ 如果已经有缓存，直接显示，不用请求服务器
+      if (CacheManager.hasAnnouncement()) {
+          announcementText.setText(CacheManager.getCachedAnnouncement());
+          return;
+      }
+
+      new Thread(
+              () -> {
+                try {
+                  CommonVariableEntity req = new CommonVariableEntity(null, "1971");
+                  ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
+                  cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
+                  cn.hutool.json.JSONObject data = entries.getJSONObject("data");
+                  final String content = data.getStr("content");
+                  
+                  // ★ 写入缓存
+                  if (content != null && !content.isEmpty()) {
+                      CacheManager.setCachedAnnouncement(content);
+                  }
+                  
+                  runOnUiThread(
+                      () -> {
+                        if (content != null && !content.isEmpty()) {
+                          announcementText.setText(content);
+                        }
+                      });
+                } catch (Exception e) {
+                  Log.e("NOTICE", "获取公告失败", e);
+                }
+              })
+          .start();
   }
+
+
 
   private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
     if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
@@ -3503,7 +3528,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanLowRow);
     cleanLowRow.setOnClickListener(
         v -> {
-          runCleanScript("clean_low.sh", "低级清理");
+          runCleanScript("低级清理.sh", "低级清理");
         });
     addDivider(cleanCard);
 
@@ -3512,7 +3537,7 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanMidRow);
     cleanMidRow.setOnClickListener(
         v -> {
-          runCleanScript("clean_mid.sh", "中级清理");
+          runCleanScript("中级清理.sh", "中级清理");
         });
     addDivider(cleanCard);
 
@@ -3521,16 +3546,16 @@ public class MainActivity extends Activity {
     cleanCard.addView(cleanHighRow);
     cleanHighRow.setOnClickListener(
         v -> {
-          runCleanScript("clean_high.sh", "高级清理");
+          runCleanScript("高级清理.sh", "高级清理");
         });
     addDivider(cleanCard);
 
-    // 6. 更改ID
-    View changeIdRow = settingRow("更改ID", "修改设备/应用标识ID", "🔢");
+    // 6. 更改 Android ID
+    View changeIdRow = settingRow("更改 Android ID", "修改设备/应用标识ID", "🔢");
     cleanCard.addView(changeIdRow);
     changeIdRow.setOnClickListener(
         v -> {
-          runCleanScript("change_id.sh", "更改ID");
+          runCleanScript("更改 Android ID.sh", "更改 Android ID");
         });
     addDivider(cleanCard);
 
