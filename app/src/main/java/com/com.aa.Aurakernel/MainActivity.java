@@ -12,6 +12,8 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -31,10 +33,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
@@ -49,11 +51,19 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
+// ===== 验证SDK相关 =====
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.verify.sdk.api.CommonVariableEntity;
+import com.verify.sdk.api.SingleInfoEntity;
+import com.verify.sdk.config.ApiBaseEntity;
+import com.verify.sdk.config.VerifyConfig;
+import com.verify.sdk.framework.FrameworkTool;
+import com.verify.sdk.framework.ReqBuilder;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -69,33 +79,27 @@ import java.net.URL;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.widget.ImageView;
-// ===== 验证SDK相关 =====
-import com.verify.sdk.api.SingleInfoEntity;
-import com.verify.sdk.config.ApiBaseEntity;
-import com.verify.sdk.config.VerifyConfig;
-import com.verify.sdk.framework.FrameworkTool;
-import com.verify.sdk.framework.ReqBuilder;
-
-
 
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
   private static Bitmap cachedAvatar = null;
+
   private String getScriptUrl() {
     return StringGuard.get(0);
   }
@@ -139,9 +143,7 @@ public class MainActivity extends Activity {
   private TextView antiRecordBtn, noBackgroundBtn;
 
   private TextView outputView;
-  private ScrollView terminalScroll;
   private Button runButton;
-  private Button stopButton;
   private EditText keyEdit;
 
   private File selectedFile;
@@ -275,96 +277,195 @@ public class MainActivity extends Activity {
         .start();
   }
 
-      // ============================================================
-    // 卡密验证（对接 verify SDK）
-    // ============================================================
-    private void initVerifySdk() {
+  // ============================================================
+  // 卡密验证（对接 verify SDK）
+  // ============================================================
+  private void initVerifySdk() {
     VerifyConfig.verifyConfig.setApiUrl("http://api.jsyz.asia");
     VerifyConfig.verifyConfig.setAppId("3575");
     VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
-    VerifyConfig.verifyConfig.setSecretType(new String[]{"不加密"});
-    VerifyConfig.verifyConfig.setSecretKey(new String[]{""});
+
+    // ★ 改成 DH 模式 ★
+    VerifyConfig.verifyConfig.setSecretType(new String[] {"DH密钥交换加密"});
+    // ★ 填入 C++ 里的 server_public_key ★
+    VerifyConfig.verifyConfig.setSecretKey(
+        new String[] {
+          "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
+        });
     VerifyConfig.verifyConfig.setEncodeType("Base64编码");
-    VerifyConfig.verifyConfig.setReqType("不加密");
-    VerifyConfig.verifyConfig.setResType("不加密");
-    VerifyConfig.verifyConfig.setRandomType("关");
-    VerifyConfig.verifyConfig.setSignType("不计算");
-    VerifyConfig.verifyConfig.setSignRule("不计算");
-    VerifyConfig.verifyConfig.setLocalTimeVerify("0");
-    VerifyConfig.verifyConfig.setLogicCode("1");
+    VerifyConfig.verifyConfig.setReqType("全部加密");
+    VerifyConfig.verifyConfig.setResType("全部加密");
+    VerifyConfig.verifyConfig.setRandomType("开"); // ← C++ 开了随机数
+    VerifyConfig.verifyConfig.setSignType("MD5"); // ← C++ 用 MD5
+    VerifyConfig.verifyConfig.setSignRule("方式二"); // ← C++ 用方式二
+    VerifyConfig.verifyConfig.setLocalTimeVerify("10000");
+    VerifyConfig.verifyConfig.setLogicCode("1"); // ← C++ 的 code==1
     VerifyConfig.verifyConfig.setHeartOpen("关");
-
-    }
-
-    /**
-     * 从服务器验证卡密信息（异步）
-     *
-     * @param card  卡密字符串
-     * @param callback 回调接口（主线程调用）
-     */
-
-    /**
-     * 卡密验证回调接口
-     */
-    private interface VerifyCallback {
-    void onSuccess(String type, String endTime);
-    void onError(String errorMsg);
-    }
-
-    private void verifyCardFromServer(final String card, final VerifyCallback callback) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    SingleInfoEntity req = new SingleInfoEntity(card);
-                            // ===== 补充签名需要的空值字段（服务端方式二需要） ====
-
-                    ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
-                    cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
-                    cn.hutool.json.JSONObject data = entries.getJSONObject("data");
-                    final String typeStr = data.getInt("type") == 0 ? "普通卡密" : "会员卡密";
-                    final String endTime = data.getStr("endTime");
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (callback != null) callback.onSuccess(typeStr, endTime);
-                        }
-                    });
-                                } catch (final Throwable e) {
-                    Log.e("VERIFY_SDK", "卡密验证失败", e);
-                    final String errMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (callback != null) callback.onError(errMsg);
-                        }
-                    });
-                }
-            }
-        }).start();
-    }
-
-    private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
-      if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
-      View child = card.getChildAt(rowIndex);
-      if (child instanceof LinearLayout) {
-          LinearLayout row = (LinearLayout) child;
-          if (row.getChildCount() >= 2) {
-              View valueView = row.getChildAt(1);
-              if (valueView instanceof TextView) {
-                  ((TextView) valueView).setText(newValue);
-              }
-          }
-          if (row.getChildCount() >= 1) {
-              View emojiView = row.getChildAt(0);
-              if (emojiView instanceof TextView) {
-                  ((TextView) emojiView).setText(emoji);
-              }
-          }
-      }
   }
 
+  /**
+   * 从服务器验证卡密信息（异步）
+   *
+   * @param card 卡密字符串
+   * @param callback 回调接口（主线程调用）
+   */
 
+  /** 卡密验证回调接口 */
+  private interface VerifyCallback {
+    void onSuccess(String type, String endTime, String status);
+
+    void onError(String errorMsg);
+  }
+
+  /** 根据 type 整数返回卡密类型名称 */
+  private String getCardTypeName(int type) {
+    switch (type) {
+      case 0:
+        return "小时卡";
+      case 1:
+        return "天卡";
+      case 2:
+        return "周卡";
+      case 3:
+        return "半月卡";
+      case 4:
+        return "月卡";
+      case 5:
+        return "季度卡";
+      case 6:
+        return "半年卡";
+      case 7:
+        return "年卡";
+      case 8:
+        return "永久卡";
+      default:
+        return "次数卡";
+    }
+  }
+
+  /** 根据 endTime 判断卡密状态：正常 / 已到期 */
+  private String getCardStatus(String endTime) {
+    if (endTime == null || endTime.isEmpty()) return "正常";
+    if (endTime.contains("永久")) return "正常";
+    try {
+      // 尝试多种日期格式解析
+      String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd", "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd"};
+      Date endDate = null;
+      for (String fmt : formats) {
+        try {
+          SimpleDateFormat sdf = new SimpleDateFormat(fmt, Locale.getDefault());
+          sdf.setLenient(false);
+          endDate = sdf.parse(endTime);
+          break;
+        } catch (Exception ignored) {
+        }
+      }
+      if (endDate == null) return "正常"; // 无法解析视为正常
+      if (endDate.before(new Date())) return "已到期";
+      return "正常";
+    } catch (Exception e) {
+      return "正常";
+    }
+  }
+
+  private void saveCardToFile(String card) {
+    try {
+      File dir = new File("/storage/emulated/0/AuraKernel");
+      if (!dir.exists()) dir.mkdirs();
+      File file = new File(dir, "Aura.km");
+      BufferedWriter writer =
+          new BufferedWriter(
+              new OutputStreamWriter(new FileOutputStream(file, false)) // false = 覆盖
+              );
+      writer.write(card.trim());
+      writer.close();
+      Log.d("SAVE_CARD", "卡密已写入: " + file.getAbsolutePath());
+    } catch (Exception e) {
+      Log.e("SAVE_CARD", "保存卡密到文件失败", e);
+    }
+  }
+
+  private void verifyCardFromServer(final String card, final VerifyCallback callback) {
+    new Thread(
+            new Runnable() {
+              @Override
+              public void run() {
+                try {
+                  SingleInfoEntity req = new SingleInfoEntity(card);
+                  // ===== 补充签名需要的空值字段（服务端方式二需要） ====
+
+                  ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
+                  cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
+                  cn.hutool.json.JSONObject data = entries.getJSONObject("data");
+                  final int typeInt = data.getInt("type");
+                  final String typeStr = getCardTypeName(typeInt);
+                  final String endTime = data.getStr("endTime");
+                  final String status = getCardStatus(endTime);
+                  runOnUiThread(
+                      new Runnable() {
+                        @Override
+                        public void run() {
+                          if (callback != null) callback.onSuccess(typeStr, endTime, status);
+                        }
+                      });
+                } catch (final Throwable e) {
+                  Log.e("VERIFY_SDK", "卡密验证失败", e);
+                  final String errMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
+                  runOnUiThread(
+                      new Runnable() {
+                        @Override
+                        public void run() {
+                          if (callback != null) callback.onError(errMsg);
+                        }
+                      });
+                }
+              }
+            })
+        .start();
+  }
+
+  private void fetchNoticeFromServer() {
+    new Thread(
+            () -> {
+              try {
+                CommonVariableEntity req = new CommonVariableEntity(null, "1971");
+                ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
+                cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
+                cn.hutool.json.JSONObject data = entries.getJSONObject("data");
+                final String content = data.getStr("variable");
+                runOnUiThread(
+                    () -> {
+                      if (content != null && !content.isEmpty()) {
+                        announcementText.setText(content);
+                      }
+                    });
+              } catch (Exception e) {
+                Log.e("NOTICE", "获取公告失败", e);
+                // 失败时保留默认文字
+              }
+            })
+        .start();
+  }
+
+  private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
+    if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
+    View child = card.getChildAt(rowIndex);
+    if (child instanceof LinearLayout) {
+      LinearLayout row = (LinearLayout) child;
+      if (row.getChildCount() >= 3) {
+        View valueView = row.getChildAt(2); // ← 改成 index 2 = 右边的值
+        if (valueView instanceof TextView) {
+          ((TextView) valueView).setText(newValue);
+        }
+      }
+      if (row.getChildCount() >= 1) {
+        View emojiView = row.getChildAt(0);
+        if (emojiView instanceof TextView) {
+          ((TextView) emojiView).setText(emoji);
+        }
+      }
+    }
+  }
 
   // ===== 在 onCreate 里启动心跳（跟 reportToDashboard 放一起） =====
   private Handler heartbeatHandler = new Handler();
@@ -601,21 +702,29 @@ public class MainActivity extends Activity {
     scrollLp.setMargins(0, 0, 0, dp(16));
     rootLayout.addView(scrollView, scrollLp);
 
-    // 底部按钮
+    // ===================== 底部功能按钮栏（4按钮：停止/清除/复制/关闭） =====================
     LinearLayout bottomBar = new LinearLayout(this);
     bottomBar.setOrientation(LinearLayout.HORIZONTAL);
     bottomBar.setGravity(Gravity.CENTER);
     bottomBar.setPadding(dp(4), 0, dp(4), 0);
 
-    Button clearBtn = createModernButton("清除日志", Color.rgb(100, 149, 237));
-    Button copyBtn = createModernButton("复制输出", Color.rgb(81, 191, 101));
-    Button closeBottomBtn = createModernButton("关闭", Color.rgb(255, 80, 80));
+    // 停止按钮（局部按钮）
+    final Button stopBtn = createModernButton("停止", Color.rgb(255, 80, 80));
+    // 清除日志按钮
+    final Button clearBtn = createModernButton("清除日志", Color.rgb(100, 149, 237));
+    // 复制输出按钮
+    final Button copyBtn = createModernButton("复制输出", Color.rgb(81, 191, 101));
+    // 关闭按钮
+    final Button closeBottomBtn = createModernButton("关闭", Color.rgb(200, 200, 200));
 
+    // 按钮布局权重
     LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(50), 1);
     btnLp.setMargins(dp(6), 0, dp(6), 0);
+    bottomBar.addView(stopBtn, btnLp);
     bottomBar.addView(clearBtn, btnLp);
     bottomBar.addView(copyBtn, btnLp);
     bottomBar.addView(closeBottomBtn, btnLp);
+
     rootLayout.addView(bottomBar, new LinearLayout.LayoutParams(-1, -2));
 
     // 显示弹窗
@@ -688,37 +797,45 @@ public class MainActivity extends Activity {
 
                 cleanPost.accept("📂 脚本路径: " + scriptFile.getAbsolutePath() + "\n");
                 cleanPost.accept("⏳ 正在执行，请稍候...\n\n");
+                cleanPost.accept("🔑 尝试获取Root权限执行...\n");
 
-                cleanPost("🔑 尝试获取Root权限执行...\n");
                 Process process =
-                    Runtime.getRuntime().exec("su -c sh " + scriptFile.getAbsolutePath());
+                    new ProcessBuilder("su", "-c", "sh", scriptFile.getAbsolutePath())
+                        .redirectErrorStream(true)
+                        .start();
 
                 BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream()));
                 String line;
+                // 用超时机制读取
+                long deadline = System.currentTimeMillis() + 120_000; // 2分钟超时
                 while ((line = reader.readLine()) != null) {
                   cleanPost.accept("  " + line + "\n");
+                  if (System.currentTimeMillis() > deadline) {
+                    cleanPost.accept("\n⏰ 执行超时，强制终止\n");
+                    process.destroy();
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      process.destroyForcibly();
+                    }
+                    break;
+                  }
                 }
 
-                BufferedReader errorReader =
-                    new BufferedReader(new InputStreamReader(process.getErrorStream()));
-                while ((line = errorReader.readLine()) != null) {
-                  cleanPost.accept("  ⚠️ " + line + "\n");
-                }
-
-                int exitCode = process.waitFor();
-                reader.close();
-                errorReader.close();
-
-                cleanPost.accept("\n");
-                if (exitCode == 0) {
-                  cleanPost.accept("✅ " + displayName + " 执行完成 (退出码: " + exitCode + ")\n");
-                } else {
-                  cleanPost.accept("❌ " + displayName + " 执行失败 (退出码: " + exitCode + ")\n");
+                if (System.currentTimeMillis() <= deadline) {
+                  int exitCode = process.waitFor();
+                  cleanPost.accept(
+                      "\n"
+                          + (exitCode == 0 ? "✅" : "❌")
+                          + " "
+                          + displayName
+                          + " 执行"
+                          + (exitCode == 0 ? "完成" : "失败")
+                          + " (退出码: "
+                          + exitCode
+                          + ")\n");
                 }
               } catch (Exception e) {
                 cleanPost.accept("❌ 执行异常: " + e.getMessage() + "\n");
-                e.printStackTrace();
               }
             })
         .start();
@@ -829,7 +946,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-        initVerifySdk();
+    initVerifySdk();
     if (!SignatureGuard.isSignatureValid(this)) {
       // 签名不匹配，APK 被篡改过，直接退出
       finish();
@@ -1485,13 +1602,13 @@ public class MainActivity extends Activity {
                 }
 
                 // 保存哈希供运行时校验
-               final String hashToSave = serverScriptHash;
-handler.post(
-    () -> {
-      SharedPreferences.Editor editor =
-          getSharedPreferences(PREFS, MODE_PRIVATE).edit();
-      editor.putString("expected_script_hash", hashToSave);
-      editor.apply();
+                final String hashToSave = serverScriptHash;
+                handler.post(
+                    () -> {
+                      SharedPreferences.Editor editor =
+                          getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+                      editor.putString("expected_script_hash", hashToSave);
+                      editor.apply();
 
                       selectedFile = scriptFile;
                       selectedName = SCRIPT_NAME;
@@ -1686,14 +1803,13 @@ handler.post(
   }
 
   private int getStatusBarHeight() {
-  int result = 0;
-  int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-  if (resourceId > 0) {
-    result = getResources().getDimensionPixelSize(resourceId);
+    int result = 0;
+    int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+    if (resourceId > 0) {
+      result = getResources().getDimensionPixelSize(resourceId);
+    }
+    return result;
   }
-  return result;
-}
-
 
   private View createHomePage() {
     // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
@@ -1722,7 +1838,6 @@ handler.post(
     // 异步加载随机头像
     loadRandomAvatar(avatarView);
 
-
     LinearLayout ht = new LinearLayout(this);
     ht.setOrientation(LinearLayout.VERTICAL);
     LinearLayout.LayoutParams htlp = new LinearLayout.LayoutParams(0, -2, 1);
@@ -1742,12 +1857,17 @@ handler.post(
     cardAnnounce.setBackground(round(cardColor(), 24, borderColor(), 1));
     page.addView(cardAnnounce, lp(-1, -2, 0, 0, 0, dp(14)));
 
+    // 公告标题
     TextView announceTitle = text("📢 公告", 15, textColor(), Typeface.BOLD);
     cardAnnounce.addView(announceTitle, lp(-1, -2, 0, 0, 0, dp(8)));
 
-    announcementText = text("欢迎使用 AuraKernel！请先输入卡密并选择驱动后运行。", 13, subTextColor(), Typeface.NORMAL);
+    // 先用"加载中..."占位
+    announcementText = text("⏳ 加载中...", 13, subTextColor(), Typeface.NORMAL);
     announcementText.setLineSpacing(dp(4), 1f);
     cardAnnounce.addView(announcementText, lp(-1, -2, 0, 0, 0, 0));
+
+    // 异步获取公告
+    fetchNoticeFromServer();
 
     // 1. 卡密模块 - 独立卡片
     LinearLayout cardKey = new LinearLayout(this);
@@ -1759,6 +1879,10 @@ handler.post(
     TextView keyTitle = text("卡密", 15, textColor(), Typeface.BOLD);
     cardKey.addView(keyTitle, lp(-1, -2, 0, 0, 0, dp(8)));
 
+    // ★ 输入框 + 验证按钮 组合（用FrameLayout叠加）★
+    FrameLayout inputFrame = new FrameLayout(this);
+    inputFrame.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(42)));
+
     keyEdit = new EditText(this);
     keyEdit.setSingleLine(true);
     keyEdit.setTextSize(14);
@@ -1766,107 +1890,89 @@ handler.post(
     keyEdit.setHintTextColor(subTextColor());
     keyEdit.setHint("输入卡密");
     keyEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-    keyEdit.setPadding(dp(12), dp(8), dp(12), dp(8));
+    keyEdit.setPadding(dp(12), dp(8), dp(62), dp(8)); // ★ 右边留出按钮空间 ★
     keyEdit.setBackground(round(cardColor(), 12, borderColor(), 1));
     String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
     if (!savedKey.isEmpty()) keyEdit.setText(savedKey);
-    cardKey.addView(keyEdit, lp(-1, -2, 0, dp(6), 0, 0));
+    inputFrame.addView(keyEdit, new FrameLayout.LayoutParams(-1, -1));
 
-        // ====== 卡密验证按钮 + 状态提示 ======
-    LinearLayout keyBtnRow = new LinearLayout(this);
-    keyBtnRow.setOrientation(LinearLayout.HORIZONTAL);
-    keyBtnRow.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
-    cardKey.addView(keyBtnRow, lp(-1, -2, 0, dp(8), 0, 0));
-
+    // ★ 验证按钮放在输入框内右侧 ★
     final Button verifyBtn = new Button(this);
-    verifyBtn.setText("✅ 验证卡密");
-    verifyBtn.setTextSize(13);
+    verifyBtn.setText("验证");
+    verifyBtn.setTextSize(12);
     verifyBtn.setTextColor(Color.WHITE);
-    verifyBtn.setPadding(dp(16), dp(0), dp(16), dp(0));
-    verifyBtn.setBackground(round(Color.rgb(22, 119, 255), 10, 0, 0));
-    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-2, dp(36));
-    keyBtnRow.addView(verifyBtn, btnLp);
+    verifyBtn.setPadding(dp(10), 0, dp(10), 0);
+    verifyBtn.setBackground(round(Color.rgb(22, 119, 255), 8, 0, 0));
+    FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(-2, dp(30));
+    btnLp.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
+    btnLp.setMargins(0, 0, dp(4), 0);
+    inputFrame.addView(verifyBtn, btnLp);
 
+    cardKey.addView(inputFrame, lp(-1, -2, 0, dp(6), 0, 0));
+
+    // ★ 状态提示文字 ★
     final TextView keyStatus = new TextView(this);
     keyStatus.setTextSize(12);
-    keyStatus.setGravity(Gravity.CENTER_VERTICAL);
-    keyStatus.setPadding(dp(12), 0, 0, 0);
+    keyStatus.setPadding(dp(4), dp(4), 0, 0);
     String stsKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
-    if (!stsKey.isEmpty()) keyStatus.setText("✅ 已保存"); else keyStatus.setText("");
+    if (!stsKey.isEmpty()) keyStatus.setText("✅ 已保存");
     keyStatus.setTextColor(subTextColor());
-    LinearLayout.LayoutParams stsLp = new LinearLayout.LayoutParams(0, -2, 1f);
-    keyBtnRow.addView(keyStatus, stsLp);
+    cardKey.addView(keyStatus, lp(-1, -2, 0, dp(4), 0, 0));
 
     // 验证按钮点击事件
-    verifyBtn.setOnClickListener(new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
+    verifyBtn.setOnClickListener(
+        new View.OnClickListener() {
+          @Override
+          public void onClick(View v) {
             final String card = keyEdit.getText().toString().trim();
             if (card.isEmpty()) {
-                Toast.makeText(MainActivity.this, "请先输入卡密", Toast.LENGTH_SHORT).show();
-                return;
+              Toast.makeText(MainActivity.this, "请先输入卡密", Toast.LENGTH_SHORT).show();
+              return;
             }
+            saveCardToFile(card);
             verifyBtn.setEnabled(false);
-            verifyBtn.setText("⏳ 验证中...");
+            verifyBtn.setText("...");
             keyStatus.setText("⏳ 验证中...");
 
-            verifyCardFromServer(card, new VerifyCallback() {
-                @Override
-                public void onSuccess(String type, String endTime) {
-                    verifyBtn.setText("✅ 已验证");
+            verifyCardFromServer(
+                card,
+                new VerifyCallback() {
+                  @Override
+                  public void onSuccess(String type, String endTime, String status) {
+                    verifyBtn.setText("✓");
                     verifyBtn.setEnabled(true);
-                    keyStatus.setText("✅ " + type + " | " + endTime);
-                    // 保存卡密
+                    keyStatus.setText("✅ " + type + " | " + status + " | " + endTime);
                     getSharedPreferences(PREFS, MODE_PRIVATE)
-                        .edit().putString("key_value", card).apply();
-                }
+                        .edit()
+                        .putString("key_value", card)
+                        .apply();
+                    // ★ 写入 Aura.km ★
+                    saveCardToFile(card);
+                  }
 
-                @Override
-                public void onError(String errorMsg) {
-                    verifyBtn.setText("❌ 重试");
-                    verifyBtn.setEnabled(true);
-                    keyStatus.setText("❌ " + errorMsg);
-                }
-            });
-        }
-    });
-
-    // ====== 从文件读取卡密 ======
-    Button readFileBtn = new Button(this);
-    readFileBtn.setText("📂 从文件读取");
-    readFileBtn.setTextSize(12);
-    readFileBtn.setTextColor(subTextColor());
-    readFileBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
-    readFileBtn.setBackground(round(cardColor(), 10, borderColor(), 1));
-    LinearLayout.LayoutParams rfLp = new LinearLayout.LayoutParams(-2, dp(34));
-    rfLp.topMargin = dp(6);
-    cardKey.addView(readFileBtn, rfLp);
-
-    readFileBtn.setOnClickListener(new View.OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            try {
-                File kmFile = new File(Environment.getExternalStorageDirectory()
-                    .getAbsolutePath() + "/AuraKernel/Aura.km");
-                if (!kmFile.exists()) {
-                    Toast.makeText(MainActivity.this, "文件不存在: " + kmFile.getPath(), Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(kmFile)));
-                String fileCard = reader.readLine();
-                reader.close();
-                if (fileCard != null && !fileCard.trim().isEmpty()) {
-                    keyEdit.setText(fileCard.trim());
-                    keyStatus.setText("📂 已读取文件");
-                } else {
-                    Toast.makeText(MainActivity.this, "文件中没有卡密", Toast.LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "读取失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        }
-    });
-
+                  @Override
+                  public void onError(String errorMsg) {
+                    // ★ 判断是不是"未激活" ★
+                    if (errorMsg != null && errorMsg.contains("未激活")) {
+                      // 保存卡密到文件
+                      saveCardToFile(card);
+                      // 也保存到 SharedPreferences
+                      getSharedPreferences(PREFS, MODE_PRIVATE)
+                          .edit()
+                          .putString("key_value", card)
+                          .apply();
+                      verifyBtn.setText("✓");
+                      verifyBtn.setEnabled(true);
+                      keyStatus.setText("💡 卡密已保存，请点击「运行」激活");
+                    } else {
+                      verifyBtn.setText("重试");
+                      verifyBtn.setEnabled(true);
+                      keyStatus.setText("❌ " + errorMsg);
+                    }
+                  }
+                });
+          }
+        });
 
     // 2. 驱动选择模块 - 独立卡片（横向滑动版）
     LinearLayout cardDriver = new LinearLayout(this);
@@ -1950,7 +2056,7 @@ handler.post(
     bgRow.addView(noBackgroundBtn, new LinearLayout.LayoutParams(dp(64), dp(32)));
     noBackgroundBtn.setOnClickListener(v -> toggleNoBackground());
 
-    // 4. 运行/停止按钮 模块 - 独立卡片
+    // 4. 运行按钮 模块 - 独立卡片
     LinearLayout cardRun = new LinearLayout(this);
     cardRun.setOrientation(LinearLayout.VERTICAL);
     cardRun.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -1962,121 +2068,70 @@ handler.post(
     cardRun.addView(runRow, lp(-1, dp(48), 0, 0, 0, 0));
 
     runButton = button("直接运行", true);
-    stopButton = button("停止", false);
-    runRow.addView(runButton, new LinearLayout.LayoutParams(0, -1, 1));
-    LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(88), -1);
-    slp.setMargins(dp(10), 0, 0, 0);
-    runRow.addView(stopButton, slp);
-    stopButton.setVisibility(View.GONE);
+    runRow.addView(runButton, new LinearLayout.LayoutParams(-1, -1));
 
     runButton.setOnClickListener(v -> runSelectedFile());
-    stopButton.setOnClickListener(v -> stopRunningProcess(true));
     // ====================== 拆分结束 ======================
 
-    // ====================== 终端固定窗口大小（380dp × 240dp） ======================
-    terminalScroll = new ScrollView(this);
-    terminalScroll.setFillViewport(true);
-    // 禁止横向滚动，确保文字自动换行
-    terminalScroll.setHorizontalScrollBarEnabled(false);
-    terminalScroll.setVerticalScrollBarEnabled(false);
-    terminalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-
-    // 毛玻璃效果背景（半透明磨砂+圆角）+ 科技绿细边框
-    GradientDrawable terminalBg =
-        new GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[] {Color.argb(180, 10, 15, 22), Color.argb(160, 5, 8, 12)});
-    terminalBg.setCornerRadius(dp(18));
-    terminalBg.setStroke(dp(1), Color.argb(30, 81, 191, 101));
-    terminalScroll.setBackground(terminalBg);
-
-    outputView = text(outputBuffer.toString(), 12, Color.rgb(81, 191, 101), Typeface.NORMAL);
-    outputView.setTypeface(Typeface.MONOSPACE);
-    outputView.getPaint().setAntiAlias(true);
-    outputView.setLineSpacing(dp(4), 1.0f);
-    outputView.setLetterSpacing(0.02f);
-    outputView.setPadding(dp(16), dp(16), dp(16), dp(16));
-    // 强制文字在固定宽度内自动换行
-    outputView.setSingleLine(false);
-    outputView.setHorizontallyScrolling(false);
-
-    terminalScroll.addView(outputView, new ScrollView.LayoutParams(-1, -2));
-
-    // ✅ 核心：固定宽高 + 水平居中
-    // 可直接修改以下两个数值调整终端大小（单位：dp）
-    int TERMINAL_WIDTH = 380; // 固定宽度
-    int TERMINAL_HEIGHT = 200; // 固定高度
-
-    // 小屏保护：如果屏幕宽度小于设定值，则自动占满屏幕宽度
-    DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
-    float screenWidthDp = displayMetrics.widthPixels / displayMetrics.density;
-    int finalWidth =
-        screenWidthDp < TERMINAL_WIDTH
-            ? LinearLayout.LayoutParams.MATCH_PARENT
-            : dp(TERMINAL_WIDTH);
-
-    LinearLayout.LayoutParams terminalLp =
-        new LinearLayout.LayoutParams(finalWidth, dp(TERMINAL_HEIGHT));
-    terminalLp.gravity = Gravity.CENTER_HORIZONTAL; // 水平居中
-    terminalLp.setMargins(0, dp(14), 0, 0); // 顶部间距与其他卡片统一
-    page.addView(terminalScroll, terminalLp);
-
     updateRunButton();
-    scrollTerminalBottom();
     // 【最后】返回外层滚动容器，而非原page
     return rootScroll;
   }
 
   private void loadRandomAvatar(final ImageView imageView) {
-  // ★ 如果已经有缓存，直接显示，不再请求网络
-  if (cachedAvatar != null) {
-imageView.setImageBitmap(getCircularBitmap(cachedAvatar));
-imageView.setBackground(null);
-    return;
+    // ★ 如果已经有缓存，直接显示，不再请求网络
+    if (cachedAvatar != null) {
+      imageView.setImageBitmap(getCircularBitmap(cachedAvatar));
+      imageView.setBackground(null);
+      return;
+    }
+
+    final String avatarUrl = StringGuard.get(9);
+    if (avatarUrl.isEmpty()) return;
+
+    new Thread(
+            () -> {
+              try {
+                URL url = new URL(avatarUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                Bitmap bitmap = BitmapFactory.decodeStream(conn.getInputStream());
+                conn.disconnect();
+
+                if (bitmap != null) {
+                  // ★ 存入缓存
+                  cachedAvatar = bitmap;
+
+                  runOnUiThread(
+                      () -> {
+                        imageView.setImageBitmap(getCircularBitmap(bitmap));
+                        imageView.setBackground(null);
+                      });
+                }
+              } catch (Exception e) {
+                Log.w("AVATAR", "加载头像失败: " + e.getMessage());
+              }
+            })
+        .start();
   }
 
-  final String avatarUrl = StringGuard.get(9);
-  if (avatarUrl.isEmpty()) return;
-
-  new Thread(
-      () -> {
-        try {
-          URL url = new URL(avatarUrl);
-          HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-          conn.setConnectTimeout(8000);
-          conn.setReadTimeout(8000);
-          Bitmap bitmap = BitmapFactory.decodeStream(conn.getInputStream());
-          conn.disconnect();
-
-          if (bitmap != null) {
-            // ★ 存入缓存
-            cachedAvatar = bitmap;
-
-            runOnUiThread(
-                () -> {
-imageView.setImageBitmap(getCircularBitmap(bitmap));
-imageView.setBackground(null);
-                });
-          }
-        } catch (Exception e) {
-          Log.w("AVATAR", "加载头像失败: " + e.getMessage());
-        }
-      })
-      .start();
-}
-
-private Bitmap getCircularBitmap(Bitmap bitmap) {
-  int size = Math.min(bitmap.getWidth(), bitmap.getHeight());
-  float r = size / 2f;
-  Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-  Canvas canvas = new Canvas(output);
-  Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-  canvas.drawCircle(r, r, r, paint);
-  paint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN));
-  canvas.drawBitmap(bitmap, new android.graphics.Rect(0, 0, size, size), new android.graphics.RectF(0, 0, size, size), paint);
-  return output;
-}
-
+  private Bitmap getCircularBitmap(Bitmap bitmap) {
+    int size = Math.min(bitmap.getWidth(), bitmap.getHeight());
+    float r = size / 2f;
+    Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+    Canvas canvas = new Canvas(output);
+    Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    canvas.drawCircle(r, r, r, paint);
+    paint.setXfermode(
+        new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN));
+    canvas.drawBitmap(
+        bitmap,
+        new android.graphics.Rect(0, 0, size, size),
+        new android.graphics.RectF(0, 0, size, size),
+        paint);
+    return output;
+  }
 
   // 驱动选项按钮样式
   private TextView driverOptionButton(String text, boolean active) {
@@ -3029,22 +3084,25 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
     scrollLp.setMargins(0, 0, 0, dp(16));
     rootLayout.addView(scrollView, scrollLp);
 
-    // ===================== 底部功能按钮栏（3按钮：停止/清除/复制） =====================
+    // ===================== 底部功能按钮栏（4按钮：停止/清除/复制/关闭） =====================
     LinearLayout bottomBar = new LinearLayout(this);
     bottomBar.setOrientation(LinearLayout.HORIZONTAL);
     bottomBar.setGravity(Gravity.CENTER);
     bottomBar.setPadding(dp(4), 0, dp(4), 0);
 
+    // 停止按钮（局部按钮）
+    final Button stopBtn = createModernButton("停止", Color.rgb(255, 80, 80));
     // 清除日志按钮
     final Button clearBtn = createModernButton("清除日志", Color.rgb(100, 149, 237));
     // 复制输出按钮
     final Button copyBtn = createModernButton("复制输出", Color.rgb(81, 191, 101));
     // 关闭按钮
-    final Button closeBottomBtn = createModernButton("关闭", Color.rgb(255, 80, 80));
+    final Button closeBottomBtn = createModernButton("关闭", Color.rgb(200, 200, 200));
 
     // 按钮布局权重
     LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(50), 1);
     btnLp.setMargins(dp(6), 0, dp(6), 0);
+    bottomBar.addView(stopBtn, btnLp);
     bottomBar.addView(clearBtn, btnLp);
     bottomBar.addView(copyBtn, btnLp);
     bottomBar.addView(closeBottomBtn, btnLp);
@@ -3080,7 +3138,7 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
     final StringBuilder outputBuffer = new StringBuilder();
 
     // 停止按钮
-    stopButton.setOnClickListener(
+    stopBtn.setOnClickListener(
         v -> {
           isRunning[0] = false;
           try {
@@ -3207,10 +3265,10 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
                 handler.post(
                     () -> {
                       appendTerminalText(outputView, outputBuffer, exitMsg, scrollView);
-                      stopButton.post(
+                      stopBtn.post(
                           () -> {
-                            stopButton.setText("运行结束");
-                            stopButton.setEnabled(false);
+                            stopBtn.setText("运行结束");
+                            stopBtn.setEnabled(false);
                           });
                     });
 
@@ -3290,7 +3348,7 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
     boolean hasKey = !savedKey.isEmpty();
 
     // 1. 卡密卡号（已打码）
-    String kamiNumber = hasKey ? savedKey.substring(0, Math.min(4, savedKey.length())) + "****" : "暂无";
+    String kamiNumber = hasKey ? savedKey : "暂无";
     View rowNumber = sysInfoRow("卡密卡号", kamiNumber, "🔑");
     kamiInfoCard.addView(rowNumber);
     addDivider(kamiInfoCard);
@@ -3323,24 +3381,24 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
 
     // ===== 如果有卡密，异步从服务器拉取 =====
     if (hasKey) {
-        verifyCardFromServer(savedKey, new VerifyCallback() {
+      verifyCardFromServer(
+          savedKey,
+          new VerifyCallback() {
             @Override
-            public void onSuccess(String type, String endTime) {
-                // 更新 "卡密状态" → ✅ 已验证
-                updateRowValue(kamiInfoCard, 1, "✅ 已验证", "📌");
-                // 更新 "卡密类型"
-                updateRowValue(kamiInfoCard, 2, type, "🏷️");
-                // 更新 "到期时间"
-                updateRowValue(kamiInfoCard, 3, endTime, "📅");
+            public void onSuccess(String type, String endTime, String status) {
+              // status: "正常" 显示绿色, "已到期" 显示红色
+              String statusDisplay = status.equals("已到期") ? "❌ 已到期" : "✅ 正常";
+              updateRowValue(kamiInfoCard, 2, statusDisplay, "📌"); // 卡密状态
+              updateRowValue(kamiInfoCard, 4, type, "🏷️"); // 卡密类型
+              updateRowValue(kamiInfoCard, 6, endTime, "📅"); // 到期时间
             }
 
             @Override
             public void onError(String errorMsg) {
-                updateRowValue(kamiInfoCard, 1, "❌ " + errorMsg, "📌");
+              updateRowValue(kamiInfoCard, 2, "❌ " + errorMsg, "📌"); // index 2 = 卡密状态行
             }
-        });
+          });
     }
-
 
     // ====================== 【修改后】系统信息模块（保留左图标 + 无右箭头） ======================
     LinearLayout sysInfoCard = new LinearLayout(this);
@@ -3615,7 +3673,7 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
 
     // ===== 🛡️ 运行前再校验一次签名 =====
     if (!SignatureGuard.isSignatureValid(this)) {
-      append("❌ 应用签名校验失败，已阻止执行\n");
+      Toast.makeText(this, "❌ 应用签名校验失败", Toast.LENGTH_SHORT).show();
       return;
     }
     // ====================================
@@ -3631,87 +3689,453 @@ private Bitmap getCircularBitmap(Bitmap bitmap) {
 
     if (running) return;
 
-  // ================= 🛡️ 运行时哈希校验 =================
-// 只校验一次，从 prefs 读取服务端下发的哈希
-SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-String expectedHash = prefs.getString("expected_script_hash", "");
+    // ================= 🛡️ 运行时哈希校验 =================
+    SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+    String expectedHash = prefs.getString("expected_script_hash", "");
 
-if (!expectedHash.isEmpty()) {
-  try {
-    String localHash = getFileSha256(selectedFile);
-    if (!localHash.equals(expectedHash)) {
-      append("ℹ️ 检测到脚本已更新，正在重新获取...\n");
-      selectedFile.delete();
-      selectedFile = null;
-      scriptReady = false;
-      updateRunButton();
-      prepareScriptIfNeeded();  // 重新下载
-      return;
+    if (!expectedHash.isEmpty()) {
+      try {
+        String localHash = getFileSha256(selectedFile);
+        if (!localHash.equals(expectedHash)) {
+          append("ℹ️ 检测到脚本已更新，正在重新获取...\n");
+          selectedFile.delete();
+          selectedFile = null;
+          scriptReady = false;
+          updateRunButton();
+          prepareScriptIfNeeded(); // 重新下载
+          return;
+        }
+      } catch (Exception e) {
+        Toast.makeText(this, "❌ 无法校验文件完整性", Toast.LENGTH_SHORT).show();
+        return;
+      }
     }
-  } catch (Exception e) {
-    append("❌ 无法校验文件完整性: " + e.getMessage() + "\n");
-    return;
-  }
-} else {
-  append("⚠️ 跳过校验（首次运行或网络不可用）\n");
-}
-    // ==========================================================
 
-    outputBuffer.setLength(0);
-    if (outputView != null) outputView.setText("");
+    // 使用弹窗终端运行
+    showHomeTerminalDialog();
+  }
+
+  // ===================== 主页弹窗终端（类似驱动页风格） =====================
+  private void showHomeTerminalDialog() {
+    // 现代圆角透明Dialog主题
+    final Dialog dialog = new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
+
+    // ===================== 根布局：现代圆角卡片 + 深色渐变背景 =====================
+    LinearLayout rootLayout = new LinearLayout(this);
+    rootLayout.setOrientation(LinearLayout.VERTICAL);
+    GradientDrawable terminalBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {Color.rgb(12, 16, 24), Color.rgb(8, 10, 16)});
+    terminalBg.setCornerRadius(dp(24));
+    rootLayout.setBackground(terminalBg);
+    rootLayout.setPadding(dp(16), dp(48), dp(16), dp(24));
+
+    dialog.setContentView(rootLayout);
+    Window window = dialog.getWindow();
+    if (window != null) {
+      WindowManager.LayoutParams lp = window.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      window.setAttributes(lp);
+      window.setWindowAnimations(android.R.style.Animation_Translucent);
+    }
+
+    // ===================== 现代半透标题栏 =====================
+    LinearLayout titleBar = new LinearLayout(this);
+    titleBar.setOrientation(LinearLayout.HORIZONTAL);
+    titleBar.setPadding(dp(20), dp(14), dp(20), dp(14));
+    titleBar.setGravity(Gravity.CENTER_VERTICAL);
+    GradientDrawable titleBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {Color.argb(40, 255, 255, 255), Color.argb(20, 255, 255, 255)});
+    titleBg.setCornerRadius(dp(16));
+    titleBar.setBackground(titleBg);
+
+    // 标题
+    TextView titleText = new TextView(this);
+    titleText.setText("⚡ 脚本执行终端");
+    titleText.setTextSize(18);
+    titleText.setTextColor(Color.WHITE);
+    titleText.setTypeface(Typeface.DEFAULT_BOLD);
+    LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -2, 1);
+    titleBar.addView(titleText, titleLp);
+
+    // 文件名（霓虹绿高亮）
+    TextView fileNameText = new TextView(this);
+    fileNameText.setText(selectedFile != null ? selectedFile.getName() : "");
+    fileNameText.setTextSize(12);
+    fileNameText.setTextColor(Color.rgb(81, 191, 101));
+    fileNameText.setSingleLine(true);
+    fileNameText.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+    fileNameText.setTypeface(Typeface.MONOSPACE);
+    LinearLayout.LayoutParams fileLp = new LinearLayout.LayoutParams(0, -2, 1);
+    fileLp.setMargins(dp(8), 0, dp(8), 0);
+    titleBar.addView(fileNameText, fileLp);
+
+    // 关闭按钮
+    Button closeBtn = new Button(this);
+    closeBtn.setText("✕");
+    closeBtn.setTextSize(16);
+    closeBtn.setTextColor(Color.WHITE);
+    closeBtn.setBackground(round(Color.argb(60, 255, 80, 80), 100, 0, 0));
+    closeBtn.setPadding(dp(2), 0, dp(2), 0);
+    closeBtn.setOnClickListener(
+        v -> {
+          dialog.dismiss();
+          running = false;
+          updateRunButton();
+        });
+    LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(dp(36), dp(36));
+    titleBar.addView(closeBtn, closeLp);
+
+    LinearLayout.LayoutParams titleBarLp = new LinearLayout.LayoutParams(-1, -2);
+    titleBarLp.setMargins(0, 0, 0, dp(16));
+    rootLayout.addView(titleBar, titleBarLp);
+
+    // ===================== 终端输出区域 =====================
+    final ScrollView scrollView = new ScrollView(this);
+    scrollView.setFillViewport(true);
+    scrollView.setBackground(round(Color.rgb(5, 8, 12), 16, 0, 0));
+    scrollView.setPadding(dp(16), dp(16), dp(16), dp(16));
+    scrollView.setVerticalScrollBarEnabled(false);
+
+    final TextView outputView = new TextView(this);
+    outputView.setTextSize(13);
+    outputView.setTextColor(Color.rgb(220, 240, 225));
+    outputView.setTypeface(Typeface.MONOSPACE);
+    outputView.setLineSpacing(dp(4), 1.0f);
+    outputView.setText(
+        "▶ 准备执行：" + (selectedFile != null ? selectedFile.getName() : "") + "\n▶ 等待Root权限授权...\n");
+    scrollView.addView(outputView);
+
+    LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(-1, 0, 1);
+    scrollLp.setMargins(0, 0, 0, dp(16));
+    rootLayout.addView(scrollView, scrollLp);
+
+    // ===================== 底部功能按钮栏（4按钮：停止/清除/复制/关闭） =====================
+    LinearLayout bottomBar = new LinearLayout(this);
+    bottomBar.setOrientation(LinearLayout.HORIZONTAL);
+    bottomBar.setGravity(Gravity.CENTER);
+    bottomBar.setPadding(dp(4), 0, dp(4), 0);
+
+    // 停止按钮（局部按钮，不再使用类级字段）
+    final Button stopBtn = createModernButton("停止", Color.rgb(255, 80, 80));
+    // 清除日志按钮
+    final Button clearBtn = createModernButton("清除日志", Color.rgb(100, 149, 237));
+    // 复制输出按钮
+    final Button copyBtn = createModernButton("复制输出", Color.rgb(81, 191, 101));
+    // 关闭按钮
+    final Button closeBottomBtn = createModernButton("关闭", Color.rgb(200, 200, 200));
+
+    // 按钮布局权重
+    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(50), 1);
+    btnLp.setMargins(dp(6), 0, dp(6), 0);
+    bottomBar.addView(stopBtn, btnLp);
+    bottomBar.addView(clearBtn, btnLp);
+    bottomBar.addView(copyBtn, btnLp);
+    bottomBar.addView(closeBottomBtn, btnLp);
+
+    rootLayout.addView(bottomBar, new LinearLayout.LayoutParams(-1, -2));
+
+    closeBottomBtn.setOnClickListener(v -> dialog.dismiss());
+
+    // ===================== 执行逻辑 =====================
+    final Process[] processHolder = new Process[1];
+    final BufferedWriter[] writerHolder = new BufferedWriter[1];
+    final boolean[] isRunning = {true};
+    final Handler handler = new Handler();
+    final StringBuilder outputBuffer = new StringBuilder();
+
+    // 停止按钮
+    stopBtn.setOnClickListener(
+        v -> {
+          isRunning[0] = false;
+          try {
+            if (writerHolder[0] != null) writerHolder[0].close();
+          } catch (Exception ignored) {
+          }
+          try {
+            if (processHolder[0] != null) processHolder[0].destroy();
+          } catch (Exception ignored) {
+          }
+          appendTerminalText(outputView, outputBuffer, "\n⏹️ 已手动停止运行\n", scrollView);
+        });
+
+    // 清除日志按钮
+    clearBtn.setOnClickListener(
+        v -> {
+          outputBuffer.setLength(0);
+          outputView.setText("▶ 终端已清空\n");
+        });
+
+    // 复制输出按钮
+    copyBtn.setOnClickListener(
+        v -> {
+          android.content.ClipboardManager clipboard =
+              (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+          ClipData clip = ClipData.newPlainText("主页终端日志", outputView.getText().toString());
+          clipboard.setPrimaryClip(clip);
+          Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show();
+        });
+
+    dialog.show();
+
+    // ===================== 执行线程 =====================
     running = true;
     updateRunButton();
-    append("开始运行脚本\n");
 
     new Thread(
-            new Runnable() {
-              public void run() {
-                try {
-                  post("请求 Root 权限...\n");
-                  if (!RunnerSupport.hasRoot()) {
-                    post("Root 权限不可用\n");
-                    return;
-                  }
-
-                  post("应用触摸兼容设置...\n");
-                  RunnerSupport.applyTouchCompatibility(getPackageName());
-
-                  post("准备程序...\n");
-                  String rootPath;
-                  boolean isElf = false;
-                  if (selectedFile.canRead()) {
-                    File local =
-                        RunnerSupport.copyFromPath(MainActivity.this, selectedFile, selectedName);
-                    isElf = RunnerSupport.isElf(local);
-                    rootPath = RunnerSupport.prepareRootExecutable(local, selectedName);
-                  } else {
-                    post("普通权限无法读取文件，尝试用 Root 复制...\n");
-                    rootPath =
-                        RunnerSupport.prepareRootExecutableFromPath(
-                            selectedFile.getAbsolutePath(), selectedName);
-                    isElf = RunnerSupport.looksLikeElfOrBinaryName(selectedName);
-                  }
-
-                  activeRootPath = rootPath;
-                  post("启动真实终端...\n\n");
-                  startInteractiveRootProcess(rootPath, isElf);
-                } catch (Exception e) {
-                  post("运行失败: " + safeMessage(e) + "\n");
-                } finally {
+            () -> {
+              try {
+                handler.post(
+                    () ->
+                        appendTerminalText(
+                            outputView, outputBuffer, "🔐 正在请求 Root 权限...\n", scrollView));
+                if (!RunnerSupport.hasRoot()) {
                   handler.post(
-                      new Runnable() {
-                        public void run() {
-                          running = false;
-                          processWriter = null;
-                          runningProcess = null;
-                          activeRootPath = "";
-                          updateRunButton();
-                        }
-                      });
+                      () ->
+                          appendTerminalText(
+                              outputView, outputBuffer, "❌ Root 权限不可用，执行终止\n", scrollView));
+                  return;
                 }
+
+                handler.post(
+                    () ->
+                        appendTerminalText(outputView, outputBuffer, "⚙️ 准备运行环境...\n", scrollView));
+
+                // 准备可执行文件
+                String rootPath;
+                boolean isElf = false;
+                if (selectedFile.canRead()) {
+                  File local =
+                      RunnerSupport.copyFromPath(MainActivity.this, selectedFile, selectedName);
+                  isElf = RunnerSupport.isElf(local);
+                  rootPath = RunnerSupport.prepareRootExecutable(local, selectedName);
+                } else {
+                  handler.post(
+                      () ->
+                          appendTerminalText(
+                              outputView,
+                              outputBuffer,
+                              "📂 普通权限无法读取文件，尝试用 Root 复制...\n",
+                              scrollView));
+                  rootPath =
+                      RunnerSupport.prepareRootExecutableFromPath(
+                          selectedFile.getAbsolutePath(), selectedName);
+                  isElf = RunnerSupport.looksLikeElfOrBinaryName(selectedName);
+                }
+
+                activeRootPath = rootPath;
+
+                handler.post(
+                    () ->
+                        appendTerminalText(outputView, outputBuffer, "🚀 启动进程...\n\n", scrollView));
+
+                String command = RunnerSupport.buildRootShellCommand(new File(rootPath), isElf);
+                Process p = new ProcessBuilder("su").redirectErrorStream(true).start();
+                processHolder[0] = p;
+                BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
+                writerHolder[0] = writer;
+
+                // 发送环境变量
+                String originalPath = selectedFile.getAbsolutePath();
+                if (originalPath != null && !originalPath.isEmpty()) {
+                  writer.write("export AURA_REAL_SCRIPT=\"" + originalPath + "\"");
+                  writer.newLine();
+                  writer.flush();
+                }
+
+                writer.write(command);
+                writer.newLine();
+                writer.flush();
+
+                // 发送驱动选项（不发送卡密）
+                String driverNum;
+                switch (driverType) {
+                  case 0:
+                    driverNum = "1";
+                    break;
+                  case 1:
+                    driverNum = "2";
+                    break;
+                  case 2:
+                    driverNum = "3";
+                    break;
+                  case 3:
+                    driverNum = "4";
+                    break;
+                  default:
+                    driverNum = "1";
+                }
+                final String finalDriverNum = driverNum;
+                final String antiNum = antiRecord ? "1" : "2";
+                final String bgNum = noBackground ? "2" : "1";
+
+                // 启动选项发送线程
+                new Thread(
+                        () -> {
+                          try {
+                            long startTime = System.currentTimeMillis();
+                            while (System.currentTimeMillis() - startTime < 10000) {
+                              if (isRunning[0]
+                                  && writerHolder[0] != null
+                                  && processHolder[0] != null
+                                  && processHolder[0].isAlive()) break;
+                              Thread.sleep(100);
+                            }
+                            if (!isRunning[0] || writerHolder[0] == null) return;
+                            Thread.sleep(800);
+
+                            BufferedWriter w = writerHolder[0];
+                            w.write(finalDriverNum);
+                            w.newLine();
+                            w.flush();
+                            handler.post(
+                                () ->
+                                    appendTerminalText(
+                                        outputView,
+                                        outputBuffer,
+                                        "🔧 选择驱动: " + finalDriverNum + "\n",
+                                        scrollView));
+
+                            Thread.sleep(1200);
+                            if (!isRunning[0] || writerHolder[0] == null) return;
+                            w.write(antiNum);
+                            w.newLine();
+                            w.flush();
+                            handler.post(
+                                () ->
+                                    appendTerminalText(
+                                        outputView,
+                                        outputBuffer,
+                                        "🛡️ 防录屏: " + (antiRecord ? "开启" : "关闭") + "\n",
+                                        scrollView));
+
+                            if (driverType != 0) {
+                              Thread.sleep(1200);
+                              if (!isRunning[0] || writerHolder[0] == null) return;
+                              w.write(bgNum);
+                              w.newLine();
+                              w.flush();
+                              handler.post(
+                                  () ->
+                                      appendTerminalText(
+                                          outputView,
+                                          outputBuffer,
+                                          "🔕 无后台: " + (noBackground ? "开启" : "关闭") + "\n",
+                                          scrollView));
+                            }
+                          } catch (Exception ignored) {
+                          }
+                        })
+                    .start();
+
+                // 读取输出
+                BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
+                String line;
+                boolean kamiHandled = false;
+                boolean exitDetected = false;
+
+                while (isRunning[0] && (line = reader.readLine()) != null) {
+                  final String outputLine = line + "\n";
+                  handler.post(
+                      () -> appendTerminalText(outputView, outputBuffer, outputLine, scrollView));
+
+                  // 检测卡密请求
+                  if (!kamiHandled && line.contains("[NEED_KAMI]")) {
+                    kamiHandled = true;
+                    String kami = keyEdit.getText().toString().trim();
+                    if (!kami.isEmpty()) {
+                      Thread.sleep(200);
+                      writer.write(kami);
+                      writer.newLine();
+                      writer.flush();
+                      handler.post(
+                          () ->
+                              appendTerminalText(
+                                  outputView, outputBuffer, "[自动输入卡密]\n", scrollView));
+                    } else {
+                      handler.post(
+                          () ->
+                              appendTerminalText(
+                                  outputView, outputBuffer, "[未设置卡密]\n", scrollView));
+                    }
+                  }
+
+                  if (!kamiHandled && line.contains("[SAVED_KAMI]")) {
+                    kamiHandled = true;
+                    handler.post(
+                        () ->
+                            appendTerminalText(
+                                outputView, outputBuffer, "[C++ 端已自动使用本地卡密]\n", scrollView));
+                  }
+
+                  if (!exitDetected && line.toLowerCase().contains("exit code:")) {
+                    exitDetected = true;
+                    handler.post(
+                        () -> {
+                          if (running) {
+                            running = false;
+                            updateRunButton();
+                          }
+                        });
+                  }
+                }
+
+                int exitCode = p.waitFor();
+                final String exitMsg = "\n✅ 进程结束，退出码: " + exitCode + "\n";
+                handler.post(
+                    () -> {
+                      appendTerminalText(outputView, outputBuffer, exitMsg, scrollView);
+                      stopBtn.post(
+                          () -> {
+                            stopBtn.setText("运行结束");
+                            stopBtn.setEnabled(false);
+                          });
+                    });
+
+              } catch (Exception e) {
+                final String errorMsg = "⚠️ 执行异常: " + e.getMessage() + "\n";
+                handler.post(
+                    () -> appendTerminalText(outputView, outputBuffer, errorMsg, scrollView));
+              } finally {
+                handler.post(
+                    () -> {
+                      running = false;
+                      processWriter = null;
+                      runningProcess = null;
+                      activeRootPath = "";
+                      updateRunButton();
+                    });
               }
             })
         .start();
+
+    // 弹窗关闭时清理
+    dialog.setOnDismissListener(
+        di -> {
+          if (isRunning[0]) {
+            try {
+              if (writerHolder[0] != null) writerHolder[0].close();
+            } catch (Exception ignored) {
+            }
+            try {
+              if (processHolder[0] != null) processHolder[0].destroy();
+            } catch (Exception ignored) {
+            }
+          }
+          running = false;
+          processWriter = null;
+          runningProcess = null;
+          activeRootPath = "";
+          updateRunButton();
+        });
   }
 
   private void startInteractiveRootProcess(String rootPath, boolean isElf) throws Exception {
@@ -3721,7 +4145,6 @@ if (!expectedHash.isEmpty()) {
     processWriter = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
 
     post("[AuraKernel] root command dispatched\n");
-    // 传递真实脚本路径（用于更新时写回原目录）
     String originalPath = selectedFile.getAbsolutePath();
     if (originalPath != null && !originalPath.isEmpty()) {
       processWriter.write("export AURA_REAL_SCRIPT=\"" + originalPath + "\"");
@@ -3733,73 +4156,102 @@ if (!expectedHash.isEmpty()) {
     processWriter.newLine();
     processWriter.flush();
 
-    // ===== 重要：使用不包含卡密的版本 =====
     sendDriverOptionsWithoutKami();
 
-    // ===== 读取输出，检测标记 =====
     InputStream in = p.getInputStream();
     BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
     boolean kamiHandled = false;
     boolean exitDetected = false;
-    String line;
+    final Object readLock = new Object();
+    final boolean[] readFinished = {false};
 
     try {
+      // 启动超时监控
+      final Handler timeoutHandler = new Handler(Looper.getMainLooper());
+      final Runnable timeoutRunnable =
+          new Runnable() {
+            @Override
+            public void run() {
+              if (!readFinished[0]) {
+                post("\n⚠️ 执行超时 (120s)，尝试终止进程...\n");
+                killProcessHard(p);
+              }
+            }
+          };
+      timeoutHandler.postDelayed(timeoutRunnable, 120_000); // 2分钟超时
+
+      String line;
       while ((line = reader.readLine()) != null) {
+        // 每次读到输出，重置超时计时
+        timeoutHandler.removeCallbacks(timeoutRunnable);
+        timeoutHandler.postDelayed(timeoutRunnable, 120_000);
+
         post(line + "\n");
+
+        // ★ 新增：检测验证失败 → 复位，允许下次自动输入 ★
+        if (kamiHandled && (line.contains("卡密验证失败") || line.contains("请重新输入卡密"))) {
+          kamiHandled = false;
+        }
 
         // 检测 NEED_KAMI → 需要 App 输入卡密
         if (!kamiHandled && line.contains("[NEED_KAMI]")) {
           kamiHandled = true;
+          // 优先取输入框的卡密，为空则从已保存的读取
           String kami = keyEdit.getText().toString().trim();
+          if (kami.isEmpty()) {
+            kami = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
+          }
           if (!kami.isEmpty()) {
-            Thread.sleep(200); // 给 C++ 一点时间到 cin
+            Thread.sleep(200);
             processWriter.write(kami);
             processWriter.newLine();
             processWriter.flush();
             post("[自动输入卡密]\n");
-            // 保存
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value", kami).apply();
           } else {
-            post("[未设置卡密]\n");
+            post("[⚠️ 未检测到卡密，请在主页输入卡密后重试]\n");
           }
         }
 
-        // 检测 SAVED_KAMI → C++ 已自动使用，App 什么都不做
-        if (!kamiHandled && line.contains("[SAVED_KAMI]")) {
-          kamiHandled = true;
-          post("[C++ 端已自动使用本地卡密]\n");
-          // 不做任何写入操作！
-        }
-        // ========== 新增：检测到 exit code 时只更新界面，不杀进程 ==========
         if (!exitDetected && line.toLowerCase().contains("exit code:")) {
           exitDetected = true;
-          // 在主线程把 running 设为 false，让停止按钮变回运行按钮
           handler.post(
               () -> {
                 if (running) {
                   running = false;
-                  // 注意：不要在这里置空 processWriter，否则后续自动输入会失败
                   updateRunButton();
                 }
               });
-          // 继续读取后续输出（进程可能还会输出一点内容），不要 break
         }
       }
+
+      readFinished[0] = true;
+      timeoutHandler.removeCallbacks(timeoutRunnable);
+
     } catch (Exception e) {
+      readFinished[0] = true;
       post("读取异常: " + e.getMessage() + "\n");
     } finally {
       try {
         in.close();
       } catch (Exception ignored) {
       }
+      // 用 waitFor 超时版本避免永久阻塞
+      try {
+        for (int i = 0; i < 50; i++) { // 最多等5秒
+          if (p.waitFor(100, TimeUnit.MILLISECONDS)) break;
+        }
+      } catch (Exception ignored) {
+      }
+      if (p.isAlive()) {
+        killProcessHard(p);
+      }
     }
 
-    int code = p.waitFor();
+    int code = p.exitValue();
     if (!exitDetected) {
-      // 之前没检测到 exit code 才补一条退出信息
       post("\n[AuraKernel] su shell exited: " + code + "\n");
     }
-    // 最终清理状态（保证即使没检测到退出码也能恢复按钮）
     handler.post(
         () -> {
           running = false;
@@ -3810,71 +4262,127 @@ if (!expectedHash.isEmpty()) {
         });
   }
 
+  // 暴力杀进程辅助方法
+  private void killProcessHard(Process p) {
+    try {
+      // 先尝试优雅停止
+      if (processWriter != null) {
+        try {
+          processWriter.write(3); // Ctrl+C
+          processWriter.newLine();
+          processWriter.write("exit");
+          processWriter.newLine();
+          processWriter.flush();
+        } catch (Exception ignored) {
+        }
+      }
+      p.destroy();
+      // 对于 stubborn 进程，destroyForcibly 更暴力
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        p.destroyForcibly();
+      }
+      // 杀掉 su shell 下的子进程
+      if (activeRootPath != null && !activeRootPath.isEmpty()) {
+        RunnerSupport.stopRootProcessByPath(activeRootPath);
+      }
+    } catch (Exception ignored) {
+    }
+  }
+
   private void sendDriverOptionsWithoutKami() {
     String driverNum;
     switch (driverType) {
       case 0:
         driverNum = "1";
-        break; // KMA-KPM驱动 → 输出1
+        break;
       case 1:
         driverNum = "2";
-        break; // Ditpro_KPM驱动 → 输出2
+        break;
       case 2:
         driverNum = "3";
-        break; // Paradise驱动 → 输出3
+        break;
       case 3:
         driverNum = "4";
-        break; // 备用驱动 → 输出4
+        break;
       default:
         driverNum = "1";
     }
-    int baseDelay = 600;
 
     String antiNum = antiRecord ? "1" : "2";
     String bgNum = noBackground ? "2" : "1";
 
-    // 1. 驱动选择
-    handler.postDelayed(
-        () -> {
-          if (!running || processWriter == null) return;
-          try {
-            processWriter.write(driverNum);
-            processWriter.newLine();
-            processWriter.flush();
-            append(driverNum + "\n");
-          } catch (Exception e) {
-          }
-        },
-        baseDelay);
+    // 启动一个新线程轮询等待进程就绪后再发送选项
+    new Thread(
+            () -> {
+              // 等待进程启动完成（等待 processWriter 不为空且 running 为 true）
+              long startTime = System.currentTimeMillis();
+              while (System.currentTimeMillis() - startTime < 10000) { // 最多等10秒
+                if (running
+                    && processWriter != null
+                    && runningProcess != null
+                    && runningProcess.isAlive()) {
+                  break;
+                }
+                try {
+                  Thread.sleep(100);
+                } catch (InterruptedException e) {
+                  return;
+                }
+              }
+              if (!running || processWriter == null) return;
 
-    // 2. 防录屏
-    handler.postDelayed(
-        () -> {
-          if (!running || processWriter == null) return;
-          try {
-            processWriter.write(antiNum);
-            processWriter.newLine();
-            processWriter.flush();
-            append(antiNum + "\n");
-          } catch (Exception e) {
-          }
-        },
-        baseDelay + 800);
+              // 再额外等一下让程序完全启动
+              try {
+                Thread.sleep(800);
+              } catch (InterruptedException e) {
+                return;
+              }
 
-    // 3. 无后台（非KPM时）
-    if (driverType != 0) {
-      handler.postDelayed(
-          () -> {
-            if (!running || processWriter == null) return;
-            try {
-              processWriter.write(bgNum);
-              processWriter.newLine();
-              processWriter.flush();
-              append(bgNum + "\n");
-            } catch (Exception e) {
-            }
-          },
-          baseDelay + 1600);
+              // 1. 驱动选择
+              autoSendLine(driverNum, "选择驱动");
+
+              // 2. 防录屏 (等1秒)
+              try {
+                Thread.sleep(1200);
+              } catch (InterruptedException e) {
+                return;
+              }
+              if (!running || processWriter == null) return;
+              autoSendLine(antiNum, "防录屏选择");
+
+              // 3. 无后台
+              if (driverType != 0) {
+                try {
+                  Thread.sleep(1200);
+                } catch (InterruptedException e) {
+                  return;
+                }
+                if (!running || processWriter == null) return;
+                autoSendLine(bgNum, "无后台选择");
+              }
+            })
+        .start();
+  }
+
+  private synchronized void append(String s) {
+    outputBuffer.append(s);
+    if (outputBuffer.length() > 80000) outputBuffer.delete(0, outputBuffer.length() - 60000);
+    if (outputView != null) {
+      String fullText = outputBuffer.toString();
+      outputView.setText(fullText);
+      if (fullText.contains("失败")
+          || fullText.contains("异常")
+          || fullText.contains("错误")
+          || fullText.contains("❌")) {
+        outputView.setTextColor(Color.rgb(255, 99, 71));
+      } else if (fullText.contains("运行")
+          || fullText.contains("成功")
+          || fullText.contains("✅")
+          || fullText.contains("就绪")) {
+        outputView.setTextColor(Color.rgb(81, 191, 101));
+      } else {
+        outputView.setTextColor(Color.rgb(200, 215, 225));
+      }
     }
   }
 
@@ -3884,9 +4392,9 @@ if (!expectedHash.isEmpty()) {
       if (value != null && value.length() > 0) processWriter.write(value);
       processWriter.newLine();
       processWriter.flush();
-      append(reason + "：" + (value == null ? "" : value) + " + 回车\n");
+      post(reason + "：" + (value == null ? "" : value) + " + 回车\n"); // ← 改成 post()
     } catch (Exception e) {
-      append("\n自动输入失败: " + safeMessage(e) + "\n");
+      post("\n自动输入失败: " + safeMessage(e) + "\n"); // ← 改成 post()
     }
   }
 
@@ -3894,20 +4402,36 @@ if (!expectedHash.isEmpty()) {
     String path = activeRootPath;
     try {
       if (processWriter != null) {
-        processWriter.write(3);
-        processWriter.flush();
+        try {
+          processWriter.write(3); // Ctrl+C
+          processWriter.newLine();
+          processWriter.write("exit");
+          processWriter.newLine();
+          processWriter.flush();
+        } catch (Exception ignored) {
+        }
+        try {
+          processWriter.close();
+        } catch (Exception ignored) {
+        }
       }
     } catch (Exception ignored) {
     }
+
     try {
-      if (processWriter != null) processWriter.close();
+      if (runningProcess != null) {
+        runningProcess.destroy();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          runningProcess.destroyForcibly(); // API 26+ 强制杀进程
+        }
+      }
     } catch (Exception ignored) {
     }
-    try {
-      if (runningProcess != null) runningProcess.destroy();
-    } catch (Exception ignored) {
+
+    if (path != null && path.length() > 0) {
+      RunnerSupport.stopRootProcessByPath(path);
     }
-    if (path != null && path.length() > 0) RunnerSupport.stopRootProcessByPath(path);
+
     if (showLog) append("\n已请求停止进程\n");
     processWriter = null;
     runningProcess = null;
@@ -3942,18 +4466,6 @@ if (!expectedHash.isEmpty()) {
     runButton.setText(running ? "运行中..." : label);
     runButton.setBackground(round(ok ? primaryColor() : disabledColor(), 14, 0, 0));
     runButton.setTextColor(ok ? Color.WHITE : subTextColor());
-
-    if (stopButton != null) {
-      stopButton.setVisibility(running ? View.VISIBLE : View.GONE);
-      stopButton.setEnabled(running);
-      stopButton.setAlpha(running ? 1f : 0.55f);
-      stopButton.setBackground(round(running ? dangerBgColor() : disabledColor(), 14, 0, 0));
-      stopButton.setTextColor(running ? dangerColor() : subTextColor());
-    }
-    // 根据运行状态控制终端的显示
-    if (terminalScroll != null) {
-      terminalScroll.setVisibility(running ? View.VISIBLE : View.GONE);
-    }
   }
 
   private void showFilePicker(
@@ -4837,30 +5349,6 @@ if (!expectedHash.isEmpty()) {
     return "未知(需Root)";
   }
 
-  private void append(String s) {
-    outputBuffer.append(s);
-    if (outputBuffer.length() > 80000) outputBuffer.delete(0, outputBuffer.length() - 60000);
-    if (outputView != null) {
-      String fullText = outputBuffer.toString();
-      outputView.setText(fullText);
-      // 智能配色：错误红/成功绿/普通灰
-      if (fullText.contains("失败")
-          || fullText.contains("异常")
-          || fullText.contains("错误")
-          || fullText.contains("❌")) {
-        outputView.setTextColor(Color.rgb(255, 99, 71));
-      } else if (fullText.contains("运行")
-          || fullText.contains("成功")
-          || fullText.contains("✅")
-          || fullText.contains("就绪")) {
-        outputView.setTextColor(Color.rgb(81, 191, 101));
-      } else {
-        outputView.setTextColor(Color.rgb(200, 215, 225));
-      }
-    }
-    scrollTerminalBottom();
-  }
-
   private void post(final String s) {
     handler.post(
         new Runnable() {
@@ -4868,21 +5356,6 @@ if (!expectedHash.isEmpty()) {
             append(s);
           }
         });
-  }
-
-  private void scrollTerminalBottom() {
-    if (terminalScroll != null && outputView != null) {
-      terminalScroll.post(
-          () -> {
-            // 精确滚动到底部，修复固定宽度后滚动不准的问题
-            int scrollY = outputView.getBottom() - terminalScroll.getHeight();
-            if (scrollY > 0) {
-              terminalScroll.scrollTo(0, scrollY);
-            } else {
-              terminalScroll.fullScroll(View.FOCUS_DOWN);
-            }
-          });
-    }
   }
 
   private String safeMessage(Throwable e) {
