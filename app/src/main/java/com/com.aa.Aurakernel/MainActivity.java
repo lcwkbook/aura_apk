@@ -137,8 +137,9 @@ public class MainActivity extends Activity {
   private UpdateTask updateTask;
   private FrameLayout root;
   private LinearLayout pageHost;
-  private TextView navHome;
-  private TextView navMine;
+  private LinearLayout navHome;
+  private LinearLayout navMine;
+  private LinearLayout navDriver;
   private TextView driverBtnKpm, driverBtnDitpro, driverBtnParadise, driverBtnBackup;
   private TextView antiRecordBtn, noBackgroundBtn;
 
@@ -170,8 +171,6 @@ public class MainActivity extends Activity {
   // 驱动ZIP临时文件
   private File driverZipFile;
 
-  // 底部导航新增驱动按钮
-  private TextView navDriver;
   // 驱动下载任务
   private DownloadDriverTask downloadTask;
 
@@ -1811,35 +1810,84 @@ public class MainActivity extends Activity {
         });
   }
 
-  private View createBottomNav() {
+  // ====================== 替换 createBottomNav() ======================
+private View createBottomNav() {
     LinearLayout wrap = new LinearLayout(this);
     wrap.setGravity(Gravity.CENTER);
-    wrap.setPadding(dp(20), dp(8), dp(20), dp(14));
+    wrap.setPadding(dp(16), dp(8), dp(16), dp(20));
     wrap.setBackgroundColor(bgColor());
 
     LinearLayout bar = new LinearLayout(this);
     bar.setOrientation(LinearLayout.HORIZONTAL);
     bar.setGravity(Gravity.CENTER);
     bar.setPadding(dp(6), dp(6), dp(6), dp(6));
-    bar.setBackground(round(cardColor(), 28, borderColor(), 1));
-    // 加宽适配3个按钮
-    wrap.addView(bar, new LinearLayout.LayoutParams(dp(300), dp(56)));
+    
+    // 玻璃态背景（半透明+模糊效果）
+    GradientDrawable glassBg = new GradientDrawable();
+    glassBg.setColor(nightMode ? Color.argb(220, 22, 26, 36) : Color.argb(240, 255, 255, 255));
+    glassBg.setCornerRadius(dp(30));
+    // 加一个浅边框
+    glassBg.setStroke(dp(1), borderColor());
+    bar.setBackground(glassBg);
+    
+    if (Build.VERSION.SDK_INT >= 21) {
+        bar.setElevation(dp(8));
+        bar.setOutlineProvider(null);
+    }
+    bar.setBackground(glassBg);
+    
+    // 阴影边框
+    GradientDrawable border = new GradientDrawable();
+    border.setCornerRadius(dp(30));
+    border.setStroke(dp(1), borderColor());
+    bar.setBackground(border);
+    bar.setBackground(glassBg);
+    
+    wrap.addView(bar, new LinearLayout.LayoutParams(dp(340), dp(62)));
 
-    // 三个导航按钮：主页、驱动、我的
-    navHome = navButton("主页", true);
-    navDriver = navButton("驱动", false);
-    navMine = navButton("我的", false);
+    // 三个导航按钮带图标
+    navHome = navIconButton("🏠", "主页", true);
+    navDriver = navIconButton("📦", "驱动", false);
+    navMine = navIconButton("👤", "我的", false);
 
     bar.addView(navHome, new LinearLayout.LayoutParams(0, -1, 1));
     bar.addView(navDriver, new LinearLayout.LayoutParams(0, -1, 1));
     bar.addView(navMine, new LinearLayout.LayoutParams(0, -1, 1));
 
-    // 点击事件
     navHome.setOnClickListener(v -> switchPage(0));
     navDriver.setOnClickListener(v -> switchPage(1));
     navMine.setOnClickListener(v -> switchPage(2));
     return wrap;
-  }
+}
+
+// 带图标的导航按钮
+private LinearLayout navIconButton(String emoji, String label, boolean active) {
+    LinearLayout container = new LinearLayout(this);
+    container.setOrientation(LinearLayout.VERTICAL);
+    container.setGravity(Gravity.CENTER);
+    container.setPadding(dp(4), dp(4), dp(4), dp(4));
+    
+    TextView icon = text(emoji, active ? 22 : 18, 
+        active ? primaryColor() : subTextColor(), Typeface.NORMAL);
+    icon.setGravity(Gravity.CENTER);
+    container.addView(icon, lp(-2, dp(28), 0, 0, 0, dp(2)));
+    
+    TextView labelView = text(label, active ? 11 : 10, 
+        active ? primaryColor() : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
+    labelView.setGravity(Gravity.CENTER);
+    container.addView(labelView, lp(-2, -2, 0, 0, 0, 0));
+    
+    // 选中时加背景
+    if (active) {
+        GradientDrawable activeBg = new GradientDrawable();
+        activeBg.setColor(Color.argb(20, 81, 191, 101));
+        activeBg.setCornerRadius(dp(16));
+        container.setBackground(activeBg);
+    }
+    
+    return container;
+}
+
 
   private TextView navButton(String text, boolean active) {
     TextView v = text(text, 14, active ? Color.WHITE : subTextColor(), Typeface.BOLD);
@@ -1848,24 +1896,55 @@ public class MainActivity extends Activity {
     return v;
   }
 
-  private void switchPage(int page) {
+  // ====================== 替换 switchPage() ======================
+private void switchPage(int page) {
     if (pageHost == null) return;
-    int oldPage = currentPage;
     if (page == currentPage && pageHost.getChildCount() > 0) return;
     currentPage = page;
     pageHost.removeAllViews();
     pageHost.setBackgroundColor(bgColor());
 
-    // 0=主页 1=驱动 2=我的
     View next = null;
     if (page == 0) next = createHomePage();
-    else if (page == 1) next = createDriverPage(); // 新增驱动页面
+    else if (page == 1) next = createDriverPage();
     else next = createMinePage();
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
-    animatePageIn(next, page >= oldPage ? 1 : -1);
+    animatePageIn(next, page >= 0 ? 1 : -1);
     updateNav();
-  }
+}
+
+// ====================== 替换 updateNav() ======================
+private void updateNav() {
+    updateNavButton(navHome, "🏠", "主页", currentPage == 0);
+    updateNavButton(navDriver, "📦", "驱动", currentPage == 1);
+    updateNavButton(navMine, "👤", "我的", currentPage == 2);
+}
+
+private void updateNavButton(LinearLayout container, String emoji, String label, boolean active) {
+    if (container == null) return;
+    container.removeAllViews();
+    
+    TextView icon = text(emoji, active ? 22 : 18, 
+        active ? primaryColor() : subTextColor(), Typeface.NORMAL);
+    icon.setGravity(Gravity.CENTER);
+    container.addView(icon, lp(-2, dp(28), 0, 0, 0, dp(2)));
+    
+    TextView labelView = text(label, active ? 11 : 10, 
+        active ? primaryColor() : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
+    labelView.setGravity(Gravity.CENTER);
+    container.addView(labelView, lp(-2, -2, 0, 0, 0, 0));
+    
+    if (active) {
+        GradientDrawable activeBg = new GradientDrawable();
+        activeBg.setColor(Color.argb(20, 81, 191, 101));
+        activeBg.setCornerRadius(dp(16));
+        container.setBackground(activeBg);
+    } else {
+        container.setBackground(null);
+    }
+}
+
 
   private void animatePageIn(View view, int direction) {
     AnimationSet set = new AnimationSet(true);
@@ -1888,26 +1967,6 @@ public class MainActivity extends Activity {
     view.startAnimation(set);
   }
 
-  private void updateNav() {
-    // 主页按钮
-    if (navHome != null) {
-      boolean active = currentPage == 0;
-      navHome.setTextColor(active ? Color.WHITE : subTextColor());
-      navHome.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
-    }
-    // 驱动按钮（新增）
-    if (navDriver != null) {
-      boolean active = currentPage == 1;
-      navDriver.setTextColor(active ? Color.WHITE : subTextColor());
-      navDriver.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
-    }
-    // 我的按钮
-    if (navMine != null) {
-      boolean active = currentPage == 2;
-      navMine.setTextColor(active ? Color.WHITE : subTextColor());
-      navMine.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
-    }
-  }
 
   private int getStatusBarHeight() {
     int result = 0;
@@ -2343,13 +2402,18 @@ public class MainActivity extends Activity {
     updateSwitchButton(noBackgroundBtn, noBackground);
   }
 
+  // ====================== 替换 updateSwitchButton() ======================
   private void updateSwitchButton(TextView btn, boolean on) {
-    if (btn == null) return;
-    btn.setText(on ? "开启" : "关闭");
-    btn.setTextColor(on ? Color.WHITE : subTextColor());
-    btn.setBackground(
-        round(on ? primaryColor() : tagColor(), 16, on ? 0 : borderColor(), on ? 0 : 1));
+      if (btn == null) return;
+      btn.setText(on ? "开启" : "关闭");
+      
+      // 找到父容器（切换滑块）
+      if (btn.getParent() instanceof LinearLayout) {
+          LinearLayout switchWrap = (LinearLayout) btn.getParent();
+          switchWrap.setBackground(round(on ? primaryColor() : disabledColor(), 16, 0, 0));
+      }
   }
+
 
   private TextView modeButton(String text, boolean active) {
     TextView v = text(text, 13, active ? Color.WHITE : subTextColor(), Typeface.BOLD);
@@ -3429,7 +3493,7 @@ public class MainActivity extends Activity {
     file.delete();
   }
 
-  private View createMinePage() {
+    private View createMinePage() {
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(true);
     scroll.setVerticalScrollBarEnabled(false);
@@ -3439,332 +3503,421 @@ public class MainActivity extends Activity {
     page.setBackgroundColor(bgColor());
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
-    TextView title = text("我的", 28, textColor(), Typeface.BOLD);
-    page.addView(title, lp(-1, -2, 0, 0, 0, dp(6)));
-    TextView sub = text("设置、授权和快捷目录", 13, subTextColor(), Typeface.NORMAL);
-    page.addView(sub, lp(-1, -2, 0, 0, 0, dp(18)));
+        // ===== 顶部标题区（带头像） =====
+    LinearLayout headerArea = new LinearLayout(this);
+    headerArea.setOrientation(LinearLayout.VERTICAL);
+    page.addView(headerArea, lp(-1, -2, 0, 0, 0, dp(22)));
 
-    // ★ 卡密信息模块 - 独立卡片
-    LinearLayout kamiInfoCard = new LinearLayout(this);
-    kamiInfoCard.setOrientation(LinearLayout.VERTICAL);
-    kamiInfoCard.setPadding(dp(14), dp(8), dp(14), dp(8));
-    kamiInfoCard.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(kamiInfoCard, lp(-1, -2, 0, 0, 0, dp(16)));
+    // 头像 + "我的" 横向排列
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    headerArea.addView(titleRow, lp(-1, -2, 0, 0, 0, dp(4)));
+
+    ImageView mineAvatar = new ImageView(this);
+    mineAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+    mineAvatar.setBackground(round(cardColor(), 100, borderColor(), 1));
+    LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+    avatarLp.setMargins(0, 0, dp(14), 0);
+    titleRow.addView(mineAvatar, avatarLp);
+    // 使用主页同样的头像缓存
+    loadRandomAvatar(mineAvatar);
+
+    TextView title = text("我的", 28, textColor(), Typeface.BOLD);
+    titleRow.addView(title, lp(-2, -2, 0, 0, 0, 0));
+
+
+    LinearLayout subRow = new LinearLayout(this);
+    subRow.setOrientation(LinearLayout.HORIZONTAL);
+    subRow.setGravity(Gravity.CENTER_VERTICAL);
+    TextView sub = text("授权信息 · 设备详情 · 系统工具", 12, subTextColor(), Typeface.NORMAL);
+    subRow.addView(sub, new LinearLayout.LayoutParams(0, -2, 1));
+    // 版本标签
+    TextView verBadge = text("v" + getVersionName(), 10, Color.WHITE, Typeface.BOLD);
+    verBadge.setPadding(dp(8), dp(2), dp(8), dp(2));
+    verBadge.setBackground(round(primaryColor(), 8, 0, 0));
+    subRow.addView(verBadge, lp(-2, -2, 0, 0, 0, 0));
+    headerArea.addView(subRow, lp(-1, -2, 0, dp(2), 0, 0));
+
+    // ================================================================
+    // 📋 卡片1：卡密信息
+    // ================================================================
+       // ================================================================
+    // 📋 卡片1：卡密信息
+    // ================================================================
+    LinearLayout cardKami = createGlassCard("💳 卡密信息");
+    page.addView(cardKami, lp(-1, -2, 0, 0, 0, dp(16)));
 
     String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
     boolean hasKey = !savedKey.isEmpty();
 
-    // 1. 卡密卡号（已打码）
-    String kamiNumber = hasKey ? savedKey : "暂无";
-    View rowNumber = sysInfoRow("卡密卡号", kamiNumber, "🔑");
-    kamiInfoCard.addView(rowNumber);
-    addDivider(kamiInfoCard);
+    // 行1：卡密卡号（中间打码）
+    String kamiDisplay = hasKey
+        ? savedKey.substring(0, Math.min(4, savedKey.length())) + "****" + savedKey.substring(Math.max(0, savedKey.length() - 4))
+        : "暂无";
+    addMineInfoRow(cardKami, "🔑", "卡密卡号", kamiDisplay, hasKey ? primaryColor() : subTextColor());
+    addMineDivider(cardKami);
 
-    // 2. 卡密状态（初始显示"验证中..."，异步验证后更新）
-    final TextView statusValue = new TextView(this);
-    statusValue.setText("⏳ 验证中...");
-    statusValue.setTextSize(13);
-    statusValue.setTextColor(subTextColor());
-    // 这里需要用到 sysInfoRow 的形式，但我们动态更新
-    // 先创建静态行，稍后通过 handler 更新
+    // 行2：卡密状态（动态更新）
+    String initialStatus = hasKey ? "⏳ 验证中..." : "❌ 未设置";
+    addMineInfoRow(cardKami, "📌", "卡密状态", initialStatus, hasKey ? subTextColor() : dangerColor());
+    addMineDivider(cardKami);
 
-    String kamiStatus = hasKey ? "⏳ 验证中..." : "❌ 未设置";
-    View rowStatus = sysInfoRow("卡密状态", kamiStatus, "📌");
-    kamiInfoCard.addView(rowStatus);
-    addDivider(kamiInfoCard);
+    // 行3：卡密类型（动态更新）
+    addMineInfoRow(cardKami, "🏷️", "卡密类型", hasKey ? "⏳ 查询中..." : "—", subTextColor());
+    addMineDivider(cardKami);
 
-    // 3. 卡密类型（动态更新）
-    final TextView typeLabel = new TextView(this);
-    typeLabel.setText("🏷️");
-    typeLabel.setTextSize(13);
-    // 创建行时留空
-    View rowType = sysInfoRow("卡密类型", hasKey ? "⏳ 查询中..." : "-", "🏷️");
-    kamiInfoCard.addView(rowType);
-    addDivider(kamiInfoCard);
+    // 行4：到期时间（动态更新）
+    addMineInfoRow(cardKami, "📅", "到期时间", hasKey ? "⏳ 查询中..." : "—", subTextColor());
 
-    // 4. 到期时间（动态更新）
-    View rowExpiry = sysInfoRow("到期时间", hasKey ? "⏳ 查询中..." : "-", "📅");
-    kamiInfoCard.addView(rowExpiry);
-
-    // ===== 如果有卡密，异步从服务器拉取 =====
+    // 如果有卡密，异步从服务器拉取
     if (hasKey) {
-      verifyCardFromServer(
-          savedKey,
+      // ⚠️ 注意：cardKami 的子 View 索引从 0 开始
+      //    child[0] = 标题, child[1]=卡号行, child[2]=分割线, child[3]=状态行,
+      //    child[4]=分割线, child[5]=类型行, child[6]=分割线, child[7]=时间行
+      final int[] rowIdx = {3, 5, 7}; // 状态行、类型行、时间行的正确索引！
+      verifyCardFromServer(savedKey,
           new VerifyCallback() {
             @Override
             public void onSuccess(String type, String endTime, String status) {
-              // status: "正常" 显示绿色, "已到期" 显示红色
               String statusDisplay = status.equals("已到期") ? "❌ 已到期" : "✅ 正常";
-              updateRowValue(kamiInfoCard, 2, statusDisplay, "📌"); // 卡密状态
-              updateRowValue(kamiInfoCard, 4, type, "🏷️"); // 卡密类型
-              updateRowValue(kamiInfoCard, 6, endTime, "📅"); // 到期时间
+              int statusColor = status.equals("已到期") ? dangerColor() : successColor();
+              updateMineInfoRow(cardKami, rowIdx[0], statusDisplay, statusColor);
+              updateMineInfoRow(cardKami, rowIdx[1], type, textColor());
+              updateMineInfoRow(cardKami, rowIdx[2], endTime, subTextColor());
             }
 
             @Override
             public void onError(String errorMsg) {
-              updateRowValue(kamiInfoCard, 2, "❌ " + errorMsg, "📌"); // index 2 = 卡密状态行
+              updateMineInfoRow(cardKami, rowIdx[0], "❌ " + errorMsg, dangerColor());
             }
           });
     }
 
-    // ====================== 【修改后】系统信息模块（保留左图标 + 无右箭头） ======================
-    LinearLayout sysInfoCard = new LinearLayout(this);
-    sysInfoCard.setOrientation(LinearLayout.VERTICAL);
-    sysInfoCard.setPadding(dp(14), dp(8), dp(14), dp(8));
-    sysInfoCard.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(sysInfoCard, lp(-1, -2, 0, 0, 0, dp(16)));
 
-    // 每行都保留左侧图标，右侧无箭头
-    View androidVer = sysInfoRow("安卓版本", getAndroidVersion(), "📱");
-    sysInfoCard.addView(androidVer);
-    addDivider(sysInfoCard);
+    // ================================================================
+    // 📋 卡片2：设备信息
+    // ================================================================
+    LinearLayout cardDevice = createGlassCard("🖥️ 设备信息");
+    page.addView(cardDevice, lp(-1, -2, 0, 0, 0, dp(16)));
 
-    View sdkVer = sysInfoRow("SDK版本", getSdkVersion(), "⚙️");
-    sysInfoCard.addView(sdkVer);
-    addDivider(sysInfoCard);
+    addMineInfoRow(cardDevice, "📱", "安卓版本", getAndroidVersion(), subTextColor());
+    addMineDivider(cardDevice);
+    addMineInfoRow(cardDevice, "⚙️", "SDK版本", getSdkVersion(), subTextColor());
+    addMineDivider(cardDevice);
+    addMineInfoRow(cardDevice, "💻", "设备型号", getDeviceModel(), subTextColor());
+    addMineDivider(cardDevice);
+    addMineInfoRow(cardDevice, "🏭", "设备厂商", getDeviceManufacturer(), subTextColor());
+    addMineDivider(cardDevice);
+    addMineInfoRow(cardDevice, "🖥️", "CPU架构", getCpuArchitecture(), subTextColor());
+    addMineDivider(cardDevice);
+    addMineInfoRow(cardDevice, "🐧", "Linux内核", getLinuxKernelVersion(), subTextColor());
+    addMineDivider(cardDevice);
+    addMineInfoRow(cardDevice, "🛡️", "SELinux", getSELinuxStatus(), subTextColor());
 
-    View deviceModel = sysInfoRow("设备型号", getDeviceModel(), "💻");
-    sysInfoCard.addView(deviceModel);
-    addDivider(sysInfoCard);
-
-    View deviceManu = sysInfoRow("设备厂商", getDeviceManufacturer(), "🏭");
-    sysInfoCard.addView(deviceManu);
-    addDivider(sysInfoCard);
-
-    View cpuArch = sysInfoRow("CPU架构", getCpuArchitecture(), "🖥️");
-    sysInfoCard.addView(cpuArch);
-    addDivider(sysInfoCard);
-
-    View kernelVer = sysInfoRow("Linux内核", getLinuxKernelVersion(), "🐧");
-    sysInfoCard.addView(kernelVer);
-    addDivider(sysInfoCard);
-
-    View selinuxStatus = sysInfoRow("SELinux状态", getSELinuxStatus(), "🛡️");
-    sysInfoCard.addView(selinuxStatus);
-    // =====================================================================================
-
-    // ====================== 【新增 清理模块 开始】 ======================
-    LinearLayout cleanCard = new LinearLayout(this);
-    cleanCard.setOrientation(LinearLayout.VERTICAL);
-    cleanCard.setPadding(dp(14), dp(8), dp(14), dp(8));
-    cleanCard.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cleanCard, lp(-1, -2, 0, 0, 0, dp(16)));
+    // ================================================================
+    // 📋 卡片3：清理工具
+    // ================================================================
+    LinearLayout cardClean = createGlassCard("🗑️ 清理工具");
+    page.addView(cardClean, lp(-1, -2, 0, 0, 0, dp(16)));
 
     // 1. 清理配置
-    View cleanConfigRow = settingRow("清理配置", "删除AuraKernel选择配置文件", "⚙️");
-    cleanCard.addView(cleanConfigRow);
-    cleanConfigRow.setOnClickListener(
-        v -> {
-          new Thread(
-                  () -> {
-                    File configFile = new File("/storage/emulated/0/AuraKernel/Aura选择配置.json");
-                    boolean deleted = false;
-                    if (configFile.exists()) {
-                      deleted = configFile.delete();
-                    }
-                    final boolean finalDeleted = deleted;
-                    handler.post(
-                        () -> {
-                          if (finalDeleted) {
-                            Toast.makeText(MainActivity.this, "配置文件已删除", Toast.LENGTH_SHORT).show();
-                          } else {
-                            Toast.makeText(MainActivity.this, "配置文件不存在或删除失败", Toast.LENGTH_SHORT)
-                                .show();
-                          }
-                        });
-                  })
-              .start();
-        });
-    addDivider(cleanCard);
+    View cleanConfigRow = addMineActionRow(cardClean, "⚙️", "清理配置", "删除 AuraKernel 配置文件");
+    cleanConfigRow.setOnClickListener(v -> {
+      new Thread(() -> {
+        File configFile = new File("/storage/emulated/0/AuraKernel/Aura选择配置.json");
+        boolean deleted = configFile.exists() && configFile.delete();
+        handler.post(() -> Toast.makeText(MainActivity.this,
+            deleted ? "配置文件已删除" : "配置文件不存在或删除失败", Toast.LENGTH_SHORT).show());
+      }).start();
+    });
+    addMineDivider(cardClean);
 
     // 2. 清理内核&驱动
-    View cleanKernelDriverRow = settingRow("清理内核&驱动", "清除已刷入内核、驱动文件", "🧹");
-    cleanCard.addView(cleanKernelDriverRow);
-    cleanKernelDriverRow.setOnClickListener(
-        v -> {
-          new Thread(
-                  () -> {
-                    // 删除drivers目录下所有内容，但保留clean目录
-                    File driversDir = new File(getFilesDir(), "drivers");
-                    boolean success = deleteDirContents(driversDir);
-                    handler.post(
-                        () -> {
-                          if (success) {
-                            Toast.makeText(MainActivity.this, "内核和驱动已清理", Toast.LENGTH_SHORT)
-                                .show();
-                            // 刷新驱动页面列表
-                            if (currentPage == 1) {
-                              refreshDriverFileList();
-                            }
-                          } else {
-                            Toast.makeText(MainActivity.this, "清理失败", Toast.LENGTH_SHORT).show();
-                          }
-                        });
-                  })
-              .start();
+    View cleanKernelRow = addMineActionRow(cardClean, "🧹", "清理内核&驱动", "清除已刷入的内核、驱动文件");
+    cleanKernelRow.setOnClickListener(v -> {
+      new Thread(() -> {
+        boolean success = deleteDirContents(new File(getFilesDir(), "drivers"));
+        handler.post(() -> {
+          Toast.makeText(MainActivity.this, success ? "内核和驱动已清理" : "清理失败", Toast.LENGTH_SHORT).show();
+          if (currentPage == 1) refreshDriverFileList();
         });
-    addDivider(cleanCard);
+      }).start();
+    });
+    addMineDivider(cardClean);
 
     // 3. 低级清理
-    View cleanLowRow = settingRow("低级清理", "清理临时缓存、运行日志", "🧽");
-    cleanCard.addView(cleanLowRow);
-    cleanLowRow.setOnClickListener(
-        v -> {
-          runCleanScript("低级清理.sh", "低级清理");
-        });
-    addDivider(cleanCard);
+    View lowCleanRow = addMineActionRow(cardClean, "🧽", "低级清理", "清理临时缓存、运行日志");
+    lowCleanRow.setOnClickListener(v -> runCleanScript("低级清理.sh", "低级清理"));
+    addMineDivider(cardClean);
 
     // 4. 中级清理
-    View cleanMidRow = settingRow("中级清理", "清理残留配置、冗余文件", "🗑️");
-    cleanCard.addView(cleanMidRow);
-    cleanMidRow.setOnClickListener(
-        v -> {
-          runCleanScript("中级清理.sh", "中级清理");
-        });
-    addDivider(cleanCard);
+    View midCleanRow = addMineActionRow(cardClean, "🗑️", "中级清理", "清理残留配置、冗余文件");
+    midCleanRow.setOnClickListener(v -> runCleanScript("中级清理.sh", "中级清理"));
+    addMineDivider(cardClean);
 
     // 5. 高级清理
-    View cleanHighRow = settingRow("高级清理", "深度清理全部残留数据", "🔥");
-    cleanCard.addView(cleanHighRow);
-    cleanHighRow.setOnClickListener(
-        v -> {
-          runCleanScript("高级清理.sh", "高级清理");
-        });
-    addDivider(cleanCard);
+    View highCleanRow = addMineActionRow(cardClean, "🔥", "高级清理", "深度清理全部残留数据");
+    highCleanRow.setOnClickListener(v -> runCleanScript("高级清理.sh", "高级清理"));
+    addMineDivider(cardClean);
 
     // 6. 更改 Android ID
-    View changeIdRow = settingRow("更改 Android ID", "修改设备/应用标识ID", "🔢");
-    cleanCard.addView(changeIdRow);
-    changeIdRow.setOnClickListener(
-        v -> {
-          runCleanScript("更改 Android ID.sh", "更改 Android ID");
-        });
-    addDivider(cleanCard);
+    View changeIdRow = addMineActionRow(cardClean, "🔢", "更改 Android ID", "修改设备/应用标识ID");
+    changeIdRow.setOnClickListener(v -> runCleanScript("更改 Android ID.sh", "更改 Android ID"));
+    addMineDivider(cardClean);
 
     // 7. 清理说明
-    View cleanDescRow = settingRow("清理说明", "查看各级清理功能介绍", "ℹ️");
-    cleanCard.addView(cleanDescRow);
-    cleanDescRow.setOnClickListener(
-        v -> {
-          Toast.makeText(MainActivity.this, "清理说明开发中", Toast.LENGTH_SHORT).show();
-        });
-    // ====================== 【新增 清理模块 结束】 ======================
+    View cleanDescRow = addMineActionRow(cardClean, "ℹ️", "清理说明", "查看各级清理功能介绍");
+    cleanDescRow.setOnClickListener(v -> Toast.makeText(MainActivity.this, "清理说明开发中", Toast.LENGTH_SHORT).show());
 
-    // 原有设置卡片
-    LinearLayout card = new LinearLayout(this);
-    card.setOrientation(LinearLayout.VERTICAL);
-    card.setPadding(dp(14), dp(8), dp(14), dp(8));
-    card.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(card, lp(-1, -2, 0, 0, 0, dp(16)));
+    // ================================================================
+    // 📋 卡片4：设置
+    // ================================================================
+    LinearLayout cardSettings = createGlassCard("⚙️ 设置");
+    page.addView(cardSettings, lp(-1, -2, 0, 0, 0, dp(16)));
 
-    View theme = settingRow("主题模式", nightMode ? "当前为夜间模式" : "当前为日间模式", "◐");
-    card.addView(theme);
-    theme.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            toggleTheme();
-          }
-        });
-    addDivider(card);
+    // 主题模式（带即时切换滑块）
+    LinearLayout themeRow = createThemeToggleRow();
+    cardSettings.addView(themeRow, lp(-1, -2, 0, 0, 0, 0));
+    addMineDivider(cardSettings);
 
-    View access = settingRow("授权访问全部文件", "用于自定义文件选择器访问 /sdcard 和更多目录", "☰");
-    card.addView(access);
-    access.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            openAllFilesAccessSettings();
-          }
-        });
-    addDivider(card);
+    // 授权访问全部文件
+    View accessRow = addMineActionRow(cardSettings, "☰", "授权访问全部文件", "用于访问 /sdcard 和更多目录");
+    accessRow.setOnClickListener(v -> openAllFilesAccessSettings());
+    addMineDivider(cardSettings);
 
-    View update = settingRow("检测更新", "当前版本 v" + getVersionName(), "↑");
-    card.addView(update);
-    update.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            checkUpdate();
-          }
-        });
-    addDivider(card);
+    // 检测更新
+    View updateRow = addMineActionRow(cardSettings, "↑", "检测更新", "当前版本 v" + getVersionName());
+    updateRow.setOnClickListener(v -> checkUpdate());
+    addMineDivider(cardSettings);
 
-    View exit = settingRow("退出应用", "关闭 AuraKernel", "⏻");
-    card.addView(exit);
-    exit.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            finish();
-          }
-        });
+    // 退出应用
+    View exitRow = addMineActionRow(cardSettings, "⏻", "退出应用", "关闭 AuraKernel");
+    exitRow.setOnClickListener(v -> finish());
 
-    TextView tip =
-        text(
-            "说明：运行程序现在采用实时管道模式，stdout/stderr 会显示在首页终端；输入框会把内容写入进程 stdin，适合公告确认、卡密输入等交互。",
-            12,
-            subTextColor(),
-            Typeface.NORMAL);
+    // ===== 底部的提示文字 =====
+    TextView tip = text(
+        "💡 运行程序采用实时管道模式，stdout/stderr 会实时显示在终端",
+        11, subTextColor(), Typeface.NORMAL);
     tip.setLineSpacing(dp(2), 1f);
-    page.addView(tip, lp(-1, -2, 0, dp(4), 0, 0));
+    tip.setPadding(dp(2), dp(10), dp(2), 0);
+    page.addView(tip, lp(-1, -2, 0, 0, 0, 0));
+
     return scroll;
   }
 
-  private View settingRow(String title, String desc, String mark) {
+
+    /**
+   * 我的页面：带右箭头的操作行（用于清理工具、设置列表）
+   * @param parent 父容器卡片
+   * @param emoji 左侧图标
+   * @param title 标题文字
+   * @param desc 描述文字
+   * @return 返回整行 View，用于设置点击事件
+   */
+  private LinearLayout addMineActionRow(LinearLayout parent, String emoji, String title, String desc) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
-    row.setPadding(0, dp(13), 0, dp(13));
+    row.setPadding(dp(6), dp(12), dp(6), dp(12));
+    row.setClickable(true);
+    row.setFocusable(true);
+    parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
-    TextView icon = text(mark, 15, primaryColor(), Typeface.BOLD);
-    icon.setGravity(Gravity.CENTER);
-    icon.setBackground(round(tagColor(), 15, 0, 0));
-    LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(42), dp(42));
-    ilp.setMargins(0, 0, dp(12), 0);
-    row.addView(icon, ilp);
+    // 左侧图标圆形背景
+    TextView iconView = text(emoji, 18, primaryColor(), Typeface.BOLD);
+    iconView.setGravity(Gravity.CENTER);
+    iconView.setBackground(round(tagColor(), 100, 0, 0));
+    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+    iconLp.setMargins(0, 0, dp(14), 0);
+    row.addView(iconView, iconLp);
 
-    LinearLayout texts = new LinearLayout(this);
-    texts.setOrientation(LinearLayout.VERTICAL);
-    row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
-    texts.addView(text(title, 15, textColor(), Typeface.BOLD));
-    TextView d = text(desc, 12, subTextColor(), Typeface.NORMAL);
-    d.setPadding(0, dp(4), 0, 0);
-    texts.addView(d);
-    TextView arrow = text(">", 18, subTextColor(), Typeface.BOLD);
+    // 中间文字区
+    LinearLayout textArea = new LinearLayout(this);
+    textArea.setOrientation(LinearLayout.VERTICAL);
+    row.addView(textArea, new LinearLayout.LayoutParams(0, -2, 1));
+
+    TextView titleView = text(title, 15, textColor(), Typeface.BOLD);
+    textArea.addView(titleView, lp(-1, -2, 0, 0, 0, dp(3)));
+
+    TextView descView = text(desc, 12, subTextColor(), Typeface.NORMAL);
+    descView.setSingleLine(true);
+    descView.setEllipsize(TextUtils.TruncateAt.END);
+    textArea.addView(descView, lp(-1, -2, 0, 0, 0, 0));
+
+    // 右侧箭头
+    TextView arrow = text("›", 22, subTextColor(), Typeface.BOLD);
     arrow.setGravity(Gravity.CENTER);
-    row.addView(arrow, new LinearLayout.LayoutParams(dp(24), -2));
+    LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(dp(24), -2);
+    arrowLp.setMargins(dp(8), 0, 0, 0);
+    row.addView(arrow, arrowLp);
+
     return row;
   }
 
-  /** 系统信息专用行布局：左侧图标 + 标题 + 数值(右对齐) → 无右侧箭头 */
-  private View sysInfoRow(String label, String value, String icon) {
+
+    /**
+   * 我的页面：信息展示行（左侧图标 + 标签 + 右侧值，无箭头）
+   * @param parent 父容器卡片
+   * @param emoji 左侧小图标
+   * @param label 标签名
+   * @param value 右侧值
+   * @param valueColor 值的颜色
+   */
+  private void addMineInfoRow(LinearLayout parent, String emoji, String label, String value, int valueColor) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
-    row.setPadding(0, dp(13), 0, dp(13));
+    row.setPadding(dp(6), dp(11), dp(6), dp(11));
+    parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
-    // 🔴 保留：左侧小图标（完全不动）
-    TextView tvIcon = text(icon, 16, textColor(), Typeface.BOLD);
-    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(24), -2);
-    row.addView(tvIcon, iconLp);
+    // 左侧图标（小尺寸）
+    TextView iconView = text(emoji, 15, textColor(), Typeface.BOLD);
+    iconView.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(28), -2);
+    iconLp.setMargins(0, 0, dp(10), 0);
+    row.addView(iconView, iconLp);
 
-    // 左侧标题
-    TextView tvLabel = text(label, 15, textColor(), Typeface.BOLD);
-    row.addView(tvLabel, new LinearLayout.LayoutParams(-2, -2));
+    // 标签
+    TextView labelView = text(label, 14, textColor(), Typeface.BOLD);
+    labelView.setSingleLine(true);
+    row.addView(labelView, lp(-2, -2, 0, 0, dp(12), 0));
 
-    // 右侧数值（自动占满、右对齐）
-    TextView tvValue = text(value, 14, subTextColor(), Typeface.NORMAL);
-    tvValue.setGravity(Gravity.END);
+    // 值（右对齐，占满剩余空间）
+    TextView valueView = text(value, 13, valueColor, Typeface.NORMAL);
+    valueView.setGravity(Gravity.END);
+    valueView.setSingleLine(true);
+    valueView.setEllipsize(TextUtils.TruncateAt.END);
     LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(0, -2, 1);
-    valueLp.setMargins(dp(12), 0, 0, 0);
-    row.addView(tvValue, valueLp);
+    row.addView(valueView, valueLp);
 
-    // 🟢 已移除：右侧箭头 >
-    return row;
+    // 保存值的引用到行的 tag，方便后续 updateMineInfoRow 更新
+    row.setTag(valueView);
   }
 
+
+    /**
+   * 更新我的页面中的信息行数值
+   * @param parent 父卡片
+   * @param childIndex 行在卡片中的索引
+   * @param newValue 新值
+   * @param valueColor 新值的颜色
+   */
+  private void updateMineInfoRow(LinearLayout parent, int childIndex, String newValue, int valueColor) {
+    if (parent == null || childIndex < 0 || childIndex >= parent.getChildCount()) return;
+    View child = parent.getChildAt(childIndex);
+    if (child instanceof LinearLayout) {
+      LinearLayout row = (LinearLayout) child;
+      Object tag = row.getTag();
+      if (tag instanceof TextView) {
+        ((TextView) tag).setText(newValue);
+        ((TextView) tag).setTextColor(valueColor);
+      } else {
+        // 兜底：找第4个子 View（0=图标, 1=标签, 2=间距无用, 3=值）
+        if (row.getChildCount() >= 4) {
+          View v = row.getChildAt(3);
+          if (v instanceof TextView) {
+            ((TextView) v).setText(newValue);
+            ((TextView) v).setTextColor(valueColor);
+          }
+        }
+      }
+    }
+  }
+
+    /** 🔵 旧版分割线（驱动页面、浏览器等共用）—— 必须保留！ */
   private void addDivider(LinearLayout parent) {
     View v = new View(this);
     v.setBackgroundColor(borderColor());
     parent.addView(v, new LinearLayout.LayoutParams(-1, 1));
   }
+
+    /** 优雅分割线（更细、颜色更浅） */
+  private void addMineDivider(LinearLayout parent) {
+    View divider = new View(this);
+    divider.setBackgroundColor(nightMode ? Color.argb(60, 255, 255, 255) : Color.argb(40, 0, 0, 0));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 1);
+    lp.setMargins(dp(6), 0, dp(6), 0);
+    parent.addView(divider, lp);
+  }
+
+    /**
+   * 创建带标题的玻璃态卡片
+   * @param title 卡片标题（含 emoji，如 "🔑 卡密信息"）
+   * @return 卡片 LinearLayout（VERTICAL 方向）
+   */
+  private LinearLayout createGlassCard(String title) {
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setPadding(dp(18), dp(16), dp(18), dp(12));
+    card.setBackground(round(cardColor(), 22, borderColor(), 1));
+    if (Build.VERSION.SDK_INT >= 21) {
+      card.setElevation(dp(2));
+    }
+
+    // 卡片标题
+    TextView titleView = text(title, 15, textColor(), Typeface.BOLD);
+    titleView.setPadding(dp(4), 0, 0, dp(10));
+    card.addView(titleView, lp(-1, -2, 0, 0, 0, 0));
+
+    return card;
+  }
+
+      /** 主题模式切换行（带即时切换滑块） */
+  private LinearLayout createThemeToggleRow() {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(dp(6), dp(12), dp(6), dp(12));
+    row.setClickable(true);
+    row.setFocusable(true);
+
+    // 图标
+    TextView iconView = text("◐", 20, primaryColor(), Typeface.BOLD);
+    iconView.setGravity(Gravity.CENTER);
+    iconView.setBackground(round(tagColor(), 100, 0, 0));
+    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+    iconLp.setMargins(0, 0, dp(14), 0);
+    row.addView(iconView, iconLp);
+
+    // 文字区
+    LinearLayout textArea = new LinearLayout(this);
+    textArea.setOrientation(LinearLayout.VERTICAL);
+    row.addView(textArea, new LinearLayout.LayoutParams(0, -2, 1));
+
+    TextView titleView = text("主题模式", 15, textColor(), Typeface.BOLD);
+    textArea.addView(titleView, lp(-1, -2, 0, 0, 0, dp(3)));
+
+    final TextView descView = text(nightMode ? "当前为夜间模式" : "当前为日间模式", 12, subTextColor(), Typeface.NORMAL);
+    textArea.addView(descView, lp(-1, -2, 0, 0, 0, 0));
+
+    // 自定义滑块开关
+    final LinearLayout switchWrap = new LinearLayout(this);
+    switchWrap.setOrientation(LinearLayout.HORIZONTAL);
+    switchWrap.setGravity(Gravity.CENTER);
+    switchWrap.setPadding(dp(18), dp(6), dp(18), dp(6));
+    switchWrap.setBackground(round(nightMode ? primaryColor() : disabledColor(), 14, 0, 0));
+
+    final TextView switchText = text(nightMode ? "🌙 夜间" : "☀️ 日间", 12, Color.WHITE, Typeface.BOLD);
+    switchWrap.addView(switchText, lp(-2, -2, 0, 0, 0, 0));
+
+    LinearLayout.LayoutParams swLp = new LinearLayout.LayoutParams(-2, dp(34));
+    swLp.setMargins(dp(8), 0, 0, 0);
+    row.addView(switchWrap, swLp);
+
+    // 点击切换
+    row.setOnClickListener(v -> {
+      toggleTheme();
+      // 更新滑块状态
+      boolean isNight = nightMode;
+      switchWrap.setBackground(round(isNight ? primaryColor() : disabledColor(), 14, 0, 0));
+      switchText.setText(isNight ? "🌙 夜间" : "☀️ 日间");
+      descView.setText(isNight ? "当前为夜间模式" : "当前为日间模式");
+    });
+
+    return row;
+  }
+
 
   private void runSelectedFile() {
     // ===== 签名校验 =====
