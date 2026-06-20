@@ -388,11 +388,12 @@ public class MainActivity extends Activity {
   private void verifyCardFromServer(final String card, final VerifyCallback callback) {
     // ★ 先检查缓存：如果这张卡之前查过，直接用缓存
     if (CacheManager.hasCachedCard(card)) {
-        CacheManager.CardCache cached = CacheManager.getCachedCard(card);
-        runOnUiThread(() -> {
+      CacheManager.CardCache cached = CacheManager.getCachedCard(card);
+      runOnUiThread(
+          () -> {
             if (callback != null) callback.onSuccess(cached.type, cached.endTime, cached.status);
-        });
-        return;
+          });
+      return;
     }
 
     new Thread(
@@ -408,10 +409,10 @@ public class MainActivity extends Activity {
                   final String typeStr = getCardTypeName(typeInt);
                   final String endTime = data.getStr("endTime");
                   final String status = getCardStatus(endTime);
-                  
+
                   // ★ 写入缓存
                   CacheManager.cacheCard(card, typeStr, endTime, status);
-                  
+
                   runOnUiThread(
                       new Runnable() {
                         @Override
@@ -433,44 +434,41 @@ public class MainActivity extends Activity {
               }
             })
         .start();
-}
-
-
-  private void fetchNoticeFromServer() {
-      // ★ 如果已经有缓存，直接显示，不用请求服务器
-      if (CacheManager.hasAnnouncement()) {
-          announcementText.setText(CacheManager.getCachedAnnouncement());
-          return;
-      }
-
-      new Thread(
-              () -> {
-                try {
-                  CommonVariableEntity req = new CommonVariableEntity(null, "1971");
-                  ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
-                  cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
-                  cn.hutool.json.JSONObject data = entries.getJSONObject("data");
-                  final String content = data.getStr("content");
-                  
-                  // ★ 写入缓存
-                  if (content != null && !content.isEmpty()) {
-                      CacheManager.setCachedAnnouncement(content);
-                  }
-                  
-                  runOnUiThread(
-                      () -> {
-                        if (content != null && !content.isEmpty()) {
-                          announcementText.setText(content);
-                        }
-                      });
-                } catch (Exception e) {
-                  Log.e("NOTICE", "获取公告失败", e);
-                }
-              })
-          .start();
   }
 
+  private void fetchNoticeFromServer() {
+    // ★ 如果已经有缓存，直接显示，不用请求服务器
+    if (CacheManager.hasAnnouncement()) {
+      announcementText.setText(CacheManager.getCachedAnnouncement());
+      return;
+    }
 
+    new Thread(
+            () -> {
+              try {
+                CommonVariableEntity req = new CommonVariableEntity(null, "1971");
+                ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
+                cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
+                cn.hutool.json.JSONObject data = entries.getJSONObject("data");
+                final String content = data.getStr("content");
+
+                // ★ 写入缓存
+                if (content != null && !content.isEmpty()) {
+                  CacheManager.setCachedAnnouncement(content);
+                }
+
+                runOnUiThread(
+                    () -> {
+                      if (content != null && !content.isEmpty()) {
+                        announcementText.setText(content);
+                      }
+                    });
+              } catch (Exception e) {
+                Log.e("NOTICE", "获取公告失败", e);
+              }
+            })
+        .start();
+  }
 
   private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
     if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
@@ -1078,6 +1076,67 @@ public class MainActivity extends Activity {
             })
         .start();
   }
+
+    // ========== 🔥 方案二：回到前台时检查远程脚本更新 ==========
+  @Override
+  protected void onResume() {
+    super.onResume();
+    checkRemoteScriptUpdate();
+  }
+
+  private void checkRemoteScriptUpdate() {
+    // 没有网络或没有脚本文件就跳过
+    if (!isNetworkAvailable() || selectedFile == null) return;
+
+    new Thread(
+            () -> {
+              try {
+                String sigHash = SignatureGuard.getApkSignatureHashBase64(this);
+                URL url = new URL(StringGuard.get(10));
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+
+                JSONObject body = new JSONObject();
+                body.put("signature", sigHash);
+                conn.getOutputStream().write(body.toString().getBytes());
+
+                if (conn.getResponseCode() == 200) {
+                  BufferedReader reader =
+                      new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                  StringBuilder sb = new StringBuilder();
+                  String line;
+                  while ((line = reader.readLine()) != null) sb.append(line);
+                  reader.close();
+                  JSONObject result = new JSONObject(sb.toString());
+                  String serverHash = result.optString("scriptHash", "");
+
+                  if (!serverHash.isEmpty()) {
+                    String localHash = getFileSha256(selectedFile);
+                    if (!localHash.equals(serverHash)) {
+                      // 发现服务器有新版本
+                      handler.post(
+                          () -> {
+                            append("📥 检测到服务器脚本有更新...\n");
+                            selectedFile.delete();
+                            selectedFile = null;
+                            scriptReady = false;
+                            updateRunButton();
+                            prepareScriptIfNeeded(); // 自动重新下载
+                          });
+                    }
+                  }
+                }
+                conn.disconnect();
+              } catch (Exception ignored) {
+              }
+            })
+        .start();
+  }
+
 
   @Override
   public void onBackPressed() {
@@ -3695,16 +3754,14 @@ public class MainActivity extends Activity {
   }
 
   private void runSelectedFile() {
-
-    // ===== 🛡️ 运行前再校验一次签名 =====
+    // ===== 签名校验 =====
     if (!SignatureGuard.isSignatureValid(this)) {
       Toast.makeText(this, "❌ 应用签名校验失败", Toast.LENGTH_SHORT).show();
       return;
     }
-    // ====================================
+
     if (selectedFile == null) {
       if (!scriptReady && isNetworkAvailable()) {
-        // 脚本未就绪，触发重新下载
         prepareScriptIfNeeded();
         return;
       }
@@ -3714,10 +3771,64 @@ public class MainActivity extends Activity {
 
     if (running) return;
 
-    // ================= 🛡️ 运行时哈希校验 =================
+    // ===== 🔥 新增：运行时远程验证哈希（每次运行都检查） =====
+    if (isNetworkAvailable()) {
+      new Thread(
+              () -> {
+                try {
+                  // 获取当前签名哈希发给服务器
+                  String sigHash = SignatureGuard.getApkSignatureHashBase64(this);
+                  URL url = new URL(StringGuard.get(10));
+                  HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                  conn.setRequestMethod("POST");
+                  conn.setRequestProperty("Content-Type", "application/json");
+                  conn.setDoOutput(true);
+                  conn.setConnectTimeout(5000);
+                  conn.setReadTimeout(5000);
+
+                  JSONObject body = new JSONObject();
+                  body.put("signature", sigHash);
+                  conn.getOutputStream().write(body.toString().getBytes());
+
+                  if (conn.getResponseCode() == 200) {
+                    BufferedReader reader =
+                        new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    JSONObject result = new JSONObject(reader.readLine());
+                    reader.close();
+
+                    String serverHash = result.optString("scriptHash", "");
+                    if (!serverHash.isEmpty()) {
+                      String localHash = getFileSha256(selectedFile);
+                      if (!localHash.equals(serverHash)) {
+                        // 哈希不匹配，脚本被更新了
+                        handler.post(
+                            () -> {
+                              append("ℹ️ 检测到脚本已更新，正在重新获取...\n");
+                              selectedFile.delete();
+                              selectedFile = null;
+                              scriptReady = false;
+                              updateRunButton();
+                              prepareScriptIfNeeded();
+                            });
+                        return;
+                      }
+                      // 同时更新本地保存的哈希
+                      getSharedPreferences(PREFS, MODE_PRIVATE)
+                          .edit()
+                          .putString("expected_script_hash", serverHash)
+                          .apply();
+                    }
+                  }
+                  conn.disconnect();
+                } catch (Exception ignored) {
+                }
+              })
+          .start();
+    }
+
+    // ===== 原有的哈希校验（兜底） =====
     SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
     String expectedHash = prefs.getString("expected_script_hash", "");
-
     if (!expectedHash.isEmpty()) {
       try {
         String localHash = getFileSha256(selectedFile);
@@ -3727,7 +3838,7 @@ public class MainActivity extends Activity {
           selectedFile = null;
           scriptReady = false;
           updateRunButton();
-          prepareScriptIfNeeded(); // 重新下载
+          prepareScriptIfNeeded();
           return;
         }
       } catch (Exception e) {
@@ -3736,7 +3847,6 @@ public class MainActivity extends Activity {
       }
     }
 
-    // 使用弹窗终端运行
     showHomeTerminalDialog();
   }
 
