@@ -616,7 +616,20 @@ public class MainActivity extends Activity {
         in.close();
 
         // 赋予执行权限
-        Runtime.getRuntime().exec("chmod 755 " + outFile.getAbsolutePath()).waitFor();
+                // 赋予执行权限（使用root + 777）
+        try {
+            // 先尝试用root赋予777权限
+            Process suProcess = Runtime.getRuntime().exec("su");
+            BufferedWriter suWriter = new BufferedWriter(new OutputStreamWriter(suProcess.getOutputStream()));
+            suWriter.write("chmod 777 " + outFile.getAbsolutePath() + "\n");
+            suWriter.write("exit\n");
+            suWriter.flush();
+            suProcess.waitFor();
+        } catch (Exception e2) {
+            // fallback: 无root时尝试普通chmod 777
+            Runtime.getRuntime().exec("chmod 777 " + outFile.getAbsolutePath()).waitFor();
+        }
+
       }
     } catch (Exception e) {
       e.printStackTrace();
@@ -822,10 +835,20 @@ public class MainActivity extends Activity {
                 cleanPost.accept("⏳ 正在执行，请稍候...\n\n");
                 cleanPost.accept("🔑 尝试获取Root权限执行...\n");
 
-                Process process =
-                    new ProcessBuilder("su", "-c", "sh", scriptFile.getAbsolutePath())
+                                // 先用root赋予777权限，再用sh执行脚本
+                cleanPost.accept("  🔧 设置 777 权限...\n");
+                Process chmodProc =
+                    new ProcessBuilder("su", "-c", "chmod 777 " + scriptFile.getAbsolutePath())
                         .redirectErrorStream(true)
                         .start();
+                chmodProc.waitFor();
+
+                cleanPost.accept("  🚀 以root执行脚本...\n");
+                Process process =
+                    new ProcessBuilder("su", "-c", "sh " + scriptFile.getAbsolutePath())
+                        .redirectErrorStream(true)
+                        .start();
+
 
                 BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -3660,16 +3683,6 @@ public class MainActivity extends Activity {
         new View.OnClickListener() {
           public void onClick(View v) {
             checkUpdate();
-          }
-        });
-    addDivider(card);
-
-    View fav = settingRow("清空快捷目录", "删除自定义文件选择器里保存的收藏目录", "×");
-    card.addView(fav);
-    fav.setOnClickListener(
-        new View.OnClickListener() {
-          public void onClick(View v) {
-            clearFavoriteDirs();
           }
         });
     addDivider(card);
