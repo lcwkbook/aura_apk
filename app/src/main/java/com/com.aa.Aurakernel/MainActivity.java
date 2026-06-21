@@ -2402,17 +2402,14 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     updateSwitchButton(noBackgroundBtn, noBackground);
   }
 
-  // ====================== 替换 updateSwitchButton() ======================
-  private void updateSwitchButton(TextView btn, boolean on) {
-      if (btn == null) return;
-      btn.setText(on ? "开启" : "关闭");
-      
-      // 找到父容器（切换滑块）
-      if (btn.getParent() instanceof LinearLayout) {
-          LinearLayout switchWrap = (LinearLayout) btn.getParent();
-          switchWrap.setBackground(round(on ? primaryColor() : disabledColor(), 16, 0, 0));
-      }
+    private void updateSwitchButton(TextView btn, boolean on) {
+    if (btn == null) return;
+    btn.setText(on ? "开启" : "关闭");
+    btn.setTextColor(on ? Color.WHITE : subTextColor());
+    btn.setBackground(
+        round(on ? primaryColor() : tagColor(), 16, on ? 0 : borderColor(), on ? 0 : 1));
   }
+
 
 
   private TextView modeButton(String text, boolean active) {
