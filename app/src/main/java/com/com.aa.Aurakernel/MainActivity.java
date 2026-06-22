@@ -3934,12 +3934,13 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
 
     if (running) return;
 
-    // ===== 🔥 新增：运行时远程验证哈希（每次运行都检查） =====
+        // ===== 🔥 修复：远程验证 + 本地校验 + 运行，全部同步执行 =====
     if (isNetworkAvailable()) {
+      // 有网络：走完整的远程验证流程
       new Thread(
               () -> {
                 try {
-                  // 获取当前签名哈希发给服务器
+                  // 1. 发送签名获取服务器返回的哈希
                   String sigHash = SignatureGuard.getApkSignatureHashBase64(this);
                   URL url = new URL(StringGuard.get(10));
                   HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -3953,64 +3954,72 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                   body.put("signature", sigHash);
                   conn.getOutputStream().write(body.toString().getBytes());
 
-                  if (conn.getResponseCode() == 200) {
-                    BufferedReader reader =
-                        new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    JSONObject result = new JSONObject(reader.readLine());
-                    reader.close();
-
-                    String serverHash = result.optString("scriptHash", "");
-                    if (!serverHash.isEmpty()) {
-                      String localHash = getFileSha256(selectedFile);
-                      if (!localHash.equals(serverHash)) {
-                        // 哈希不匹配，脚本被更新了
-                        handler.post(
-                            () -> {
-                              append("ℹ️ 检测到脚本已更新，正在重新获取...\n");
-                              selectedFile.delete();
-                              selectedFile = null;
-                              scriptReady = false;
-                              updateRunButton();
-                              prepareScriptIfNeeded();
-                            });
-                        return;
-                      }
-                      // 同时更新本地保存的哈希
-                      getSharedPreferences(PREFS, MODE_PRIVATE)
-                          .edit()
-                          .putString("expected_script_hash", serverHash)
-                          .apply();
-                    }
+                  if (conn.getResponseCode() != 200) {
+                    handler.post(() -> append("⚠️ 服务器验证失败，终止运行\n"));
+                    conn.disconnect();
+                    return;
                   }
+
+                  BufferedReader reader =
+                      new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                  JSONObject result = new JSONObject(reader.readLine());
+                  reader.close();
                   conn.disconnect();
-                } catch (Exception ignored) {
+
+                  String serverHash = result.optString("scriptHash", "");
+                  if (!serverHash.isEmpty()) {
+                    String localHash = getFileSha256(selectedFile);
+                    if (!localHash.equals(serverHash)) {
+                      // 哈希不匹配 → 重新下载，不运行
+                      handler.post(
+                          () -> {
+                            append("📥 检测到脚本已更新，正在重新获取...\n");
+                            selectedFile.delete();
+                            selectedFile = null;
+                            scriptReady = false;
+                            updateRunButton();
+                            prepareScriptIfNeeded();
+                          });
+                      return;
+                    }
+                    // ✅ 哈希匹配，保存到本地
+                    getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .edit()
+                        .putString("expected_script_hash", serverHash)
+                        .apply();
+                  }
+
+                  // ✅ 所有验证通过，在主线程弹出终端运行
+                  handler.post(() -> showHomeTerminalDialog());
+
+                } catch (Exception e) {
+                  handler.post(() -> append("⚠️ 验证过程出错：" + e.getMessage() + "\n"));
                 }
               })
           .start();
-    }
-
-    // ===== 原有的哈希校验（兜底） =====
-    SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-    String expectedHash = prefs.getString("expected_script_hash", "");
-    if (!expectedHash.isEmpty()) {
-      try {
-        String localHash = getFileSha256(selectedFile);
-        if (!localHash.equals(expectedHash)) {
-          append("ℹ️ 检测到脚本已更新，正在重新获取...\n");
-          selectedFile.delete();
-          selectedFile = null;
-          scriptReady = false;
-          updateRunButton();
-          prepareScriptIfNeeded();
+    } else {
+      // 无网络：走本地缓存哈希校验（兜底）
+      SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+      String expectedHash = prefs.getString("expected_script_hash", "");
+      if (!expectedHash.isEmpty()) {
+        try {
+          String localHash = getFileSha256(selectedFile);
+          if (!localHash.equals(expectedHash)) {
+            append("ℹ️ 本地脚本哈希不匹配，请连接网络重新获取\n");
+            selectedFile.delete();
+            selectedFile = null;
+            scriptReady = false;
+            updateRunButton();
+            return;
+          }
+        } catch (Exception e) {
+          Toast.makeText(this, "❌ 无法校验文件完整性", Toast.LENGTH_SHORT).show();
           return;
         }
-      } catch (Exception e) {
-        Toast.makeText(this, "❌ 无法校验文件完整性", Toast.LENGTH_SHORT).show();
-        return;
       }
+      // 无网络且本地校验通过（或无缓存哈希时放行），直接运行
+      showHomeTerminalDialog();
     }
-
-    showHomeTerminalDialog();
   }
 
   // ===================== 主页弹窗终端（类似驱动页风格） =====================
