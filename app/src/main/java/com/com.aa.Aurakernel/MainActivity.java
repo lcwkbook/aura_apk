@@ -3932,9 +3932,12 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
       return;
     }
 
+       // ===== 🔒 方案四：防重复点击（立即锁定按钮）=====
     if (running) return;
+    running = true;
+    updateRunButton();
 
-        // ===== 🔥 修复：远程验证 + 本地校验 + 运行，全部同步执行 =====
+    // ===== 🔥 远程验证 + 本地校验 + 运行 =====
     if (isNetworkAvailable()) {
       // 有网络：走完整的远程验证流程
       new Thread(
@@ -3955,7 +3958,10 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                   conn.getOutputStream().write(body.toString().getBytes());
 
                   if (conn.getResponseCode() != 200) {
-                    handler.post(() -> append("⚠️ 服务器验证失败，终止运行\n"));
+                    handler.post(() -> {
+                      append("⚠️ 服务器验证失败，终止运行\n");
+                      unlockRunButton(); // ← 解锁
+                    });
                     conn.disconnect();
                     return;
                   }
@@ -3977,7 +3983,7 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                             selectedFile.delete();
                             selectedFile = null;
                             scriptReady = false;
-                            updateRunButton();
+                            unlockRunButton(); // ← 解锁
                             prepareScriptIfNeeded();
                           });
                       return;
@@ -3993,7 +3999,10 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                   handler.post(() -> showHomeTerminalDialog());
 
                 } catch (Exception e) {
-                  handler.post(() -> append("⚠️ 验证过程出错：" + e.getMessage() + "\n"));
+                  handler.post(() -> {
+                    append("⚠️ 验证过程出错：" + e.getMessage() + "\n");
+                    unlockRunButton(); // ← 解锁
+                  });
                 }
               })
           .start();
@@ -4009,11 +4018,12 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
             selectedFile.delete();
             selectedFile = null;
             scriptReady = false;
-            updateRunButton();
+            unlockRunButton(); // ← 解锁
             return;
           }
         } catch (Exception e) {
           Toast.makeText(this, "❌ 无法校验文件完整性", Toast.LENGTH_SHORT).show();
+          unlockRunButton(); // ← 解锁
           return;
         }
       }
@@ -4443,6 +4453,15 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
           activeRootPath = "";
           updateRunButton();
         });
+  }
+
+        /** 解锁运行按钮（失败/取消时调用） */
+  private void unlockRunButton() {
+    running = false;
+    if (runButton != null) {
+      runButton.setEnabled(true);
+    }
+    updateRunButton();
   }
 
   private void startInteractiveRootProcess(String rootPath, boolean isElf) throws Exception {
