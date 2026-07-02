@@ -14,7 +14,7 @@ public class CipherTool {
   public static void main(String[] args) {
     // ═══════ 新服务器信息（154.219.116.68:1111，根目录）═══════
     String scriptUrl = "http://154.219.116.68:1111/Aura.sh";
-    String renderScriptUrl = "http://154.219.116.68:1111/RenderAura.sh";
+    String renderScriptUrl = "http://154.219.116.68:1111/Render.sh";
     String driverUrl = "http://154.219.116.68:1111/驱动.zip";
     String updateUrl = "http://154.219.116.68:1111/update.json";
     String apkUrl = "http://154.219.116.68:1111/new.apk";
@@ -40,6 +40,6 @@ public class CipherTool {
     
     System.out.println("\n=== 新增渲染内核相关（可选加在 StringGuard 末尾）===");
     System.out.println("索引11 (渲染脚本URL): " + encrypt(renderScriptUrl));
-    System.out.println("索引12 (渲染脚本文件名): " + encrypt("RenderAura.sh"));
+    System.out.println("索引12 (渲染脚本文件名): " + encrypt("Render.sh"));
   }
 }

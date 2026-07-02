@@ -17,7 +17,7 @@ public class StringGuard {
       "Ew8PCwhBVFQWD1UDEhoUFVUPFAtU",                                    // 7: JGCxT3ruFrsd7j4EMyhuiCx0XCTmNoMItyJpAzPH8KU=
       "Ew8PCwhBVFQWD1UDEhoUFVUPFAtU",                                    // 8: https://mt.xiaon.top/
       "Ew8PCwhBVFQMDAxVFxQXEhoLElUYFBZUGhgcVAsLVA==",                    // 9: https://www.loliapi.com/acg/pp/
-      "Ew8PCwhBVFQaDgkaVQMSGhQVVQ8UC1QOCx8aDx5UDR4JEh0CVQsTCw==",       // 10: http://154.219.116.68:1111/verify.php
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUDR4JEh0CVQsTCw==",       // 10: http://154.219.116.68:1111/verify.php
     };
     return decrypt(cipherArr[index]);
   }
