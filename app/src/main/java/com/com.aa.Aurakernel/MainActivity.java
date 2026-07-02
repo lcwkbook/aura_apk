@@ -1,4 +1,4 @@
-package com.aa.Aurakernel;
+package com.aa.ABC;
 
 import android.Manifest;
 import android.animation.ValueAnimator;
@@ -100,15 +100,12 @@ public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
   private static Bitmap cachedAvatar = null;
 
-  private String getScriptUrl() {
-    return StringGuard.get(0);
-  }
+private String getScriptFileName() {
+    return (currentKernel == 0) ? "Aura.sh" : "RenderAura.sh";
+}
 
   private static final String REMOTE_SCRIPT_NAME = StringGuard.get(4);
   private static final String SCRIPT_NAME = StringGuard.get(4);
-  private int driverType = 0;
-  private boolean antiRecord = false; // 防录屏，默认关闭
-  private boolean noBackground = false; // 无后台，默认关闭
   private boolean scriptReady = false;
   private static final int REQ_LOCATION = 4001;
   private boolean isDownloading = false;
@@ -118,6 +115,31 @@ public class MainActivity extends Activity {
   private static final String PREF_FAV_DIRS = "favorite_dirs";
   private static final String PREF_LAST_RUN_DIR = "last_run_dir";
   private static final String PREF_LAST_DRIVER_DIR = "last_driver_dir";
+
+  private LinearLayout kernelContentContainer; // 🌟 内核内容容器
+  // ===== 双内核相关字段 =====
+  private int currentKernel = 0; // 0=单透内核, 1=渲染内核
+  private TextView kernelTabSingle, kernelTabRender;
+
+  // --- 单透内核 (single) ---
+  private int driverType_single = 0;
+  private boolean antiRecord_single = false;
+  private boolean noBackground_single = false;
+  private TextView driverBtnKpm_s, driverBtnDitpro_s, driverBtnParadise_s, driverBtnBackup_s;
+  private TextView antiRecordBtn_s, noBackgroundBtn_s;
+  private EditText keyEdit_s;
+  private Button runButton_s;
+
+  // --- 渲染内核 (render) ---
+  private int driverType_render = 0;
+  private boolean antiRecord_render = false;
+  private boolean noBackground_render = false;
+  private TextView driverBtnKpm_r, driverBtnDitpro_r, driverBtnParadise_r, driverBtnBackup_r;
+  private TextView antiRecordBtn_r, noBackgroundBtn_r;
+  private EditText keyEdit_r;
+  private Button runButton_r;
+
+
 
   // 纯白启动页背景
   final int SPLASH_WHITE_BG = Color.WHITE;
@@ -140,12 +162,12 @@ public class MainActivity extends Activity {
   private LinearLayout navHome;
   private LinearLayout navMine;
   private LinearLayout navDriver;
-  private TextView driverBtnKpm, driverBtnDitpro, driverBtnParadise, driverBtnBackup;
-  private TextView antiRecordBtn, noBackgroundBtn;
+  // private TextView driverBtnKpm, driverBtnDitpro, driverBtnParadise, driverBtnBackup;
+  // private TextView antiRecordBtn, noBackgroundBtn;
 
   private TextView outputView;
-  private Button runButton;
-  private EditText keyEdit;
+  // private Button runButton;
+  // private EditText keyEdit;
 
   private File selectedFile;
   private String selectedName = "";
@@ -1041,9 +1063,21 @@ public class MainActivity extends Activity {
 
     SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
     nightMode = sp.getBoolean("night_mode", false);
-    driverType = sp.getInt("driver_type", 0); // 新增
-    antiRecord = sp.getBoolean("anti_record", false); // 新增
-    noBackground = sp.getBoolean("no_background", false); // 新增
+
+    // 单透内核数据
+    driverType_single = sp.getInt("driver_type_s", 0);       // 改：driver_type_single → driver_type_s
+    antiRecord_single = sp.getBoolean("anti_record_s", false); // 改：anti_record_single → anti_record_s
+    noBackground_single = sp.getBoolean("no_background_s", false); // 改：no_background_single → no_background_s
+
+    // 渲染内核数据
+    driverType_render = sp.getInt("driver_type_r", 0);       // 改：driver_type_render → driver_type_r
+    antiRecord_render = sp.getBoolean("anti_record_r", false); // 改：anti_record_render → anti_record_r
+    noBackground_render = sp.getBoolean("no_background_r", false); // 改：no_background_render → no_background_r
+
+
+    // 当前选中的内核
+    currentKernel = sp.getInt("current_kernel", 0);
+
     setupWindow();
     root = new FrameLayout(this);
 
@@ -1124,6 +1158,7 @@ public class MainActivity extends Activity {
 
                 JSONObject body = new JSONObject();
                 body.put("signature", sigHash);
+                body.put("kernel", currentKernel);
                 conn.getOutputStream().write(body.toString().getBytes());
 
                 if (conn.getResponseCode() == 200) {
@@ -1546,38 +1581,49 @@ public class MainActivity extends Activity {
   }
 
   private void prepareScriptIfNeeded() {
+    Button currentRunBtn = (currentKernel == 0) ? runButton_s : runButton_r;
     if (scriptReady) return;
-    if (isDownloading) {
-      append("正在下载中，请稍候...\n");
-      return;
-    }
-
+    
     File scriptDir = new File(getFilesDir(), "scripts");
-    File scriptFile = new File(scriptDir, SCRIPT_NAME);
+    File scriptFile = new File(scriptDir, getScriptFileName());
+    
+    if (isDownloading) {
+        // 正在下载中，但如果下载的是旧内核的脚本，需要重新下载
+        if (!scriptFile.exists()) {
+            // 当前内核的脚本还没下载，但 isDownloading 为 true
+            // 这意味着下载线程可能是在下旧内核的脚本
+            // 强制重置，重新开始下载
+            append("检测到内核已切换，重新开始下载...\n");
+            isDownloading = false;
+        } else {
+            append("正在下载中，请稍候...\n");
+            return;
+        }
+    }
+    
     if (scriptFile.exists()) {
-      selectedFile = scriptFile;
-      selectedName = SCRIPT_NAME;
-      scriptReady = true;
-      updateRunButton();
-      append("脚本已就绪\n");
-      return;
+        selectedFile = scriptFile;
+        selectedName = getScriptFileName();
+        scriptReady = true;
+        updateRunButton();
+        append("脚本已就绪\n");
+        return;
     }
-
+    
     append("正在验证授权...\n");
-    if (runButton != null) {
-      runButton.setEnabled(false);
-      runButton.setTag(round(primaryColor(), 14, 0, 0));
-      updateDownloadProgress(runButton, 0);
+    if (currentRunBtn != null) {
+        currentRunBtn.setEnabled(false);
+        currentRunBtn.setTag(round(primaryColor(), 14, 0, 0));
+        updateDownloadProgress(currentRunBtn, 0);
     }
-
+    
     isDownloading = true;
-
+    
     new Thread(
             () -> {
               try {
                 if (!scriptDir.exists()) scriptDir.mkdirs();
-                File tempFile = new File(scriptDir, SCRIPT_NAME + ".tmp");
-
+                File tempFile = new File(scriptDir, getScriptFileName() + ".tmp");
                 // ========== 第一步：获取签名哈希，请求服务器验证 ==========
                 String signatureHash = SignatureGuard.getApkSignatureHashBase64(this);
 
@@ -1589,13 +1635,15 @@ public class MainActivity extends Activity {
                 authConn.setReadTimeout(10000);
                 authConn.setDoOutput(true);
 
-                // 发送签名哈希
+                // 发送签名哈希 + 内核类型
                 JSONObject requestBody = new JSONObject();
                 requestBody.put("signature", signatureHash);
+                requestBody.put("kernel", currentKernel);  // ← 新增：告诉服务器当前内核
                 OutputStreamWriter writer = new OutputStreamWriter(authConn.getOutputStream());
                 writer.write(requestBody.toString());
                 writer.flush();
                 writer.close();
+
 
                 int responseCode = authConn.getResponseCode();
                 if (responseCode != 200) {
@@ -1611,8 +1659,8 @@ public class MainActivity extends Activity {
                   handler.post(
                       () -> {
                         append("❌ 授权验证失败：" + errorMsg.toString() + "\n");
-                        if (runButton != null) {
-                          runButton.setBackground((GradientDrawable) runButton.getTag());
+                        if (currentRunBtn != null) {
+                          currentRunBtn.setBackground((GradientDrawable) currentRunBtn.getTag());
                         }
                         isDownloading = false;
                         updateRunButton();
@@ -1677,7 +1725,7 @@ public class MainActivity extends Activity {
                   final int p = progress;
                   handler.post(
                       () -> {
-                        if (runButton != null) updateDownloadProgress(runButton, p);
+                        if (currentRunBtn != null) updateDownloadProgress(currentRunBtn, p);
                       });
                 }
 
@@ -1697,8 +1745,8 @@ public class MainActivity extends Activity {
                     handler.post(
                         () -> {
                           append("❌ 脚本文件异常（哈希不匹配），已拦截\n");
-                          if (runButton != null) {
-                            runButton.setBackground((GradientDrawable) runButton.getTag());
+                          if (currentRunBtn != null) {
+                            currentRunBtn.setBackground((GradientDrawable) currentRunBtn.getTag());
                           }
                           isDownloading = false;
                           updateRunButton();
@@ -1710,34 +1758,50 @@ public class MainActivity extends Activity {
                 // 保存哈希供运行时校验
                 final String hashToSave = serverScriptHash;
                 handler.post(
-                    () -> {
-                      SharedPreferences.Editor editor =
-                          getSharedPreferences(PREFS, MODE_PRIVATE).edit();
-                      editor.putString("expected_script_hash", hashToSave);
-                      editor.apply();
+                () -> {
+                    // 🌟 检查下载完成后内核是否还匹配
+                    String expectedName = getScriptFileName();
+                    if (!scriptFile.getName().equals(expectedName)) {
+                        Log.w("DOWNLOAD", "下载脚本与当前内核不匹配，丢弃: " 
+                              + scriptFile.getName() + " vs " + expectedName);
+                        scriptFile.delete();
+                        isDownloading = false;
+                        prepareScriptIfNeeded();
+                        return;
+                    }
+                    
+                    SharedPreferences.Editor editor =
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+                    editor.putString("expected_script_hash", hashToSave);
+                    editor.apply();
 
-                      selectedFile = scriptFile;
-                      selectedName = SCRIPT_NAME;
-                      scriptReady = true;
-                      isDownloading = false;
-                      append("运行脚本准备完毕\n");
-                      if (runButton != null) {
-                        runButton.setBackground((GradientDrawable) runButton.getTag());
-                      }
-                      updateRunButton();
-                    });
-
+                    selectedFile = scriptFile;
+                    selectedName = getScriptFileName();
+                    scriptReady = true;
+                    isDownloading = false;
+                    append("运行脚本准备完毕\n");
+                    
+                    // 🌟 用当前内核的按钮引用，而不是下载开始时捕获的过时引用
+                    Button freshBtn = (currentKernel == 0) ? runButton_s : runButton_r;
+                    if (freshBtn != null) {
+                        freshBtn.setBackground((GradientDrawable) freshBtn.getTag());
+                    }
+                    
+                    updateRunButton();
+                });
               } catch (Exception e) {
                 handler.post(
                     () -> {
-                      append("❌ 下载失败：" + e.getMessage() + "\n");
-                      if (runButton != null) {
-                        runButton.setBackground((GradientDrawable) runButton.getTag());
-                      }
-                      isDownloading = false;
-                      updateRunButton();
+                        append("❌ 下载失败：" + e.getMessage() + "\n");
+                        // 🌟 用当前内核的按钮引用
+                        Button freshBtn = (currentKernel == 0) ? runButton_s : runButton_r;
+                        if (freshBtn != null) {
+                            freshBtn.setBackground((GradientDrawable) freshBtn.getTag());
+                        }
+                        isDownloading = false;
+                        updateRunButton();
                     });
-              }
+            }
             })
         .start();
   }
@@ -1978,7 +2042,6 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
   }
 
   private View createHomePage() {
-    // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
     ScrollView rootScroll = new ScrollView(this);
     rootScroll.setVerticalScrollBarEnabled(false);
     rootScroll.setFillViewport(false);
@@ -1988,9 +2051,9 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(18), dp(18) + getStatusBarHeight(), dp(18), dp(8));
     page.setBackgroundColor(bgColor());
-    // 把原page装入外层ScrollView
     rootScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
+    // ===== 头部区域（不变） =====
     LinearLayout header = new LinearLayout(this);
     header.setOrientation(LinearLayout.HORIZONTAL);
     header.setGravity(Gravity.CENTER_VERTICAL);
@@ -2001,7 +2064,6 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     avatarView.setBackground(round(cardColor(), 23, borderColor(), 1));
     LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(46), dp(46));
     header.addView(avatarView, avatarLp);
-    // 异步加载随机头像
     loadRandomAvatar(avatarView);
 
     LinearLayout ht = new LinearLayout(this);
@@ -2010,239 +2072,445 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     htlp.setMargins(dp(12), 0, 0, 0);
     header.addView(ht, htlp);
     ht.addView(text("AuraKernel", 28, textColor(), Typeface.BOLD));
-    TextView desc = text("选择驱动并刷入后运行脚本", 13, subTextColor(), Typeface.NORMAL);
+    TextView desc = text("选择内核与驱动，刷入后运行脚本", 13, subTextColor(), Typeface.NORMAL);
     desc.setSingleLine(true);
     desc.setEllipsize(TextUtils.TruncateAt.END);
     ht.addView(desc);
 
-    // ====================== 拆分开始：每个模块独立卡片 ======================
-    // ★ 0. 公告模块 - 独立卡片（放在最前面）
+    // ===== 🌟 新增：内核选择器（胶囊切换按钮） =====
+    LinearLayout kernelSelector = new LinearLayout(this);
+    kernelSelector.setOrientation(LinearLayout.HORIZONTAL);
+    kernelSelector.setBackground(round(cardColor(), 24, borderColor(), 1));
+    kernelSelector.setPadding(dp(4), dp(4), dp(4), dp(4));
+    page.addView(kernelSelector, lp(-1, dp(46), 0, 0, 0, dp(14)));
+
+    kernelTabSingle = kernelTab("单透内核", currentKernel == 0);
+    kernelTabRender = kernelTab("渲染内核", currentKernel == 1);
+    kernelSelector.addView(kernelTabSingle, new LinearLayout.LayoutParams(0, -1, 1));
+    kernelSelector.addView(kernelTabRender, new LinearLayout.LayoutParams(0, -1, 1));
+
+    kernelTabSingle.setOnClickListener(v -> switchKernel(0));
+    kernelTabRender.setOnClickListener(v -> switchKernel(1));
+
+    // ===== 公告模块（不变） =====
     LinearLayout cardAnnounce = new LinearLayout(this);
     cardAnnounce.setOrientation(LinearLayout.VERTICAL);
     cardAnnounce.setPadding(dp(16), dp(16), dp(16), dp(16));
     cardAnnounce.setBackground(round(cardColor(), 24, borderColor(), 1));
     page.addView(cardAnnounce, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    // 公告标题
     TextView announceTitle = text("📢 公告", 15, textColor(), Typeface.BOLD);
     cardAnnounce.addView(announceTitle, lp(-1, -2, 0, 0, 0, dp(8)));
 
-    // 先用"加载中..."占位
     announcementText = text("⏳ 加载中...", 13, subTextColor(), Typeface.NORMAL);
     announcementText.setLineSpacing(dp(4), 1f);
     cardAnnounce.addView(announcementText, lp(-1, -2, 0, 0, 0, 0));
-
-    // 异步获取公告
     fetchNoticeFromServer();
 
-    // 1. 卡密模块 - 独立卡片
+        // ===== 🌟 内核专属内容容器（切换时只重建这里）=====
+    kernelContentContainer = new LinearLayout(this);
+    kernelContentContainer.setOrientation(LinearLayout.VERTICAL);
+    page.addView(kernelContentContainer, lp(-1, -2, 0, 0, 0, 0));
+    
+    // 根据 currentKernel 显示对应的模块
+    buildCurrentKernelContent();
+
+
+
+    updateRunButton();
+    return rootScroll;
+}
+
+// ===== 构建单透内核内容 =====
+private void buildSingleKernelContent(LinearLayout page) {
+    // 1️⃣ 卡密模块
     LinearLayout cardKey = new LinearLayout(this);
     cardKey.setOrientation(LinearLayout.VERTICAL);
     cardKey.setPadding(dp(16), dp(16), dp(16), dp(16));
     cardKey.setBackground(round(cardColor(), 24, borderColor(), 1));
     page.addView(cardKey, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    TextView keyTitle = text("卡密", 15, textColor(), Typeface.BOLD);
+    TextView keyTitle = text("卡密（单透内核）", 15, textColor(), Typeface.BOLD);
     cardKey.addView(keyTitle, lp(-1, -2, 0, 0, 0, dp(8)));
 
-    // ★ 输入框 + 验证按钮 组合（用FrameLayout叠加）★
     FrameLayout inputFrame = new FrameLayout(this);
     inputFrame.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(42)));
 
-    keyEdit = new EditText(this);
-    keyEdit.setSingleLine(true);
-    keyEdit.setTextSize(14);
-    keyEdit.setTextColor(textColor());
-    keyEdit.setHintTextColor(subTextColor());
-    keyEdit.setHint("输入卡密");
-    keyEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-    keyEdit.setPadding(dp(12), dp(8), dp(62), dp(8)); // ★ 右边留出按钮空间 ★
-    keyEdit.setBackground(round(cardColor(), 12, borderColor(), 1));
-    String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
-    if (!savedKey.isEmpty()) keyEdit.setText(savedKey);
-    inputFrame.addView(keyEdit, new FrameLayout.LayoutParams(-1, -1));
+    keyEdit_s = new EditText(this);
+    keyEdit_s.setSingleLine(true);
+    keyEdit_s.setTextSize(14);
+    keyEdit_s.setTextColor(textColor());
+    keyEdit_s.setHintTextColor(subTextColor());
+    keyEdit_s.setHint("输入单透内核卡密");
+    keyEdit_s.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+    keyEdit_s.setPadding(dp(12), dp(8), dp(62), dp(8));
+    keyEdit_s.setBackground(round(cardColor(), 12, borderColor(), 1));
+    String savedKey_s = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value_s", "");
+    if (!savedKey_s.isEmpty()) keyEdit_s.setText(savedKey_s);
+    inputFrame.addView(keyEdit_s, new FrameLayout.LayoutParams(-1, -1));
 
-    // ★ 验证按钮放在输入框内右侧 ★
-    final Button verifyBtn = new Button(this);
-    verifyBtn.setText("验证");
-    verifyBtn.setTextSize(12);
-    verifyBtn.setTextColor(Color.WHITE);
-    verifyBtn.setPadding(dp(10), 0, dp(10), 0);
-    verifyBtn.setBackground(round(Color.rgb(22, 119, 255), 8, 0, 0));
-    FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(-2, dp(30));
-    btnLp.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
-    btnLp.setMargins(0, 0, dp(4), 0);
-    inputFrame.addView(verifyBtn, btnLp);
-
+    final Button verifyBtn_s = new Button(this);
+    verifyBtn_s.setText("验证");
+    verifyBtn_s.setTextSize(12);
+    verifyBtn_s.setTextColor(Color.WHITE);
+    verifyBtn_s.setPadding(dp(10), 0, dp(10), 0);
+    verifyBtn_s.setBackground(round(Color.rgb(22, 119, 255), 8, 0, 0));
+    FrameLayout.LayoutParams btnLp_s = new FrameLayout.LayoutParams(-2, dp(30));
+    btnLp_s.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
+    btnLp_s.setMargins(0, 0, dp(4), 0);
+    inputFrame.addView(verifyBtn_s, btnLp_s);
     cardKey.addView(inputFrame, lp(-1, -2, 0, dp(6), 0, 0));
 
-    // ★ 状态提示文字 ★
-    final TextView keyStatus = new TextView(this);
-    keyStatus.setTextSize(12);
-    keyStatus.setPadding(dp(4), dp(4), 0, 0);
-    String stsKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
-    if (!stsKey.isEmpty()) keyStatus.setText("✅ 已保存");
-    keyStatus.setTextColor(subTextColor());
-    cardKey.addView(keyStatus, lp(-1, -2, 0, dp(4), 0, 0));
+    final TextView keyStatus_s = new TextView(this);
+    keyStatus_s.setTextSize(12);
+    keyStatus_s.setPadding(dp(4), dp(4), 0, 0);
+    String stsKey_s = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value_s", "");
+    if (!stsKey_s.isEmpty()) keyStatus_s.setText("✅ 已保存");
+    keyStatus_s.setTextColor(subTextColor());
+    cardKey.addView(keyStatus_s, lp(-1, -2, 0, dp(4), 0, 0));
 
-    // 验证按钮点击事件
-    verifyBtn.setOnClickListener(
-        new View.OnClickListener() {
-          @Override
-          public void onClick(View v) {
-            final String card = keyEdit.getText().toString().trim();
-            if (card.isEmpty()) {
-              Toast.makeText(MainActivity.this, "请先输入卡密", Toast.LENGTH_SHORT).show();
-              return;
+    verifyBtn_s.setOnClickListener(v -> {
+        final String card = keyEdit_s.getText().toString().trim();
+        if (card.isEmpty()) { Toast.makeText(this, "请先输入卡密", Toast.LENGTH_SHORT).show(); return; }
+        saveCardToFile(card);
+        verifyBtn_s.setEnabled(false);
+        verifyBtn_s.setText("...");
+        keyStatus_s.setText("⏳ 验证中...");
+        verifyCardFromServer(card, new VerifyCallback() {
+            @Override public void onSuccess(String type, String endTime, String status) {
+                verifyBtn_s.setText("✓"); verifyBtn_s.setEnabled(true);
+                keyStatus_s.setText("✅ " + type + " | " + status + " | " + endTime);
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value_s", card).apply();
+                saveCardToFile(card);
             }
-            saveCardToFile(card);
-            verifyBtn.setEnabled(false);
-            verifyBtn.setText("...");
-            keyStatus.setText("⏳ 验证中...");
-
-            verifyCardFromServer(
-                card,
-                new VerifyCallback() {
-                  @Override
-                  public void onSuccess(String type, String endTime, String status) {
-                    verifyBtn.setText("✓");
-                    verifyBtn.setEnabled(true);
-                    keyStatus.setText("✅ " + type + " | " + status + " | " + endTime);
-                    getSharedPreferences(PREFS, MODE_PRIVATE)
-                        .edit()
-                        .putString("key_value", card)
-                        .apply();
-                    // ★ 写入 Aura.km ★
+            @Override public void onError(String errorMsg) {
+                if (errorMsg != null && errorMsg.contains("未激活")) {
                     saveCardToFile(card);
-                  }
-
-                  @Override
-                  public void onError(String errorMsg) {
-                    // ★ 判断是不是"未激活" ★
-                    if (errorMsg != null && errorMsg.contains("未激活")) {
-                      // 保存卡密到文件
-                      saveCardToFile(card);
-                      // 也保存到 SharedPreferences
-                      getSharedPreferences(PREFS, MODE_PRIVATE)
-                          .edit()
-                          .putString("key_value", card)
-                          .apply();
-                      verifyBtn.setText("✓");
-                      verifyBtn.setEnabled(true);
-                      keyStatus.setText("💡 卡密已保存，请点击「运行」激活");
-                    } else {
-                      verifyBtn.setText("重试");
-                      verifyBtn.setEnabled(true);
-                      keyStatus.setText("❌ " + errorMsg);
-                    }
-                  }
-                });
-          }
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value_s", card).apply();
+                    verifyBtn_s.setText("✓"); verifyBtn_s.setEnabled(true);
+                    keyStatus_s.setText("💡 卡密已保存，请点击「运行」激活");
+                } else {
+                    verifyBtn_s.setText("重试"); verifyBtn_s.setEnabled(true);
+                    keyStatus_s.setText("❌ " + errorMsg);
+                }
+            }
         });
+    });
 
-    // 2. 驱动选择模块 - 独立卡片（横向滑动版）
-    LinearLayout cardDriver = new LinearLayout(this);
-    cardDriver.setOrientation(LinearLayout.VERTICAL);
-    cardDriver.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardDriver.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardDriver, lp(-1, -2, 0, 0, 0, dp(14)));
+    // 2️⃣ 驱动选择模块（单透）
+    LinearLayout cardDriver_s = new LinearLayout(this);
+    cardDriver_s.setOrientation(LinearLayout.VERTICAL);
+    cardDriver_s.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardDriver_s.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardDriver_s, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    TextView driverTitle = text("选择驱动", 15, textColor(), Typeface.BOLD);
-    cardDriver.addView(driverTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+    TextView driverTitle_s = text("选择驱动（单透内核）", 15, textColor(), Typeface.BOLD);
+    cardDriver_s.addView(driverTitle_s, lp(-1, -2, 0, 0, 0, dp(8)));
 
-    // ✅ 横向滑动容器（解决拥挤问题）
-    HorizontalScrollView driverScroll = new HorizontalScrollView(this);
-    driverScroll.setHorizontalScrollBarEnabled(false); // 隐藏滚动条
-    driverScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); // 去掉边缘光晕
-    cardDriver.addView(driverScroll, lp(-1, dp(42), 0, 0, 0, 0));
+    HorizontalScrollView driverScroll_s = new HorizontalScrollView(this);
+    driverScroll_s.setHorizontalScrollBarEnabled(false);
+    driverScroll_s.setOverScrollMode(View.OVER_SCROLL_NEVER);
+    cardDriver_s.addView(driverScroll_s, lp(-1, dp(42), 0, 0, 0, 0));
 
-    // 滑动内部的按钮容器
-    LinearLayout driverRow = new LinearLayout(this);
-    driverRow.setOrientation(LinearLayout.HORIZONTAL);
-    driverRow.setGravity(Gravity.CENTER_VERTICAL);
-    driverRow.setPadding(dp(8), 0, dp(8), 0); // 左右内边距，避免按钮贴边
-    driverScroll.addView(driverRow, new HorizontalScrollView.LayoutParams(-2, -1));
+    LinearLayout driverRow_s = new LinearLayout(this);
+    driverRow_s.setOrientation(LinearLayout.HORIZONTAL);
+    driverRow_s.setGravity(Gravity.CENTER_VERTICAL);
+    driverRow_s.setPadding(dp(8), 0, dp(8), 0);
+    driverScroll_s.addView(driverRow_s, new HorizontalScrollView.LayoutParams(-2, -1));
 
-    // 按钮通用布局参数（固定宽度+间距，不再挤压）
-    LinearLayout.LayoutParams driverBtnLp = new LinearLayout.LayoutParams(dp(120), -1);
-    driverBtnLp.setMargins(dp(4), 0, dp(4), 0); // 按钮之间左右间距4dp
+    LinearLayout.LayoutParams driverBtnLp_s = new LinearLayout.LayoutParams(dp(120), -1);
+    driverBtnLp_s.setMargins(dp(4), 0, dp(4), 0);
 
-    // 初始化4个驱动按钮（顺序不变）
-    driverBtnKpm = driverOptionButton("KMA-KPM驱动", driverType == 0);
-    driverBtnDitpro = driverOptionButton("Ditpro_KPM驱动", driverType == 1);
-    driverBtnParadise = driverOptionButton("Paradise驱动", driverType == 2);
-    driverBtnBackup = driverOptionButton("备用驱动", driverType == 3);
+    driverBtnKpm_s = driverOptionButton("KMA-KPM驱动", driverType_single == 0);
+    driverBtnDitpro_s = driverOptionButton("Ditpro_KPM驱动", driverType_single == 1);
+    driverBtnParadise_s = driverOptionButton("Paradise驱动", driverType_single == 2);
+    driverBtnBackup_s = driverOptionButton("备用驱动", driverType_single == 3);
 
-    // 添加到滑动容器
-    driverRow.addView(driverBtnKpm, driverBtnLp);
-    driverRow.addView(driverBtnDitpro, driverBtnLp);
-    driverRow.addView(driverBtnParadise, driverBtnLp);
-    driverRow.addView(driverBtnBackup, driverBtnLp);
+    driverRow_s.addView(driverBtnKpm_s, driverBtnLp_s);
+    driverRow_s.addView(driverBtnDitpro_s, driverBtnLp_s);
+    driverRow_s.addView(driverBtnParadise_s, driverBtnLp_s);
+    driverRow_s.addView(driverBtnBackup_s, driverBtnLp_s);
 
-    // 点击事件（编号严格对应）
-    driverBtnKpm.setOnClickListener(v -> selectDriverType(0));
-    driverBtnDitpro.setOnClickListener(v -> selectDriverType(1));
-    driverBtnParadise.setOnClickListener(v -> selectDriverType(2));
-    driverBtnBackup.setOnClickListener(v -> selectDriverType(3));
+    driverBtnKpm_s.setOnClickListener(v -> selectDriverType_s(0));
+    driverBtnDitpro_s.setOnClickListener(v -> selectDriverType_s(1));
+    driverBtnParadise_s.setOnClickListener(v -> selectDriverType_s(2));
+    driverBtnBackup_s.setOnClickListener(v -> selectDriverType_s(3));
 
-    // 3. 内核配置（防录屏+无后台）- 独立卡片【已修改标题】
-    LinearLayout cardSwitch = new LinearLayout(this);
-    cardSwitch.setOrientation(LinearLayout.VERTICAL);
-    cardSwitch.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardSwitch.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardSwitch, lp(-1, -2, 0, 0, 0, dp(14)));
+    // 3️⃣ 内核配置（单透）
+    LinearLayout cardSwitch_s = new LinearLayout(this);
+    cardSwitch_s.setOrientation(LinearLayout.VERTICAL);
+    cardSwitch_s.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardSwitch_s.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardSwitch_s, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    // 模块标题 内核配置
-    TextView switchTitle = text("内核配置", 15, textColor(), Typeface.BOLD);
-    cardSwitch.addView(switchTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+    TextView switchTitle_s = text("内核配置（单透内核）", 15, textColor(), Typeface.BOLD);
+    cardSwitch_s.addView(switchTitle_s, lp(-1, -2, 0, 0, 0, dp(8)));
 
-    // 防录屏开关
-    LinearLayout antiRow = new LinearLayout(this);
-    antiRow.setOrientation(LinearLayout.HORIZONTAL);
-    antiRow.setGravity(Gravity.CENTER_VERTICAL);
-    antiRow.setPadding(0, dp(4), 0, dp(4));
-    cardSwitch.addView(antiRow, lp(-1, -2, 0, 0, 0, dp(8)));
+    // 防录屏
+    LinearLayout antiRow_s = new LinearLayout(this);
+    antiRow_s.setOrientation(LinearLayout.HORIZONTAL);
+    antiRow_s.setGravity(Gravity.CENTER_VERTICAL);
+    antiRow_s.setPadding(0, dp(4), 0, dp(4));
+    cardSwitch_s.addView(antiRow_s, lp(-1, -2, 0, 0, 0, dp(8)));
+    antiRow_s.addView(text("防录屏", 15, textColor(), Typeface.NORMAL), new LinearLayout.LayoutParams(0, -2, 1));
+    antiRecordBtn_s = switchButton(antiRecord_single);
+    antiRow_s.addView(antiRecordBtn_s, new LinearLayout.LayoutParams(dp(64), dp(32)));
+    antiRecordBtn_s.setOnClickListener(v -> toggleAntiRecord_s());
 
-    TextView antiLabel = text("防录屏", 15, textColor(), Typeface.NORMAL);
-    antiRow.addView(antiLabel, new LinearLayout.LayoutParams(0, -2, 1));
-    antiRecordBtn = switchButton(antiRecord);
-    antiRow.addView(antiRecordBtn, new LinearLayout.LayoutParams(dp(64), dp(32)));
-    antiRecordBtn.setOnClickListener(v -> toggleAntiRecord());
+    // 无后台
+    LinearLayout bgRow_s = new LinearLayout(this);
+    bgRow_s.setOrientation(LinearLayout.HORIZONTAL);
+    bgRow_s.setGravity(Gravity.CENTER_VERTICAL);
+    bgRow_s.setPadding(0, dp(4), 0, dp(4));
+    cardSwitch_s.addView(bgRow_s, lp(-1, -2, 0, 0, 0, 0));
+    bgRow_s.addView(text("无后台", 15, textColor(), Typeface.NORMAL), new LinearLayout.LayoutParams(0, -2, 1));
+    noBackgroundBtn_s = switchButton(noBackground_single);
+    bgRow_s.addView(noBackgroundBtn_s, new LinearLayout.LayoutParams(dp(64), dp(32)));
+    noBackgroundBtn_s.setOnClickListener(v -> toggleNoBackground_s());
 
-    // 无后台开关
-    LinearLayout bgRow = new LinearLayout(this);
-    bgRow.setOrientation(LinearLayout.HORIZONTAL);
-    bgRow.setGravity(Gravity.CENTER_VERTICAL);
-    bgRow.setPadding(0, dp(4), 0, dp(4));
-    cardSwitch.addView(bgRow, lp(-1, -2, 0, 0, 0, 0));
+    // 4️⃣ 运行按钮（单透）
+    LinearLayout cardRun_s = new LinearLayout(this);
+    cardRun_s.setOrientation(LinearLayout.VERTICAL);
+    cardRun_s.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardRun_s.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardRun_s, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    TextView bgLabel = text("无后台", 15, textColor(), Typeface.NORMAL);
-    bgRow.addView(bgLabel, new LinearLayout.LayoutParams(0, -2, 1));
-    noBackgroundBtn = switchButton(noBackground);
-    bgRow.addView(noBackgroundBtn, new LinearLayout.LayoutParams(dp(64), dp(32)));
-    noBackgroundBtn.setOnClickListener(v -> toggleNoBackground());
+    LinearLayout runRow_s = new LinearLayout(this);
+    runRow_s.setOrientation(LinearLayout.HORIZONTAL);
+    cardRun_s.addView(runRow_s, lp(-1, dp(48), 0, 0, 0, 0));
+    runButton_s = button("直接运行（单透）", true);
+    runRow_s.addView(runButton_s, new LinearLayout.LayoutParams(-1, -1));
+    runButton_s.setOnClickListener(v -> runSelectedFile());
+}
 
-    // 4. 运行按钮 模块 - 独立卡片
-    LinearLayout cardRun = new LinearLayout(this);
-    cardRun.setOrientation(LinearLayout.VERTICAL);
-    cardRun.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardRun.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardRun, lp(-1, -2, 0, 0, 0, dp(14)));
+// ===== 构建渲染内核内容 =====
+private void buildRenderKernelContent(LinearLayout page) {
+    // 1️⃣ 卡密模块（渲染）
+    LinearLayout cardKey = new LinearLayout(this);
+    cardKey.setOrientation(LinearLayout.VERTICAL);
+    cardKey.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardKey.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardKey, lp(-1, -2, 0, 0, 0, dp(14)));
 
-    LinearLayout runRow = new LinearLayout(this);
-    runRow.setOrientation(LinearLayout.HORIZONTAL);
-    cardRun.addView(runRow, lp(-1, dp(48), 0, 0, 0, 0));
+    TextView keyTitle = text("卡密（渲染内核）", 15, textColor(), Typeface.BOLD);
+    cardKey.addView(keyTitle, lp(-1, -2, 0, 0, 0, dp(8)));
 
-    runButton = button("直接运行", true);
-    runRow.addView(runButton, new LinearLayout.LayoutParams(-1, -1));
+    FrameLayout inputFrame = new FrameLayout(this);
+    inputFrame.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(42)));
 
-    runButton.setOnClickListener(v -> runSelectedFile());
-    // ====================== 拆分结束 ======================
+    keyEdit_r = new EditText(this);
+    keyEdit_r.setSingleLine(true);
+    keyEdit_r.setTextSize(14);
+    keyEdit_r.setTextColor(textColor());
+    keyEdit_r.setHintTextColor(subTextColor());
+    keyEdit_r.setHint("输入渲染内核卡密");
+    keyEdit_r.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+    keyEdit_r.setPadding(dp(12), dp(8), dp(62), dp(8));
+    keyEdit_r.setBackground(round(cardColor(), 12, borderColor(), 1));
+    String savedKey_r = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value_r", "");
+    if (!savedKey_r.isEmpty()) keyEdit_r.setText(savedKey_r);
+    inputFrame.addView(keyEdit_r, new FrameLayout.LayoutParams(-1, -1));
 
-    updateRunButton();
-    // 【最后】返回外层滚动容器，而非原page
-    return rootScroll;
+    final Button verifyBtn_r = new Button(this);
+    verifyBtn_r.setText("验证");
+    verifyBtn_r.setTextSize(12);
+    verifyBtn_r.setTextColor(Color.WHITE);
+    verifyBtn_r.setPadding(dp(10), 0, dp(10), 0);
+    verifyBtn_r.setBackground(round(Color.rgb(22, 119, 255), 8, 0, 0));
+    FrameLayout.LayoutParams btnLp_r = new FrameLayout.LayoutParams(-2, dp(30));
+    btnLp_r.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
+    btnLp_r.setMargins(0, 0, dp(4), 0);
+    inputFrame.addView(verifyBtn_r, btnLp_r);
+    cardKey.addView(inputFrame, lp(-1, -2, 0, dp(6), 0, 0));
+
+    final TextView keyStatus_r = new TextView(this);
+    keyStatus_r.setTextSize(12);
+    keyStatus_r.setPadding(dp(4), dp(4), 0, 0);
+    String stsKey_r = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value_r", "");
+    if (!stsKey_r.isEmpty()) keyStatus_r.setText("✅ 已保存");
+    keyStatus_r.setTextColor(subTextColor());
+    cardKey.addView(keyStatus_r, lp(-1, -2, 0, dp(4), 0, 0));
+
+    verifyBtn_r.setOnClickListener(v -> {
+        final String card = keyEdit_r.getText().toString().trim();
+        if (card.isEmpty()) { Toast.makeText(this, "请先输入卡密", Toast.LENGTH_SHORT).show(); return; }
+        saveCardToFile(card);
+        verifyBtn_r.setEnabled(false);
+        verifyBtn_r.setText("...");
+        keyStatus_r.setText("⏳ 验证中...");
+        verifyCardFromServer(card, new VerifyCallback() {
+            @Override public void onSuccess(String type, String endTime, String status) {
+                verifyBtn_r.setText("✓"); verifyBtn_r.setEnabled(true);
+                keyStatus_r.setText("✅ " + type + " | " + status + " | " + endTime);
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value_r", card).apply();
+                saveCardToFile(card);
+            }
+            @Override public void onError(String errorMsg) {
+                if (errorMsg != null && errorMsg.contains("未激活")) {
+                    saveCardToFile(card);
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value_r", card).apply();
+                    verifyBtn_r.setText("✓"); verifyBtn_r.setEnabled(true);
+                    keyStatus_r.setText("💡 卡密已保存，请点击「运行」激活");
+                } else {
+                    verifyBtn_r.setText("重试"); verifyBtn_r.setEnabled(true);
+                    keyStatus_r.setText("❌ " + errorMsg);
+                }
+            }
+        });
+    });
+
+    // 2️⃣ 驱动选择模块（渲染内核 - 可换不同的驱动列表）
+    LinearLayout cardDriver_r = new LinearLayout(this);
+    cardDriver_r.setOrientation(LinearLayout.VERTICAL);
+    cardDriver_r.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardDriver_r.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardDriver_r, lp(-1, -2, 0, 0, 0, dp(14)));
+
+    TextView driverTitle_r = text("选择驱动（渲染内核）", 15, textColor(), Typeface.BOLD);
+    cardDriver_r.addView(driverTitle_r, lp(-1, -2, 0, 0, 0, dp(8)));
+
+    HorizontalScrollView driverScroll_r = new HorizontalScrollView(this);
+    driverScroll_r.setHorizontalScrollBarEnabled(false);
+    driverScroll_r.setOverScrollMode(View.OVER_SCROLL_NEVER);
+    cardDriver_r.addView(driverScroll_r, lp(-1, dp(42), 0, 0, 0, 0));
+
+    LinearLayout driverRow_r = new LinearLayout(this);
+    driverRow_r.setOrientation(LinearLayout.HORIZONTAL);
+    driverRow_r.setGravity(Gravity.CENTER_VERTICAL);
+    driverRow_r.setPadding(dp(8), 0, dp(8), 0);
+    driverScroll_r.addView(driverRow_r, new HorizontalScrollView.LayoutParams(-2, -1));
+
+    LinearLayout.LayoutParams driverBtnLp_r = new LinearLayout.LayoutParams(dp(120), -1);
+    driverBtnLp_r.setMargins(dp(4), 0, dp(4), 0);
+
+    // 渲染内核的驱动列表（你可以改成渲染内核专属的驱动）
+    driverBtnKpm_r = driverOptionButton("渲染驱动A", driverType_render == 0);
+    driverBtnDitpro_r = driverOptionButton("渲染驱动B", driverType_render == 1);
+    driverBtnParadise_r = driverOptionButton("渲染驱动C", driverType_render == 2);
+
+    driverRow_r.addView(driverBtnKpm_r, driverBtnLp_r);
+    driverRow_r.addView(driverBtnDitpro_r, driverBtnLp_r);
+    driverRow_r.addView(driverBtnParadise_r, driverBtnLp_r);
+
+    driverBtnKpm_r.setOnClickListener(v -> selectDriverType_r(0));
+    driverBtnDitpro_r.setOnClickListener(v -> selectDriverType_r(1));
+    driverBtnParadise_r.setOnClickListener(v -> selectDriverType_r(2));
+
+    // 3️⃣ 内核配置（渲染内核）
+    LinearLayout cardSwitch_r = new LinearLayout(this);
+    cardSwitch_r.setOrientation(LinearLayout.VERTICAL);
+    cardSwitch_r.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardSwitch_r.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardSwitch_r, lp(-1, -2, 0, 0, 0, dp(14)));
+
+    TextView switchTitle_r = text("内核配置（渲染内核）", 15, textColor(), Typeface.BOLD);
+    cardSwitch_r.addView(switchTitle_r, lp(-1, -2, 0, 0, 0, dp(8)));
+
+    // 防录屏
+    LinearLayout antiRow_r = new LinearLayout(this);
+    antiRow_r.setOrientation(LinearLayout.HORIZONTAL);
+    antiRow_r.setGravity(Gravity.CENTER_VERTICAL);
+    antiRow_r.setPadding(0, dp(4), 0, dp(4));
+    cardSwitch_r.addView(antiRow_r, lp(-1, -2, 0, 0, 0, dp(8)));
+    antiRow_r.addView(text("防录屏", 15, textColor(), Typeface.NORMAL), new LinearLayout.LayoutParams(0, -2, 1));
+    antiRecordBtn_r = switchButton(antiRecord_render);
+    antiRow_r.addView(antiRecordBtn_r, new LinearLayout.LayoutParams(dp(64), dp(32)));
+    antiRecordBtn_r.setOnClickListener(v -> toggleAntiRecord_r());
+
+    // 无后台
+    LinearLayout bgRow_r = new LinearLayout(this);
+    bgRow_r.setOrientation(LinearLayout.HORIZONTAL);
+    bgRow_r.setGravity(Gravity.CENTER_VERTICAL);
+    bgRow_r.setPadding(0, dp(4), 0, dp(4));
+    cardSwitch_r.addView(bgRow_r, lp(-1, -2, 0, 0, 0, 0));
+    bgRow_r.addView(text("无后台", 15, textColor(), Typeface.NORMAL), new LinearLayout.LayoutParams(0, -2, 1));
+    noBackgroundBtn_r = switchButton(noBackground_render);
+    bgRow_r.addView(noBackgroundBtn_r, new LinearLayout.LayoutParams(dp(64), dp(32)));
+    noBackgroundBtn_r.setOnClickListener(v -> toggleNoBackground_r());
+
+    // 4️⃣ 运行按钮（渲染内核）
+    LinearLayout cardRun_r = new LinearLayout(this);
+    cardRun_r.setOrientation(LinearLayout.VERTICAL);
+    cardRun_r.setPadding(dp(16), dp(16), dp(16), dp(16));
+    cardRun_r.setBackground(round(cardColor(), 24, borderColor(), 1));
+    page.addView(cardRun_r, lp(-1, -2, 0, 0, 0, dp(14)));
+
+    LinearLayout runRow_r = new LinearLayout(this);
+    runRow_r.setOrientation(LinearLayout.HORIZONTAL);
+    cardRun_r.addView(runRow_r, lp(-1, dp(48), 0, 0, 0, 0));
+    runButton_r = button("直接运行（渲染）", true);
+    runRow_r.addView(runButton_r, new LinearLayout.LayoutParams(-1, -1));
+    runButton_r.setOnClickListener(v -> runSelectedFile());
+}
+
+
+// ===== 创建内核Tab按钮 =====
+private TextView kernelTab(String label, boolean active) {
+    TextView tab = new TextView(this);
+    tab.setText(label);
+    tab.setTextSize(13);
+    tab.setGravity(Gravity.CENTER);
+    tab.setTypeface(null, active ? Typeface.BOLD : Typeface.NORMAL);
+    tab.setTextColor(active ? Color.WHITE : subTextColor());
+    if (active) {
+        tab.setBackground(round(primaryColor(), 20, 0, 0));
+    }
+    tab.setPadding(0, dp(10), 0, dp(10));
+    return tab;
+}
+
+  private void switchKernel(int kernel) {
+    if (kernel == currentKernel) return;
+    currentKernel = kernel;
+    getSharedPreferences(PREFS, MODE_PRIVATE)
+        .edit()
+        .putInt("current_kernel", kernel)
+        .apply();
+    
+    // 🌟 切换内核时重置所有脚本状态
+    isDownloading = false;   // ← 允许开始新的下载
+    selectedFile = null;
+    selectedName = "";
+    scriptReady = false;
+    
+    // 更新UI
+    updateKernelTabs();
+    buildCurrentKernelContent();
+    
+    // 🌟 自动为当前内核下载/检查脚本
+    prepareScriptIfNeeded();
+}
+
+
+  // ===== 🌟 更新内核Tab按钮的高亮状态 =====
+  private void updateKernelTabs() {
+      if (kernelTabSingle == null || kernelTabRender == null) return;
+      
+      boolean singleActive = (currentKernel == 0);
+      
+      // 单透Tab
+      kernelTabSingle.setTypeface(null, singleActive ? Typeface.BOLD : Typeface.NORMAL);
+      kernelTabSingle.setTextColor(singleActive ? Color.WHITE : subTextColor());
+      kernelTabSingle.setBackground(singleActive ? round(primaryColor(), 20, 0, 0) : null);
+      
+      // 渲染Tab
+      kernelTabRender.setTypeface(null, singleActive ? Typeface.NORMAL : Typeface.BOLD);
+      kernelTabRender.setTextColor(singleActive ? subTextColor() : Color.WHITE);
+      kernelTabRender.setBackground(singleActive ? null : round(primaryColor(), 20, 0, 0));
   }
+
+  // ===== 🌟 只重建内核内容，不闪烁 =====
+  private void buildCurrentKernelContent() {
+      if (kernelContentContainer == null) return;
+      kernelContentContainer.removeAllViews();
+      if (currentKernel == 0) {
+          buildSingleKernelContent(kernelContentContainer);
+      } else {
+          buildRenderKernelContent(kernelContentContainer);
+      }
+      updateRunButton();
+  }
+
 
   private void loadRandomAvatar(final ImageView imageView) {
     // ★ 如果已经有缓存，直接显示，不再请求网络
@@ -2324,82 +2592,6 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     v.setBackground(
         round(on ? primaryColor() : tagColor(), 16, on ? 0 : borderColor(), on ? 0 : 1));
     return v;
-  }
-
-  private void selectDriverType(int type) {
-    if (running) {
-      Toast.makeText(this, "运行中不能切换驱动", Toast.LENGTH_SHORT).show();
-      return;
-    }
-    driverType = type;
-    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt("driver_type", type).apply();
-    updateDriverButtons();
-    updateRunButton();
-  }
-
-  private void updateDriverButtons() {
-    // 1. KMA-KPM驱动（索引0）
-    if (driverBtnKpm != null) {
-      boolean active = driverType == 0;
-      driverBtnKpm.setTextColor(active ? Color.WHITE : subTextColor());
-      driverBtnKpm.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
-    }
-
-    // 2. Ditpro_KPM驱动（索引1）
-    if (driverBtnDitpro != null) {
-      boolean active = driverType == 1;
-      driverBtnDitpro.setTextColor(active ? Color.WHITE : subTextColor());
-      driverBtnDitpro.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
-    }
-
-    // 3. Paradise驱动（索引2）
-    if (driverBtnParadise != null) {
-      boolean active = driverType == 2;
-      driverBtnParadise.setTextColor(active ? Color.WHITE : subTextColor());
-      driverBtnParadise.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
-    }
-
-    // 4. 备用驱动（索引3）
-    if (driverBtnBackup != null) {
-      boolean active = driverType == 3;
-      driverBtnBackup.setTextColor(active ? Color.WHITE : subTextColor());
-      driverBtnBackup.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
-    }
-  }
-
-  private void toggleAntiRecord() {
-    antiRecord = !antiRecord;
-    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("anti_record", antiRecord).apply();
-    updateSwitchButton(antiRecordBtn, antiRecord);
-  }
-
-  private void toggleNoBackground() {
-    noBackground = !noBackground;
-    getSharedPreferences(PREFS, MODE_PRIVATE)
-        .edit()
-        .putBoolean("no_background", noBackground)
-        .apply();
-    updateSwitchButton(noBackgroundBtn, noBackground);
   }
 
     private void updateSwitchButton(TextView btn, boolean on) {
@@ -3535,17 +3727,15 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     verBadge.setBackground(round(primaryColor(), 8, 0, 0));
     subRow.addView(verBadge, lp(-2, -2, 0, 0, 0, 0));
     headerArea.addView(subRow, lp(-1, -2, 0, dp(2), 0, 0));
-
-    // ================================================================
-    // 📋 卡片1：卡密信息
-    // ================================================================
        // ================================================================
     // 📋 卡片1：卡密信息
     // ================================================================
     LinearLayout cardKami = createGlassCard("💳 卡密信息");
     page.addView(cardKami, lp(-1, -2, 0, 0, 0, dp(16)));
 
-    String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
+    String keyPref = (currentKernel == 0) ? "key_value_s" : "key_value_r";
+    String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString(keyPref, "");
+
     boolean hasKey = !savedKey.isEmpty();
 
     // 行1：卡密卡号（中间打码）
@@ -3955,6 +4145,7 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
 
                   JSONObject body = new JSONObject();
                   body.put("signature", sigHash);
+                  body.put("kernel", currentKernel);
                   conn.getOutputStream().write(body.toString().getBytes());
 
                   if (conn.getResponseCode() != 200) {
@@ -4270,10 +4461,13 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                 writer.write(command);
                 writer.newLine();
                 writer.flush();
+                int currentDriverType = (currentKernel == 0) ? driverType_single : driverType_render;
+                boolean currentAntiRecord = (currentKernel == 0) ? antiRecord_single : antiRecord_render;
+                boolean currentNoBackground = (currentKernel == 0) ? noBackground_single : noBackground_render;
 
                 // 发送驱动选项（不发送卡密）
                 String driverNum;
-                switch (driverType) {
+                switch (currentDriverType) {
                   case 0:
                     driverNum = "1";
                     break;
@@ -4290,8 +4484,8 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                     driverNum = "1";
                 }
                 final String finalDriverNum = driverNum;
-                final String antiNum = antiRecord ? "1" : "2";
-                final String bgNum = noBackground ? "2" : "1";
+                final String antiNum = currentAntiRecord ? "1" : "2";
+                final String bgNum = currentNoBackground ? "2" : "1";
 
                 // 启动选项发送线程
                 new Thread(
@@ -4330,10 +4524,10 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                                     appendTerminalText(
                                         outputView,
                                         outputBuffer,
-                                        "🛡️ 防录屏: " + (antiRecord ? "开启" : "关闭") + "\n",
+                                        "🛡️ 防录屏: " + (currentAntiRecord ? "开启" : "关闭") + "\n",
                                         scrollView));
 
-                            if (driverType != 0) {
+                            if (currentDriverType != 0) {
                               Thread.sleep(1200);
                               if (!isRunning[0] || writerHolder[0] == null) return;
                               w.write(bgNum);
@@ -4344,7 +4538,7 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                                       appendTerminalText(
                                           outputView,
                                           outputBuffer,
-                                          "🔕 无后台: " + (noBackground ? "开启" : "关闭") + "\n",
+                                          "🔕 无后台: " + (currentNoBackground ? "开启" : "关闭") + "\n",
                                           scrollView));
                             }
                           } catch (Exception ignored) {
@@ -4367,7 +4561,9 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                   // 检测卡密请求
                   if (!kamiHandled && line.contains("[NEED_KAMI]")) {
                     kamiHandled = true;
-                    String kami = keyEdit.getText().toString().trim();
+                    EditText currentKeyEdit = (currentKernel == 0) ? keyEdit_s : keyEdit_r;
+                    String kami = currentKeyEdit.getText().toString().trim();
+
                     if (!kami.isEmpty()) {
                       Thread.sleep(200);
                       writer.write(kami);
@@ -4455,11 +4651,12 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
         });
   }
 
-        /** 解锁运行按钮（失败/取消时调用） */
+    /** 解锁运行按钮（失败/取消时调用） */
   private void unlockRunButton() {
     running = false;
-    if (runButton != null) {
-      runButton.setEnabled(true);
+    Button currentRunBtn = (currentKernel == 0) ? runButton_s : runButton_r;
+    if (currentRunBtn != null) {
+      currentRunBtn.setEnabled(true);
     }
     updateRunButton();
   }
@@ -4523,9 +4720,13 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
         if (!kamiHandled && line.contains("[NEED_KAMI]")) {
           kamiHandled = true;
           // 优先取输入框的卡密，为空则从已保存的读取
-          String kami = keyEdit.getText().toString().trim();
+          EditText currentKeyEdit = (currentKernel == 0) ? keyEdit_s : keyEdit_r;
+          String kami = currentKeyEdit.getText().toString().trim();
+
           if (kami.isEmpty()) {
-            kami = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
+            String keyPref = (currentKernel == 0) ? "key_value_s" : "key_value_r";
+            kami = getSharedPreferences(PREFS, MODE_PRIVATE).getString(keyPref, "");
+
           }
           if (!kami.isEmpty()) {
             Thread.sleep(200);
@@ -4533,7 +4734,8 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
             processWriter.newLine();
             processWriter.flush();
             post("[自动输入卡密]\n");
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value", kami).apply();
+            String saveKey = (currentKernel == 0) ? "key_value_s" : "key_value_r";
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(saveKey, kami).apply();
           } else {
             post("[⚠️ 未检测到卡密，请在主页输入卡密后重试]\n");
           }
@@ -4616,8 +4818,11 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
   }
 
   private void sendDriverOptionsWithoutKami() {
+      int currentDriverType = (currentKernel == 0) ? driverType_single : driverType_render;
+  boolean currentAntiRecord = (currentKernel == 0) ? antiRecord_single : antiRecord_render;
+  boolean currentNoBackground = (currentKernel == 0) ? noBackground_single : noBackground_render;
     String driverNum;
-    switch (driverType) {
+    switch (currentDriverType) {
       case 0:
         driverNum = "1";
         break;
@@ -4634,8 +4839,8 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
         driverNum = "1";
     }
 
-    String antiNum = antiRecord ? "1" : "2";
-    String bgNum = noBackground ? "2" : "1";
+    String antiNum = currentAntiRecord ? "1" : "2";
+    String bgNum = currentNoBackground ? "2" : "1";
 
     // 启动一个新线程轮询等待进程就绪后再发送选项
     new Thread(
@@ -4677,7 +4882,7 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
               autoSendLine(antiNum, "防录屏选择");
 
               // 3. 无后台
-              if (driverType != 0) {
+              if (currentDriverType != 0) {
                 try {
                   Thread.sleep(1200);
                 } catch (InterruptedException e) {
@@ -4766,33 +4971,139 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     updateRunButton();
   }
 
-  private void updateRunButton() {
-    if (runButton == null) return;
-    boolean ok = selectedFile != null && !running;
-    runButton.setEnabled(ok);
-    runButton.setAlpha(ok ? 1f : 0.55f);
-    // 按钮文字根据驱动类型变化
-    String label;
-    switch (driverType) {
-      case 0:
-        label = "直接运行 (KPM)";
-        break;
-      case 1:
-        label = "直接运行 (Ditpro_KPM)";
-        break;
-      case 2:
-        label = "直接运行 (Paradise)";
-        break;
-      case 3:
-        label = "直接运行 (备用)";
-        break;
-      default:
-        label = "直接运行";
+  // ===== 单透内核：驱动选择 =====
+private void selectDriverType_s(int type) {
+    if (isDownloading) { Toast.makeText(this, "下载中请稍候", Toast.LENGTH_SHORT).show(); return; }
+    driverType_single = type;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt("driver_type_s", type).apply();
+    updateDriverButtons_s();
+    updateRunButton();
+}
+
+private void updateDriverButtons_s() {
+    if (driverBtnKpm_s != null) {
+        boolean active = driverType_single == 0;
+        driverBtnKpm_s.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnKpm_s.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
     }
-    runButton.setText(running ? "运行中..." : label);
-    runButton.setBackground(round(ok ? primaryColor() : disabledColor(), 14, 0, 0));
-    runButton.setTextColor(ok ? Color.WHITE : subTextColor());
-  }
+    if (driverBtnDitpro_s != null) {
+        boolean active = driverType_single == 1;
+        driverBtnDitpro_s.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnDitpro_s.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
+    }
+    if (driverBtnParadise_s != null) {
+        boolean active = driverType_single == 2;
+        driverBtnParadise_s.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnParadise_s.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
+    }
+    if (driverBtnBackup_s != null) {
+        boolean active = driverType_single == 3;
+        driverBtnBackup_s.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnBackup_s.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
+    }
+}
+
+// ===== 单透内核：开关切换 =====
+private void toggleAntiRecord_s() {
+    antiRecord_single = !antiRecord_single;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("anti_record_s", antiRecord_single).apply();
+    updateSwitchButton(antiRecordBtn_s, antiRecord_single);
+}
+
+private void toggleNoBackground_s() {
+    noBackground_single = !noBackground_single;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("no_background_s", noBackground_single).apply();
+    updateSwitchButton(noBackgroundBtn_s, noBackground_single);
+}
+
+// ===== 渲染内核：驱动选择 =====
+private void selectDriverType_r(int type) {
+    if (isDownloading) { Toast.makeText(this, "下载中请稍候", Toast.LENGTH_SHORT).show(); return; }
+    driverType_render = type;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt("driver_type_r", type).apply();
+    updateDriverButtons_r();
+    updateRunButton();
+}
+
+private void updateDriverButtons_r() {
+    if (driverBtnKpm_r != null) {
+        boolean active = driverType_render == 0;
+        driverBtnKpm_r.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnKpm_r.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
+    }
+    if (driverBtnDitpro_r != null) {
+        boolean active = driverType_render == 1;
+        driverBtnDitpro_r.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnDitpro_r.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
+    }
+    if (driverBtnParadise_r != null) {
+        boolean active = driverType_render == 2;
+        driverBtnParadise_r.setTextColor(active ? Color.WHITE : subTextColor());
+        driverBtnParadise_r.setBackground(round(active ? primaryColor() : tagColor(), 16, 0, 0));
+    }
+}
+
+// ===== 渲染内核：开关切换 =====
+private void toggleAntiRecord_r() {
+    antiRecord_render = !antiRecord_render;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("anti_record_r", antiRecord_render).apply();
+    updateSwitchButton(antiRecordBtn_r, antiRecord_render);
+}
+
+private void toggleNoBackground_r() {
+    noBackground_render = !noBackground_render;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("no_background_r", noBackground_render).apply();
+    updateSwitchButton(noBackgroundBtn_r, noBackground_render);
+}
+
+
+
+  // ★ 修改 L5040-5052
+private void updateRunButton() {
+    boolean ok;
+    Button currentRunBtn;
+    int currentDriverType;
+    
+    if (currentKernel == 0) {
+        currentRunBtn = runButton_s;
+        currentDriverType = driverType_single;
+        ok = !getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value_s", "").isEmpty();
+    } else {
+        currentRunBtn = runButton_r;
+        currentDriverType = driverType_render;
+        ok = !getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value_r", "").isEmpty();
+    }
+    
+    if (currentRunBtn == null) return;
+    currentRunBtn.setAlpha(ok ? 1f : 0.55f);
+    
+    // 🌟 根据内核和驱动类型显示真实驱动名
+    String label;
+    if (currentKernel == 0) {
+        // 单透内核驱动名
+        switch (currentDriverType) {
+            case 0: label = "直接运行 - KMA-KPM驱动"; break;
+            case 1: label = "直接运行 - Ditpro_KPM驱动"; break;
+            case 2: label = "直接运行 - Paradise驱动"; break;
+            case 3: label = "直接运行 - 备用驱动"; break;
+            default: label = "直接运行";
+        }
+    } else {
+        // 渲染内核驱动名
+        switch (currentDriverType) {
+            case 0: label = "直接运行 - 渲染驱动A"; break;
+            case 1: label = "直接运行 - 渲染驱动B"; break;
+            case 2: label = "直接运行 - 渲染驱动C"; break;
+            default: label = "直接运行";
+        }
+    }
+    
+    currentRunBtn.setText(running ? "运行中..." : label);
+    currentRunBtn.setBackground(round(ok ? primaryColor() : disabledColor(), 14, 0, 0));
+    currentRunBtn.setTextColor(ok ? Color.WHITE : subTextColor());
+}
+
+
 
   private void showFilePicker(
       String title, boolean zipOnly, String lastDirPref, FilePickCallback callback) {
