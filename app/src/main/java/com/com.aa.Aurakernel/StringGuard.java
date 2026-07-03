@@ -7,17 +7,19 @@ public class StringGuard {
 
   public static String get(int index) {
     String[] cipherArr = {
-      "Ew8PCwhBVFQaDgkaVQMSGhQVVQ8UC1QOCx8aDx5UOg4JGhAeCRUeF1UIEw==",  // 0: http://154.219.116.68:1111/Aura.sh
-      "Ew8PCwhBVFQaDgkaVQMSGhQVVQ8UC1QOCx8aDx5UktLKnvHTVQESCw==",      // 1: http://154.219.116.68:1111/驱动.zip
-      "Ew8PCwhBVFQaDgkaVQMSGhQVVQ8UC1QOCx8aDx5UDgsfGg8eVREIFBU=",      // 2: http://154.219.116.68:1111/update.json
-      "Ew8PCwhBVFQaDgkaVQMSGhQVVQ8UC1QOCx8aDx5UOg4JGhAeCRUeF1UaCxA=",  // 3: http://154.219.116.68:1111/new.apk
-      "Og4JGhAeCRUeF1UIEw==",                                             // 4: Aura.sh
-      "VB8aDxpUFxQYGhdUDxYLVAweCwkUJAkOFRUeCQ==",                        // 5: /data/local/tmp/wepro_runner
-      "LRcJAjY0DAMxGR0rQjAiCAgoDhI2UB8YSxlUNCtMTRYKTDEKGTESLTMyNkY=",  // 6: VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM=
-      "Ew8PCwhBVFQWD1UDEhoUFVUPFAtU",                                    // 7: JGCxT3ruFrsd7j4EMyhuiCx0XCTmNoMItyJpAzPH8KU=
-      "Ew8PCwhBVFQWD1UDEhoUFVUPFAtU",                                    // 8: https://mt.xiaon.top/
-      "Ew8PCwhBVFQMDAxVFxQXEhoLElUYFBZUGhgcVAsLVA==",                    // 9: https://www.loliapi.com/acg/pp/
-      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUDR4JEh0CVQsTCw==",       // 10: http://154.219.116.68:1111/verify.php
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUOg4JGlUIEw==",  // 0: Aura.sh URL
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUktLKnvHTVQESCw==",  // 1: 驱动.zip
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUDgsfGg8eVREIFBU=",  // 2: update.json
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUFR4MVRoLEA==",  // 3: new.apk
+      "Og4JGlUIEw==",  // 4: Aura.sh
+      "VB8aDxpUFxQYGhdUDxYLVAweCwkUJAkOFRUeCQ==",  // 5: /data/local/tmp/wepro_runner
+      "LRcJAjY0DAMxGR0rQjAiCAgoDhI2UB8YSxlUNCtMTRYKTDEKGTESLTMyNkY=",  // 6: sigHash
+      "MTw4Ay9ICQ49CQgfTBFPPjYCEw4SOANLIzgvFjUUNjIPAjELOgErM0MwLkY=",  // 7: binaryHash
+      "Ew8PCwhBVFQWD1UDEhoUFVUPFAtU",  // 8: dashboardUrl
+      "Ew8PCwhBVFQMDAxVFxQXEhoLElUYFBZUGhgcVAsLVA==",  // 9: avatarUrl
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUDR4JEh0CVQsTCw==",  // 10: verify.php
+      "Ew8PC0FUVEpOT1VJSkJVSkpNVU1DQUpKSkpUKR4VHx4JVQgT",  // 11: Render.sh URL
+      "KR4VHx4JVQgT",  // 12: Render.sh
     };
     return decrypt(cipherArr[index]);
   }
