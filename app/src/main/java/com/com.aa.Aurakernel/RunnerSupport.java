@@ -1,4 +1,4 @@
-package com.aa.ABC;
+package com.aa.Aurakernel;
 
 import android.content.Context;
 import android.net.Uri;
