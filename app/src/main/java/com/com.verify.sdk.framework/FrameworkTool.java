@@ -26,45 +26,26 @@ public class FrameworkTool {
      * @param entity
      * @return
      */
-        public static String send(ApiBaseEntity entity) {
+    public static String send(ApiBaseEntity entity) {
         boolean isDHMode = VerifyConfig.verifyConfig.getSecretType() != null
                 && VerifyConfig.verifyConfig.getSecretType().length > 0
                 && "DH密钥交换加密".equals(VerifyConfig.verifyConfig.getSecretType()[0]);
 
-        // ===== DH模式：POST + appId + params(加密) + bob =====
+        HashMap<String, Object> hashMap = new HashMap<>();
+        hashMap.put("appId", entity.getAppId());
+        hashMap.put("params", entity.getEncryptParams());
+
         if (isDHMode) {
-            HashMap<String, Object> hashMap = new HashMap<>();
-            hashMap.put("appId", entity.getAppId());
-            hashMap.put("params", entity.getEncryptParams());
-            hashMap.put("bob", entity.getBob() != null ? entity.getBob() : "");
+            // ===== DH模式：{appId, params, bob} =====
+            hashMap.put("bob", entity.getBob());
             Log.d("VERIFY_SEND", "DH POST: " + hashMap.toString());
-            return HttpUtil.post(entity.getApiUrl(), hashMap);
+        } else {
+            // ===== 非DH模式（RSA）：{appId, params} =====
+            Log.d("VERIFY_SEND", "非DH POST: " + hashMap.toString());
         }
 
-        // ===== 非DH模式：POST所有字段 =====
-        java.util.Map<String, Object> allFields = new java.util.HashMap<>();
-        java.lang.reflect.Field[] fields = entity.getClass().getDeclaredFields();
-        for (java.lang.reflect.Field f : fields) {
-            try { f.setAccessible(true); Object val = f.get(entity); if (val != null) allFields.put(f.getName(), val); } catch (Exception ignored) {}
-        }
-        java.lang.reflect.Field[] parentFields = entity.getClass().getSuperclass().getDeclaredFields();
-        for (java.lang.reflect.Field f : parentFields) {
-            try { f.setAccessible(true); Object val = f.get(entity); if (val != null && !f.getName().equals("apiUrl") && !f.getName().equals("encryptParams")) allFields.put(f.getName(), val); } catch (Exception ignored) {}
-        }
-        if (!allFields.containsKey("timestamp")) allFields.put("timestamp", "");
-        if (!allFields.containsKey("safeCode")) allFields.put("safeCode", "");
-        if (!allFields.containsKey("signature")) allFields.put("signature", "");
-        if (!allFields.containsKey("mac")) allFields.put("mac", "");
-        if (!allFields.containsKey("token")) allFields.put("token", "");
-        if (!allFields.containsKey("bob")) allFields.put("bob", "");
-
-        return HttpUtil.post(entity.getApiUrl(), allFields);
+        return HttpUtil.post(entity.getApiUrl(), hashMap);
     }
-
-
-
-
-
 
     /**
      * 调用此方法进行接口请求和响应验证
@@ -77,10 +58,10 @@ public class FrameworkTool {
         String response = send(entity);
         // ===== 加日志看原始响应 =====
         android.util.Log.d("VERIFY_RAW", "原始响应: " + response);
-         // ===== 如果是HTML错误，直接抛出来 =====
-    if (response.startsWith("<html")) {
-        throw new RuntimeException("服务端返回HTML错误，请检查请求参数格式");
-    }
+        // ===== 如果是HTML错误，直接抛出来 =====
+        if (response.startsWith("<html")) {
+            throw new RuntimeException("服务端返回HTML错误，请检查请求参数格式");
+        }
         String responseDecryptStr;
         boolean isDHMode = VerifyConfig.verifyConfig.getSecretType() != null
                 && VerifyConfig.verifyConfig.getSecretType().length > 0

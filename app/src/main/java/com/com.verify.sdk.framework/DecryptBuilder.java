@@ -81,8 +81,33 @@ public class DecryptBuilder {
         }
 
         if (VerifyConfig.verifyConfig.getSecretType()[0].equals("RSA非对称加密")) {
-            RSA rsa = new RSA(new RSA().getPrivateKeyBase64(), VerifyConfig.verifyConfig.getSecretKey()[0]);
-            encrypt = rsa.decryptStr(params, KeyType.PublicKey);
+            try {
+                String publicKeyStr = VerifyConfig.verifyConfig.getSecretKey()[0];
+                byte[] keyBytes = java.util.Base64.getDecoder().decode(publicKeyStr);
+                java.security.spec.X509EncodedKeySpec keySpec = new java.security.spec.X509EncodedKeySpec(keyBytes);
+                java.security.KeyFactory keyFactory = java.security.KeyFactory.getInstance("RSA");
+                java.security.PublicKey pubKey = keyFactory.generatePublic(keySpec);
+                javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("RSA/ECB/PKCS1Padding");
+                
+                byte[] decoded = java.util.Base64.getDecoder().decode(params);
+                int maxBlock = 128; // 1024位RSA解密块大小128字节
+                
+                // ★ 分段解密
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                int offset = 0;
+                while (offset < decoded.length) {
+                    int len = Math.min(decoded.length - offset, maxBlock);
+                    cipher.init(javax.crypto.Cipher.DECRYPT_MODE, pubKey);
+                    byte[] block = cipher.doFinal(decoded, offset, len);
+                    out.write(block);
+                    offset += len;
+                }
+                encrypt = new String(out.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+                android.util.Log.d("VERIFY_RSA", "RSA分段解密成功");
+            } catch (Exception e) {
+                android.util.Log.e("VERIFY_RSA", "RSA解密失败", e);
+                Console.error("RSA解密失败: " + e.getMessage());
+            }
         }
 
                 // 【修改】DH密钥交换加密 -> AES-128-ECB模式

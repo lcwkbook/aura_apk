@@ -299,28 +299,63 @@ public class MainActivity extends Activity {
   // ============================================================
   // 卡密验证（对接 verify SDK）
   // ============================================================
-  private void initVerifySdk() {
-    VerifyConfig.verifyConfig.setApiUrl("http://api.jsyz.asia");
-    VerifyConfig.verifyConfig.setAppId("3575");
-    VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
+  // ===== 全局验证管理器 =====
+private KernelVerifyManager verifyManager;
 
-    // ★ 改成 DH 模式 ★
-    VerifyConfig.verifyConfig.setSecretType(new String[] {"DH密钥交换加密"});
-    // ★ 填入 C++ 里的 server_public_key ★
-    VerifyConfig.verifyConfig.setSecretKey(
-        new String[] {
-          "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
-        });
-    VerifyConfig.verifyConfig.setEncodeType("Base64编码");
-    VerifyConfig.verifyConfig.setReqType("全部加密");
-    VerifyConfig.verifyConfig.setResType("全部加密");
-    VerifyConfig.verifyConfig.setRandomType("开"); // ← C++ 开了随机数
-    VerifyConfig.verifyConfig.setSignType("MD5"); // ← C++ 用 MD5
-    VerifyConfig.verifyConfig.setSignRule("方式二"); // ← C++ 用方式二
-    VerifyConfig.verifyConfig.setLocalTimeVerify("10000");
-    VerifyConfig.verifyConfig.setLogicCode("1"); // ← C++ 的 code==1
-    VerifyConfig.verifyConfig.setHeartOpen("关");
+private void initVerifyManager() {
+    verifyManager = new KernelVerifyManager();
+
+    // ★ 通用的服务器信息
+    String apiUrl = "http://api.jsyz.asia";
+    String appId  = "3575";
+    String appKey = "1snamcsfh76mmpi21jmpy55utk0bhy3f";
+
+    // ─── kernel 0：单透内核 → DH密钥交换 ───
+    VerifyConfigProfile dhProfile = new VerifyConfigProfile();
+    dhProfile.secretType = new String[] {"DH密钥交换加密"};
+    dhProfile.secretKey = new String[] {
+        "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
+    };
+    dhProfile.encodeType = "Base64编码";
+    dhProfile.reqType = "全部加密";
+    dhProfile.resType = "全部加密";
+    dhProfile.randomType = "开";
+    dhProfile.signType = "MD5";
+    dhProfile.signRule = "方式二";
+    dhProfile.localTimeVerify = "10000";
+    dhProfile.logicCode = "1";
+    dhProfile.heartOpen = "关";
+
+    verifyManager.register(0, new JsVerifySdkVerifier(dhProfile, apiUrl, appId, appKey));
+
+        // ─── kernel 1：渲染内核 → RSA非对称加密 ───
+    VerifyConfigProfile aesProfile = new VerifyConfigProfile();
+    aesProfile.secretType = new String[] {"RSA非对称加密", "默认"};
+    aesProfile.secretKey = new String[] {
+        "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCzFPo6Libi7UVdyRyrRvDCDkZG1/CgJ1y0WHtQQyGNwexVFRADZO7vRi3WJzXaOiPSfmN78Hv4XdcIV8eCQl4kLp7ChqoiicltsCz6GbBacyA5OSzxqrEexuD8l40QaV8bGTR8yCgTjVpc3aZPJfg6j06f9AplLRims9g9x9elywIDAQAB",  // 公钥
+        "MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBALMU+jouJuLtRV3JHKtG8MIORkbX8KAnXLRYe1BDIY3B7FUVEANk7u7Ri3WJzXaOiPSfmN78Hv4XdcIV8eCQl4kLp7ChqoiicltsCz6GbBacyA5OSzxqrEexuD8l40QaV8bGTR8yCgTjVpc3aZPJfg6j06f9AplLRims9g9x9elywIDAQAB"  // 私钥（请确认完整）
+    };
+    aesProfile.encodeType = "Base64编码";
+    aesProfile.reqType = "全部加密";
+    aesProfile.resType = "全部加密";
+    aesProfile.randomType = "开";
+    aesProfile.signType = "MD5";
+    aesProfile.signRule = "方式一";
+    aesProfile.localTimeVerify = "5000";
+    aesProfile.logicCode = "1";
+    aesProfile.heartOpen = "关";
+
+
+    verifyManager.register(1, new JsVerifySdkVerifier(aesProfile, apiUrl, appId, appKey));
+
+    // ─── 未来 kernel 2：其他验证系统 → 实现不同的 KernelVerifier ───
+    // verifyManager.register(2, new XxxVerifier(...));
+    VerifyConfig.verifyConfig.setApiUrl(apiUrl);
+    VerifyConfig.verifyConfig.setAppId(appId);
+    VerifyConfig.verifyConfig.setAppKey(appKey);
+    dhProfile.apply();  // ← 默认使用 DH 配置
   }
+
 
   /**
    * 从服务器验证卡密信息（异步）
@@ -328,13 +363,6 @@ public class MainActivity extends Activity {
    * @param card 卡密字符串
    * @param callback 回调接口（主线程调用）
    */
-
-  /** 卡密验证回调接口 */
-  private interface VerifyCallback {
-    void onSuccess(String type, String endTime, String status);
-
-    void onError(String errorMsg);
-  }
 
   /** 根据 type 整数返回卡密类型名称 */
   private String getCardTypeName(int type) {
@@ -404,90 +432,41 @@ public class MainActivity extends Activity {
     }
   }
 
-  private void verifyCardFromServer(final String card, final VerifyCallback callback) {
-    // ★ 先检查缓存：如果这张卡之前查过，直接用缓存
-    if (CacheManager.hasCachedCard(card)) {
-      CacheManager.CardCache cached = CacheManager.getCachedCard(card);
-      runOnUiThread(
-          () -> {
-            if (callback != null) callback.onSuccess(cached.type, cached.endTime, cached.status);
-          });
-      return;
-    }
-
-    new Thread(
-            new Runnable() {
-              @Override
-              public void run() {
-                try {
-                  SingleInfoEntity req = new SingleInfoEntity(card);
-                  ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
-                  cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
-                  cn.hutool.json.JSONObject data = entries.getJSONObject("data");
-                  final int typeInt = data.getInt("type");
-                  final String typeStr = getCardTypeName(typeInt);
-                  final String endTime = data.getStr("endTime");
-                  final String status = getCardStatus(endTime);
-
-                  // ★ 写入缓存
-                  CacheManager.cacheCard(card, typeStr, endTime, status);
-
-                  runOnUiThread(
-                      new Runnable() {
-                        @Override
-                        public void run() {
-                          if (callback != null) callback.onSuccess(typeStr, endTime, status);
-                        }
-                      });
-                } catch (final Throwable e) {
-                  Log.e("VERIFY_SDK", "卡密验证失败", e);
-                  final String errMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
-                  runOnUiThread(
-                      new Runnable() {
-                        @Override
-                        public void run() {
-                          if (callback != null) callback.onError(errMsg);
-                        }
-                      });
-                }
-              }
-            })
-        .start();
-  }
 
   private void fetchNoticeFromServer() {
-    // ★ 如果已经有缓存，直接显示，不用请求服务器
-    if (CacheManager.hasAnnouncement()) {
-      announcementText.setText(CacheManager.getCachedAnnouncement());
-      return;
+    // 根据当前内核选择公告变量ID
+    String variableId = (currentKernel == 0) ? "1971" : "1985";
+    
+    // ★ 如果已经有缓存，直接显示
+    if (CacheManager.hasAnnouncement(variableId)) {
+        announcementText.setText(CacheManager.getCachedAnnouncement(variableId));
+        return;
     }
 
-    new Thread(
-            () -> {
-              try {
-                CommonVariableEntity req = new CommonVariableEntity(null, "1971");
-                ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
-                cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
-                cn.hutool.json.JSONObject data = entries.getJSONObject("data");
-                final String content = data.getStr("content");
+    new Thread(() -> {
+        try {
+            CommonVariableEntity req = new CommonVariableEntity(null, variableId);
+            ApiBaseEntity builderReq = ReqBuilder.builderReq(req);
+            cn.hutool.json.JSONObject entries = FrameworkTool.sendWithRes(builderReq);
+            cn.hutool.json.JSONObject data = entries.getJSONObject("data");
+            final String content = data.getStr("content");
 
-                // ★ 写入缓存
+            // ★ 写入缓存
+            if (content != null && !content.isEmpty()) {
+                CacheManager.setCachedAnnouncement(variableId, content);
+            }
+
+            runOnUiThread(() -> {
                 if (content != null && !content.isEmpty()) {
-                  CacheManager.setCachedAnnouncement(content);
+                    announcementText.setText(content);
                 }
-
-                runOnUiThread(
-                    () -> {
-                      if (content != null && !content.isEmpty()) {
-                        announcementText.setText(content);
-                      }
-                    });
-              } catch (Exception e) {
-                Log.e("NOTICE", "获取公告失败", e);
-              }
-            })
-        .start();
+            });
+        } catch (Exception e) {
+            Log.e("NOTICE", "获取公告失败", e);
+        }
+    }).start();
   }
+
 
   private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
     if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
@@ -1010,7 +989,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    initVerifySdk();
+    initVerifyManager();
     if (!SignatureGuard.isSignatureValid(this)) {
       // 签名不匹配，APK 被篡改过，直接退出
       finish();
@@ -2198,21 +2177,17 @@ public class MainActivity extends Activity {
           verifyBtn_s.setEnabled(false);
           verifyBtn_s.setText("...");
           keyStatus_s.setText("⏳ 验证中...");
-          verifyCardFromServer(
-              card,
-              new VerifyCallback() {
-                @Override
-                public void onSuccess(String type, String endTime, String status) {
+          // ★ 通过管理器，指定 kernel 0
+          verifyManager.verify(0, card, new KernelVerifier.VerifyCallback() {
+              @Override
+              public void onSuccess(String type, String endTime, String status) {
                   verifyBtn_s.setText("✓");
                   verifyBtn_s.setEnabled(true);
                   keyStatus_s.setText("✅ " + type + " | " + status + " | " + endTime);
-                  getSharedPreferences(PREFS, MODE_PRIVATE)
-                      .edit()
-                      .putString("key_value_s", card)
-                      .apply();
+                  getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                      .putString("key_value_s", card).apply();
                   saveCardToFile(card);
-                }
-
+              }
                 @Override
                 public void onError(String errorMsg) {
                   if (errorMsg != null && errorMsg.contains("未激活")) {
@@ -2380,24 +2355,22 @@ public class MainActivity extends Activity {
           verifyBtn_r.setEnabled(false);
           verifyBtn_r.setText("...");
           keyStatus_r.setText("⏳ 验证中...");
-          verifyCardFromServer(
-              card,
-              new VerifyCallback() {
-                @Override
-                public void onSuccess(String type, String endTime, String status) {
-                  verifyBtn_r.setText("✓");
-                  verifyBtn_r.setEnabled(true);
-                  keyStatus_r.setText("✅ " + type + " | " + status + " | " + endTime);
-                  getSharedPreferences(PREFS, MODE_PRIVATE)
-                      .edit()
-                      .putString("key_value_r", card)
-                      .apply();
-                  saveCardToFile(card);
-                }
+          verifyManager.verify(1, card, new KernelVerifier.VerifyCallback() {  // ← 新的
+            @Override
+            public void onSuccess(String type, String endTime, String status) {
+                verifyBtn_r.setText("✓");
+                verifyBtn_r.setEnabled(true);
+                keyStatus_r.setText("✅ " + type + " | " + status + " | " + endTime);
+                getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit()
+                    .putString("key_value_r", card)
+                    .apply();
+                saveCardToFile(card);
+            }
 
-                @Override
-                public void onError(String errorMsg) {
-                  if (errorMsg != null && errorMsg.contains("未激活")) {
+            @Override
+            public void onError(String errorMsg) {
+                if (errorMsg != null && errorMsg.contains("未激活")) {
                     saveCardToFile(card);
                     getSharedPreferences(PREFS, MODE_PRIVATE)
                         .edit()
@@ -2406,14 +2379,14 @@ public class MainActivity extends Activity {
                     verifyBtn_r.setText("✓");
                     verifyBtn_r.setEnabled(true);
                     keyStatus_r.setText("💡 卡密已保存，请点击「运行」激活");
-                  } else {
+                } else {
                     verifyBtn_r.setText("重试");
                     verifyBtn_r.setEnabled(true);
                     keyStatus_r.setText("❌ " + errorMsg);
-                  }
                 }
-              });
+            }
         });
+    });
 
     // 2️⃣ 驱动选择模块（渲染内核 - 可换不同的驱动列表）
     LinearLayout cardDriver_r = new LinearLayout(this);
@@ -2522,7 +2495,7 @@ public class MainActivity extends Activity {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt("current_kernel", kernel).apply();
 
     // 🌟 切换内核时重置所有脚本状态
-    isDownloading = false; // ← 允许开始新的下载
+    isDownloading = false;
     selectedFile = null;
     selectedName = "";
     scriptReady = false;
@@ -2533,7 +2506,12 @@ public class MainActivity extends Activity {
 
     // 🌟 自动为当前内核下载/检查脚本
     prepareScriptIfNeeded();
+    
+    // ★ 新增：切换内核时重新加载公告
+    announcementText.setText("⏳ 加载中...");
+    fetchNoticeFromServer();
   }
+
 
   // ===== 🌟 更新内核Tab按钮的高亮状态 =====
   private void updateKernelTabs() {
@@ -3815,9 +3793,7 @@ public class MainActivity extends Activity {
       //    child[0] = 标题, child[1]=卡号行, child[2]=分割线, child[3]=状态行,
       //    child[4]=分割线, child[5]=类型行, child[6]=分割线, child[7]=时间行
       final int[] rowIdx = {3, 5, 7}; // 状态行、类型行、时间行的正确索引！
-      verifyCardFromServer(
-          savedKey,
-          new VerifyCallback() {
+          verifyManager.verify(currentKernel, savedKey, new KernelVerifier.VerifyCallback() {
             @Override
             public void onSuccess(String type, String endTime, String status) {
               String statusDisplay = status.equals("已到期") ? "❌ 已到期" : "✅ 正常";

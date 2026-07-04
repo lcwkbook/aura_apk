@@ -42,9 +42,18 @@ public class ReqBuilder {
         JSONObject entries = new JSONObject(toMap(apiBaseEntity));
         entries.remove("apiUrl");
         entries.remove("encryptParams");
+        entries.remove("appId");
+        entries.remove("bob");
+        android.util.Log.d("VERIFY_AES", "当前secretType[0]=" + VerifyConfig.verifyConfig.getSecretType()[0]);
+        android.util.Log.d("VERIFY_AES", "当前secretType[1]=" + (VerifyConfig.verifyConfig.getSecretType().length > 1 ? VerifyConfig.verifyConfig.getSecretType()[1] : "null"));
+        android.util.Log.d("VERIFY_AES", "当前secretKey[0]=" + VerifyConfig.verifyConfig.getSecretKey()[0]);
+        android.util.Log.d("VERIFY_AES", "当前secretKey[1]=" + (VerifyConfig.verifyConfig.getSecretKey().length > 1 ? VerifyConfig.verifyConfig.getSecretKey()[1] : "null"));
+        android.util.Log.d("VERIFY_AES", "当前encodeType=" + VerifyConfig.verifyConfig.getEncodeType());
         String sorted = SignBuilder.sortByAscii(entries);
+        android.util.Log.d("VERIFY_AES", "待加密明文(sorted)=" + sorted);  // ← 移到这里
         String paramsEncrypt = EncryptBuilder.builderEncryptParams(sorted);
         apiBaseEntity.setEncryptParams(paramsEncrypt);
+
 
         return apiBaseEntity;
     }
