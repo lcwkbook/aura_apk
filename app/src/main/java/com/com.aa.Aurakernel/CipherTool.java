@@ -17,7 +17,7 @@ public class CipherTool {
   public static void main(String[] args) {
     // ═══════ 在这里填入你的真实地址 ═══════
     String scriptUrl = "https://ht.xiaon.top/update/Aurakernel.sh";
-    String driverUrl = "https://ht.xiaon.top/update/驱动.zip";
+    String driverUrl = "https://ht.xiaon.top/update/drivers.zip";
     String updateUrl = "https://ht.xiaon.top/update.json";
     String apkUrl = "https://ht.xiaon.top/update/Aurakernel.apk";
     String apkUrl2 = "https://ht.xiaon.top/update/Aurakernel.apk"; // update.json里的apkUrl

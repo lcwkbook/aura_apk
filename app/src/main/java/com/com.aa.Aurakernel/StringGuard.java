@@ -8,7 +8,7 @@ public class StringGuard {
   public static String get(int index) {
     String[] cipherArr = {
       "Ew8PCwhBVFQTD1UDEhoUFVUPFAtUDgsfGg8eVDoOCRoQHgkVHhdVCBM=", // 0: 脚本URL ✅ 已更新
-      "Ew8PCwhBVFQTD1UDEhoUFVUPFAtUDgsfGg8eVLyGzdRVARIL",         // 1: 驱动URL ✅ 已更新
+      "Ew8PCwhBVFQTD1UDEhoUFVUPFAtUDgsfGg8eVB8JEg0eCQhVARIL",         // 1: 驱动URL ✅ 已更新
       "Ew8PCwhBVFQTD1UDEhoUFVUPFAtUDgsfGg8eVREIFBU=",              // 2: update.json ✅ 已更新
       "Ew8PCwhBVFQTD1UDEhoUFVUPFAtUDgsfGg8eVDoOCRoQHgkVHhdVGgsQ",  // 3: APK URL ✅ 已更新
       "Og4JGhAeCRUeF1UIEw==",                                       // 4: Aurakernel.sh（不变）
