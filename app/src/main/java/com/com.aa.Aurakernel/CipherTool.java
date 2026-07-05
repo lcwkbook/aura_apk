@@ -1,4 +1,6 @@
 // ★ 新建一个工具类：CipherTool.java（仅开发时用，不用编入APK）
+//javac --release 8 CipherTool.java
+//java CipherTool
 import java.util.Base64;
 
 public class CipherTool {
@@ -14,17 +16,17 @@ public class CipherTool {
 
   public static void main(String[] args) {
     // ═══════ 在这里填入你的真实地址 ═══════
-    String scriptUrl = "https://aura.xiaon.top/update/Aurakernel.sh";
-    String driverUrl = "https://aura.xiaon.top/update/驱动.zip";
-    String updateUrl = "https://aura.xiaon.top/update/update.json";
-    String apkUrl = "https://aura.xiaon.top/update/Aurakernel.apk";
-    String apkUrl2 = "https://aura.xiaon.top/update/Aurakernel.apk"; // update.json里的apkUrl
-    String scriptHash = "uqF0wVKycYjR5rFBk9sa0wmaNNHzuC+k2vDoqf7z6Ww="; // 脚本SHA256
+    String scriptUrl = "https://ht.xiaon.top/update/Aurakernel.sh";
+    String driverUrl = "https://ht.xiaon.top/update/驱动.zip";
+    String updateUrl = "https://ht.xiaon.top/update.json";
+    String apkUrl = "https://ht.xiaon.top/update/Aurakernel.apk";
+    String apkUrl2 = "https://ht.xiaon.top/update/Aurakernel.apk"; // update.json里的apkUrl
+    String scriptHash = "5vt6vD2lL9TK6l3mtHQt+CPz+UnYZMD3bIzHWlbVpRI="; // 脚本SHA256
     String sigHash = "VlryMOwxJbfP9KYssSuiM+dc0b/OP76mq7JqbJiVHIM="; //签名哈希
-    String binaryHash = "uqF0wVKycYjR5rFBk9sa0wmaNNHzuC+k2vDoqf7z6Ww="; //C++二进制哈希
+    String binaryHash = "5vt6vD2lL9TK6l3mtHQt+CPz+UnYZMD3bIzHWlbVpRI="; //C++二进制哈希
     String dashboardUrl = "https://mt.xiaon.top/";
     String avatarUrl = "https://www.loliapi.com/acg/pp/";
-    String verifyUrl = "https://aura.xiaon.top/update/verify.php";
+    String verifyUrl = "https://ht.xiaon.top/api/verify.php";
     
 
     System.out.println("=== 填入 StringGuard.java ===");
