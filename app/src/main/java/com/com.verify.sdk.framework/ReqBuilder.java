@@ -33,8 +33,9 @@ public class ReqBuilder {
         apiBaseEntity.setAppId(VerifyConfig.verifyConfig.getAppId());
 
         Map<String, Object> paramsMap = toMap(apiBaseEntity);
-        if (!paramsMap.containsKey("mac")) paramsMap.put("mac", "");
-        if (!paramsMap.containsKey("token")) paramsMap.put("token", "");
+        paramsMap.remove("appId");  // 签名不含 appId（同 C++）
+        paramsMap.remove("bob");
+        // 不再添加 mac/token
 
         String signature = SignBuilder.builderSign(new JSONObject(paramsMap));
         apiBaseEntity.setSignature(signature);

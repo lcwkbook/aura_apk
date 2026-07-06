@@ -32,7 +32,7 @@ public class SignBuilder {
         } catch (CloneNotSupportedException e) {
             Console.error("JSON CLONE 失败");
         }
-        // params.remove("appId");
+        params.remove("appId");
         params.remove("signature");
         params.remove("apiUrl");
         params.remove("encryptParams");

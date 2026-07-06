@@ -332,15 +332,14 @@ private void initVerifyManager() {
     VerifyConfigProfile aesProfile = new VerifyConfigProfile();
     aesProfile.secretType = new String[] {"RSA非对称加密", "默认"};
     aesProfile.secretKey = new String[] {
-        "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCzFPo6Libi7UVdyRyrRvDCDkZG1/CgJ1y0WHtQQyGNwexVFRADZO7vRi3WJzXaOiPSfmN78Hv4XdcIV8eCQl4kLp7ChqoiicltsCz6GbBacyA5OSzxqrEexuD8l40QaV8bGTR8yCgTjVpc3aZPJfg6j06f9AplLRims9g9x9elywIDAQAB",  // 公钥
-        "MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBALMU+jouJuLtRV3JHKtG8MIORkbX8KAnXLRYe1BDIY3B7FUVEANk7u7Ri3WJzXaOiPSfmN78Hv4XdcIV8eCQl4kLp7ChqoiicltsCz6GbBacyA5OSzxqrEexuD8l40QaV8bGTR8yCgTjVpc3aZPJfg6j06f9AplLRims9g9x9elywIDAQAB"  // 私钥（请确认完整）
+        "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCzFPo6Libi7UVdyRyrRvDCDkZG1/CgJ1y0WHtQQyGNwexVFRADZO7vRi3WJzXaOiPSfmN78Hv4XdcIV8eCQl4kLp7ChqoiicltsCz6GbBacyA5OSzxqrEexuD8l40QaV8bGTR8yCgTjVpc3aZPJfg6j06f9AplLRims9g9x9elywIDAQAB"  // 公钥
     };
     aesProfile.encodeType = "Base64编码";
     aesProfile.reqType = "全部加密";
     aesProfile.resType = "全部加密";
     aesProfile.randomType = "开";
     aesProfile.signType = "MD5";
-    aesProfile.signRule = "方式一";
+    aesProfile.signRule = "方式二";
     aesProfile.localTimeVerify = "5000";
     aesProfile.logicCode = "1";
     aesProfile.heartOpen = "关";
