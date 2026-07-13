@@ -95,7 +95,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-
+import android.view.ViewGroup;
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
   private static Bitmap cachedAvatar = null;
@@ -139,6 +139,12 @@ public class MainActivity extends Activity {
   private LinearLayout pageHost;
   private LinearLayout navHome;
   private LinearLayout navMine;
+  private View navCapsule;
+  private FrameLayout navBarFrame;
+  private boolean isDragMode = false;
+  private float dragStartX;
+  private final Handler longPressHandler = new Handler(Looper.getMainLooper());
+  private Runnable longPressRunnable;
   private LinearLayout navDriver;
   private TextView driverBtnKpm, driverBtnDitpro, driverBtnParadise, driverBtnBackup;
   private TextView antiRecordBtn, noBackgroundBtn;
@@ -279,28 +285,74 @@ public class MainActivity extends Activity {
   // ============================================================
   // 卡密验证（对接 verify SDK）
   // ============================================================
-  private void initVerifySdk() {
-    VerifyConfig.verifyConfig.setApiUrl("http://api.jsyz.asia");
-    VerifyConfig.verifyConfig.setAppId("3575");
-    VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
+   private void initVerifySdk() {
+    // ★ 多域名列表（按优先级排列）
+    final String[] apiUrls = {
+      "http://vip.jsyz.asia",
+      "http://vip.jszun.com",
+      "http://vip.jsjst.top"
+    };
 
-    // ★ 改成 DH 模式 ★
-    VerifyConfig.verifyConfig.setSecretType(new String[] {"DH密钥交换加密"});
-    // ★ 填入 C++ 里的 server_public_key ★
-    VerifyConfig.verifyConfig.setSecretKey(
-        new String[] {
-          "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
-        });
-    VerifyConfig.verifyConfig.setEncodeType("Base64编码");
-    VerifyConfig.verifyConfig.setReqType("全部加密");
-    VerifyConfig.verifyConfig.setResType("全部加密");
-    VerifyConfig.verifyConfig.setRandomType("开"); // ← C++ 开了随机数
-    VerifyConfig.verifyConfig.setSignType("MD5"); // ← C++ 用 MD5
-    VerifyConfig.verifyConfig.setSignRule("方式二"); // ← C++ 用方式二
-    VerifyConfig.verifyConfig.setLocalTimeVerify("10000");
-    VerifyConfig.verifyConfig.setLogicCode("1"); // ← C++ 的 code==1
-    VerifyConfig.verifyConfig.setHeartOpen("关");
+    // ★ 在子线程中检测可用域名
+    new Thread(() -> {
+      String workingUrl = null;
+      for (String url : apiUrls) {
+        try {
+          // 尝试连接测试（超时3秒）
+          java.net.HttpURLConnection testConn =
+              (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+          testConn.setConnectTimeout(3000);
+          testConn.setReadTimeout(3000);
+          testConn.setRequestMethod("GET");
+          int code = testConn.getResponseCode();
+          testConn.disconnect();
+          if (code >= 200 && code < 500) { // 服务器有响应就算可用
+            workingUrl = url;
+            android.util.Log.i("VERIFY_SDK", "✅ 可用域名: " + url);
+            break;
+          }
+        } catch (Exception e) {
+          android.util.Log.w("VERIFY_SDK", "❌ 域名不可用: " + url + " → " + e.getMessage());
+        }
+      }
+
+      if (workingUrl == null) {
+        workingUrl = apiUrls[0]; // 全挂了就默认用第一个
+        android.util.Log.e("VERIFY_SDK", "⚠️ 所有域名均不可用，使用默认: " + workingUrl);
+      }
+
+      // ★ 使用找到的可用域名初始化 SDK
+      final String finalUrl = workingUrl;
+      runOnUiThread(() -> {
+        try {
+          VerifyConfig.verifyConfig.setApiUrl(finalUrl);
+          VerifyConfig.verifyConfig.setAppId("3575");
+          VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
+
+          // ★ 改成 DH 模式 ★
+          VerifyConfig.verifyConfig.setSecretType(new String[] {"DH密钥交换加密"});
+          VerifyConfig.verifyConfig.setSecretKey(
+              new String[] {
+                "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
+              });
+          VerifyConfig.verifyConfig.setEncodeType("Base64编码");
+          VerifyConfig.verifyConfig.setReqType("全部加密");
+          VerifyConfig.verifyConfig.setResType("全部加密");
+          VerifyConfig.verifyConfig.setRandomType("开");
+          VerifyConfig.verifyConfig.setSignType("MD5");
+          VerifyConfig.verifyConfig.setSignRule("方式二");
+          VerifyConfig.verifyConfig.setLocalTimeVerify("10000");
+          VerifyConfig.verifyConfig.setLogicCode("1");
+          VerifyConfig.verifyConfig.setHeartOpen("关");
+
+          android.util.Log.i("VERIFY_SDK", "🚀 SDK 初始化完成，API: " + finalUrl);
+        } catch (Exception e) {
+          android.util.Log.e("VERIFY_SDK", "❌ SDK 初始化失败: " + e.getMessage());
+        }
+      });
+    }).start();
   }
+
 
   /**
    * 从服务器验证卡密信息（异步）
@@ -1517,7 +1569,7 @@ public class MainActivity extends Activity {
     shell.setBackgroundColor(bgColor());
     root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
 
-    pageHost = new LinearLayout(this);
+        pageHost = new LinearLayout(this);
     pageHost.setOrientation(LinearLayout.VERTICAL);
     shell.addView(pageHost, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -1810,141 +1862,317 @@ public class MainActivity extends Activity {
         });
   }
 
-  // ====================== 替换 createBottomNav() ======================
-private View createBottomNav() {
-    LinearLayout wrap = new LinearLayout(this);
-    wrap.setGravity(Gravity.CENTER);
-    wrap.setPadding(dp(16), dp(8), dp(16), dp(20));
-    wrap.setBackgroundColor(bgColor());
 
-    LinearLayout bar = new LinearLayout(this);
-    bar.setOrientation(LinearLayout.HORIZONTAL);
-    bar.setGravity(Gravity.CENTER);
-    bar.setPadding(dp(6), dp(6), dp(6), dp(6));
-    
-    // 玻璃态背景（半透明+模糊效果）
-    GradientDrawable glassBg = new GradientDrawable();
-    glassBg.setColor(nightMode ? Color.argb(220, 22, 26, 36) : Color.argb(240, 255, 255, 255));
-    glassBg.setCornerRadius(dp(30));
-    // 加一个浅边框
-    glassBg.setStroke(dp(1), borderColor());
-    bar.setBackground(glassBg);
-    
-    if (Build.VERSION.SDK_INT >= 21) {
-        bar.setElevation(dp(8));
-        bar.setOutlineProvider(null);
-    }
-    bar.setBackground(glassBg);
-    
-    // 阴影边框
-    GradientDrawable border = new GradientDrawable();
-    border.setCornerRadius(dp(30));
-    border.setStroke(dp(1), borderColor());
-    bar.setBackground(border);
-    bar.setBackground(glassBg);
-    
-    wrap.addView(bar, new LinearLayout.LayoutParams(dp(340), dp(62)));
+      private View createBottomNav() {
+      LinearLayout wrap = new LinearLayout(this);
+      wrap.setGravity(Gravity.CENTER);
+      wrap.setPadding(dp(16), dp(4), dp(16), dp(16));
+      wrap.setBackground(null);
 
-    // 三个导航按钮带图标
-    navHome = navIconButton("🏠", "主页", true);
-    navDriver = navIconButton("📦", "驱动", false);
-    navMine = navIconButton("👤", "我的", false);
+      // 主容器（FrameLayout 用于叠加滑动胶囊）
+      navBarFrame = new FrameLayout(this);
 
-    bar.addView(navHome, new LinearLayout.LayoutParams(0, -1, 1));
-    bar.addView(navDriver, new LinearLayout.LayoutParams(0, -1, 1));
-    bar.addView(navMine, new LinearLayout.LayoutParams(0, -1, 1));
+      // 背景
+      GradientDrawable glassBg = new GradientDrawable();
+      glassBg.setColor(nightMode ? Color.argb(200, 20, 24, 36) : Color.argb(200, 255, 255, 255));
+      glassBg.setCornerRadius(dp(30));
+      glassBg.setStroke(dp(1), borderColor());
+      navBarFrame.setBackground(glassBg);
 
-    navHome.setOnClickListener(v -> switchPage(0));
-    navDriver.setOnClickListener(v -> switchPage(1));
-    navMine.setOnClickListener(v -> switchPage(2));
-    return wrap;
-}
+      if (Build.VERSION.SDK_INT >= 21) {
+          navBarFrame.setElevation(dp(12));
+          navBarFrame.setOutlineProvider(null);
+      }
 
-// 带图标的导航按钮
-private LinearLayout navIconButton(String emoji, String label, boolean active) {
-    LinearLayout container = new LinearLayout(this);
-    container.setOrientation(LinearLayout.VERTICAL);
-    container.setGravity(Gravity.CENTER);
-    container.setPadding(dp(4), dp(4), dp(4), dp(4));
-    
-    TextView icon = text(emoji, active ? 22 : 18, 
-        active ? primaryColor() : subTextColor(), Typeface.NORMAL);
-    icon.setGravity(Gravity.CENTER);
-    container.addView(icon, lp(-2, dp(28), 0, 0, 0, dp(2)));
-    
-    TextView labelView = text(label, active ? 11 : 10, 
-        active ? primaryColor() : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
-    labelView.setGravity(Gravity.CENTER);
-    container.addView(labelView, lp(-2, -2, 0, 0, 0, 0));
-    
-    // 选中时加背景
-    if (active) {
-        GradientDrawable activeBg = new GradientDrawable();
-        activeBg.setColor(Color.argb(20, 81, 191, 101));
-        activeBg.setCornerRadius(dp(16));
-        container.setBackground(activeBg);
-    }
-    
-    return container;
-}
+      // 🟢 滑动胶囊
+      View capsule = new View(this);
+      GradientDrawable capsuleBg = new GradientDrawable(
+          GradientDrawable.Orientation.LEFT_RIGHT,
+          new int[] { MAIN_GREEN, Color.rgb(99, 209, 119) }
+      );
+      capsuleBg.setCornerRadius(dp(26));
+      capsule.setBackground(capsuleBg);
+      capsule.setAlpha(0.22f);
 
+      // Tab 行
+      LinearLayout tabRow = new LinearLayout(this);
+      tabRow.setOrientation(LinearLayout.HORIZONTAL);
+      tabRow.setGravity(Gravity.CENTER);
+      tabRow.setPadding(dp(6), dp(6), dp(6), dp(6));
 
-  private TextView navButton(String text, boolean active) {
-    TextView v = text(text, 14, active ? Color.WHITE : subTextColor(), Typeface.BOLD);
-    v.setGravity(Gravity.CENTER);
-    v.setBackground(round(active ? primaryColor() : Color.TRANSPARENT, 24, 0, 0));
-    return v;
+      navHome = buildNavTab("🏠", "主页", true);
+      navDriver = buildNavTab("📦", "驱动", false);
+      navMine = buildNavTab("👤", "我的", false);
+
+      tabRow.addView(navHome, new LinearLayout.LayoutParams(0, dp(52), 1));
+      tabRow.addView(navDriver, new LinearLayout.LayoutParams(0, dp(52), 1));
+      tabRow.addView(navMine, new LinearLayout.LayoutParams(0, dp(52), 1));
+
+      navBarFrame.addView(tabRow, new FrameLayout.LayoutParams(-1, -1));
+      FrameLayout.LayoutParams capLp = new FrameLayout.LayoutParams(0, dp(52));
+      capLp.setMargins(dp(6), dp(6), 0, 0);
+      capsule.setLayoutParams(capLp);
+      navBarFrame.addView(capsule, 0);
+      navCapsule = capsule;
+
+            // ===== 👆 长按拖拽（实时切换页面）=====
+      android.view.View.OnTouchListener tabTouchListener = (v, event) -> {
+          switch (event.getAction()) {
+              case android.view.MotionEvent.ACTION_DOWN:
+                  dragStartX = event.getX();
+                  isDragMode = false;
+                  if (longPressRunnable != null) longPressHandler.removeCallbacks(longPressRunnable);
+                  longPressRunnable = () -> {
+                      isDragMode = true;
+                      try {
+                          ((android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE))
+                              .vibrate(20);
+                      } catch (Exception ignored) {}
+                      capsule.setAlpha(0.45f);
+                  };
+                  longPressHandler.postDelayed(longPressRunnable, 200);
+                  return true;
+
+              case android.view.MotionEvent.ACTION_MOVE:
+                  if (isDragMode) {
+                      float rawX = event.getRawX();
+                      int[] barLoc = new int[2];
+                      navBarFrame.getLocationOnScreen(barLoc);
+                      float xInBar = rawX - barLoc[0];
+                      float barW = navBarFrame.getWidth();
+                      if (barW <= 0) return true;
+
+                      float minX = dp(6);
+                      float maxX = barW - dp(6);
+                      xInBar = Math.max(minX, Math.min(maxX, xInBar));
+
+                      float tabW = barW / 3f;
+                      int capWidth = (int) (tabW - dp(12));
+                      int capLeft = (int) (xInBar - capWidth / 2f);
+                      capLeft = (int) Math.max(dp(6), Math.min(barW - dp(6) - capWidth, capLeft));
+
+                      FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
+                      lp.leftMargin = capLeft;
+                      lp.width = capWidth;
+                      capsule.setLayoutParams(lp);
+
+                      // 🔄 实时切换：悬停到新Tab就立刻切页面
+                      int hoverIndex = (int) ((xInBar - dp(6)) / tabW);
+                      hoverIndex = Math.max(0, Math.min(2, hoverIndex));
+                      if (hoverIndex != currentPage) {
+                          switchPageContentOnly(hoverIndex);
+                      }
+                      updateNavTabPreview(hoverIndex);
+                      return true;
+                  } else {
+                      if (Math.abs(event.getX() - dragStartX) > dp(10)) {
+                          longPressHandler.removeCallbacks(longPressRunnable);
+                      }
+                      return true;
+                  }
+
+                            case android.view.MotionEvent.ACTION_UP:
+              case android.view.MotionEvent.ACTION_CANCEL:
+                  longPressHandler.removeCallbacks(longPressRunnable);
+                  if (isDragMode) {
+                      isDragMode = false;
+                      capsule.setAlpha(0.22f);
+
+                      // 🎯 直接吸附到 currentPage（MOVE中已实时切换，这里不用重新计算）
+                      float barW = navBarFrame.getWidth();
+                      if (barW > 0) {
+                          float tabW = barW / 3f;
+                          FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
+                          int correctLeft = (int) (dp(6) + tabW * currentPage);
+                          int correctWidth = (int) (tabW - dp(12));
+                          lp.leftMargin = correctLeft;
+                          lp.width = correctWidth;
+                          capsule.setLayoutParams(lp);
+                          updateNavTabStyle();
+                      }
+                      return true;
+                  }
+                  v.performClick();
+                  return true;
+          }
+          return true;
+      };
+
+      navHome.setOnTouchListener(tabTouchListener);
+      navDriver.setOnTouchListener(tabTouchListener);
+      navMine.setOnTouchListener(tabTouchListener);
+
+      wrap.addView(navBarFrame, new LinearLayout.LayoutParams(-1, dp(64)));
+
+      navHome.setOnClickListener(v -> switchPage(0));
+      navDriver.setOnClickListener(v -> switchPage(1));
+      navMine.setOnClickListener(v -> switchPage(2));
+
+      // 胶囊初始宽度
+      navBarFrame.post(() -> {
+          int barW = navBarFrame.getWidth();
+          int tabW = barW / 3;
+          FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
+          cp.width = tabW - dp(12);
+          capsule.setLayoutParams(cp);
+      });
+
+      return wrap;
   }
 
-  // ====================== 替换 switchPage() ======================
-private void switchPage(int page) {
-    if (pageHost == null) return;
-    if (page == currentPage && pageHost.getChildCount() > 0) return;
-    currentPage = page;
-    pageHost.removeAllViews();
-    pageHost.setBackgroundColor(bgColor());
+  // 🎯 单个导航项（新风格：图标+文字，选中时缩放+变色）
+  private LinearLayout buildNavTab(String emoji, String label, boolean active) {
+      LinearLayout tab = new LinearLayout(this);
+      tab.setOrientation(LinearLayout.HORIZONTAL);
+      tab.setGravity(Gravity.CENTER);
+      tab.setPadding(dp(6), dp(4), dp(6), dp(4));
 
-    View next = null;
-    if (page == 0) next = createHomePage();
-    else if (page == 1) next = createDriverPage();
-    else next = createMinePage();
+      TextView icon = text(emoji, 20,
+          active ? MAIN_GREEN : subTextColor(), Typeface.NORMAL);
+      icon.setGravity(Gravity.CENTER);
+      tab.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
 
-    pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
-    animatePageIn(next, page >= 0 ? 1 : -1);
-    updateNav();
-}
+      TextView lbl = text(label, 12,
+          active ? MAIN_GREEN : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
+      lbl.setGravity(Gravity.CENTER);
+      tab.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
 
-// ====================== 替换 updateNav() ======================
-private void updateNav() {
-    updateNavButton(navHome, "🏠", "主页", currentPage == 0);
-    updateNavButton(navDriver, "📦", "驱动", currentPage == 1);
-    updateNavButton(navMine, "👤", "我的", currentPage == 2);
-}
+      return tab;
+  }
 
-private void updateNavButton(LinearLayout container, String emoji, String label, boolean active) {
-    if (container == null) return;
-    container.removeAllViews();
-    
-    TextView icon = text(emoji, active ? 22 : 18, 
-        active ? primaryColor() : subTextColor(), Typeface.NORMAL);
-    icon.setGravity(Gravity.CENTER);
-    container.addView(icon, lp(-2, dp(28), 0, 0, 0, dp(2)));
-    
-    TextView labelView = text(label, active ? 11 : 10, 
-        active ? primaryColor() : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
-    labelView.setGravity(Gravity.CENTER);
-    container.addView(labelView, lp(-2, -2, 0, 0, 0, 0));
-    
-    if (active) {
-        GradientDrawable activeBg = new GradientDrawable();
-        activeBg.setColor(Color.argb(20, 81, 191, 101));
-        activeBg.setCornerRadius(dp(16));
-        container.setBackground(activeBg);
-    } else {
-        container.setBackground(null);
-    }
-}
+    // 🟢 胶囊滑动动画
+  private void updateNavCapsule(int targetIndex) {
+      if (navCapsule == null) return;
+      View capsule = navCapsule;
+      FrameLayout barFrame = (FrameLayout) capsule.getParent();
+      if (barFrame == null) return;
 
+      int barW = barFrame.getWidth();
+      if (barW <= 0) return;
+
+      int tabW = barW / 3;
+      int targetLeft = (int)(dp(6) + tabW * targetIndex);
+      int targetWidth = tabW - (int)dp(12);
+
+      // 🎬 丝滑动画：位置+宽度同时变化
+      ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+      final int startLeft = capsule.getLeft();
+      final int startWidth = capsule.getWidth();
+      anim.addUpdateListener(animation -> {
+          float fraction = animation.getAnimatedFraction();
+          int curLeft = (int)(startLeft + (targetLeft - startLeft) * fraction);
+          int curWidth = (int)(startWidth + (targetWidth - startWidth) * fraction);
+          FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
+          lp.leftMargin = curLeft;
+          lp.width = curWidth;
+          capsule.setLayoutParams(lp);
+      });
+      anim.setDuration(350);
+      anim.setInterpolator(new DecelerateInterpolator(2f));
+      anim.start();
+  }
+
+    // ====================== 🎬 页面切换 ======================
+  private void switchPage(int page) {
+      if (pageHost == null) return;
+      if (page == currentPage && pageHost.getChildCount() > 0) return;
+      int from = currentPage;
+      currentPage = page;
+      pageHost.removeAllViews();
+      pageHost.setBackgroundColor(bgColor());
+
+      View next = null;
+      if (page == 0) next = createHomePage();
+      else if (page == 1) next = createDriverPage();
+      else next = createMinePage();
+
+      pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
+
+      // 🎬 页面淡入
+      AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
+      fadeIn.setDuration(300);
+      next.startAnimation(fadeIn);
+
+      // 🔄 胶囊滑动（只在有旧页时动画，首次不滑）
+      if (from != page) {
+          updateNavCapsule(page);
+      }
+      updateNavTabStyle();
+  }
+
+    // 🔄 仅切换页面内容（不动胶囊动画，用于拖拽中实时切页）
+  private void switchPageContentOnly(int page) {
+      if (pageHost == null) return;
+      if (page == currentPage) return;
+      currentPage = page;
+      pageHost.removeAllViews();
+      pageHost.setBackgroundColor(bgColor());
+
+      View next;
+      if (page == 0) next = createHomePage();
+      else if (page == 1) next = createDriverPage();
+      else next = createMinePage();
+
+      pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
+
+      AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
+      fadeIn.setDuration(200);
+      next.startAnimation(fadeIn);
+
+      updateNavTabStyle();
+  }
+
+
+  // 🔄 拖拽时实时预览tab颜色变化
+  private void updateNavTabPreview(int hoverIndex) {
+      updateSingleTab(navHome, "🏠", "主页", currentPage == 0 && hoverIndex == 0);
+      updateSingleTab(navDriver, "📦", "驱动", currentPage == 1 && hoverIndex == 1);
+      updateSingleTab(navMine, "👤", "我的", currentPage == 2 && hoverIndex == 2);
+      // 如果拖到另一个tab，临时高亮它
+      if (hoverIndex != currentPage) {
+          LinearLayout target = hoverIndex == 0 ? navHome : hoverIndex == 1 ? navDriver : navMine;
+          target.removeAllViews();
+          String[] data = hoverIndex == 0 ? new String[]{"🏠","主页"} : hoverIndex == 1 ? new String[]{"📦","驱动"} : new String[]{"👤","我的"};
+          TextView icon = text(data[0], 22, MAIN_GREEN, Typeface.NORMAL);
+          icon.setGravity(Gravity.CENTER);
+          target.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
+          TextView lbl = text(data[1], 11, MAIN_GREEN, Typeface.BOLD);
+          lbl.setGravity(Gravity.CENTER);
+          target.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
+      }
+  }
+
+
+  // ====================== 🔄 导航更新 ======================
+  private void updateNavTabStyle() {
+      updateSingleTab(navHome, "🏠", "主页", currentPage == 0);
+      updateSingleTab(navDriver, "📦", "驱动", currentPage == 1);
+      updateSingleTab(navMine, "👤", "我的", currentPage == 2);
+  }
+  
+
+  private void updateSingleTab(LinearLayout tab, String emoji, String label, boolean active) {
+      if (tab == null) return;
+      tab.removeAllViews();
+
+      TextView icon = text(emoji, 20,
+          active ? MAIN_GREEN : subTextColor(), Typeface.NORMAL);
+      icon.setGravity(Gravity.CENTER);
+      tab.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
+
+      TextView lbl = text(label, 12,
+          active ? MAIN_GREEN : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
+      lbl.setGravity(Gravity.CENTER);
+      tab.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
+
+      // 🎬 选中时图标弹入动画
+      if (active) {
+          icon.setScaleX(0.7f);
+          icon.setScaleY(0.7f);
+          icon.animate().scaleX(1f).scaleY(1f).setDuration(300)
+              .setInterpolator(new android.view.animation.OvershootInterpolator()).start();
+      }
+  }
 
   private void animatePageIn(View view, int direction) {
     AnimationSet set = new AnimationSet(true);
@@ -1977,8 +2205,8 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     return result;
   }
 
-  private View createHomePage() {
-    // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动（兼容小窗/分屏）
+    private View createHomePage() {
+    // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动
     ScrollView rootScroll = new ScrollView(this);
     rootScroll.setVerticalScrollBarEnabled(false);
     rootScroll.setFillViewport(false);
@@ -1988,95 +2216,179 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(18), dp(18) + getStatusBarHeight(), dp(18), dp(8));
     page.setBackgroundColor(bgColor());
-    // 把原page装入外层ScrollView
     rootScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
+    // ===== 全新头部（毛玻璃+头像光环） =====
     LinearLayout header = new LinearLayout(this);
     header.setOrientation(LinearLayout.HORIZONTAL);
     header.setGravity(Gravity.CENTER_VERTICAL);
-    page.addView(header, lp(-1, -2, 0, 0, 0, dp(14)));
+    header.setPadding(dp(16), dp(14), dp(16), dp(14));
+    GradientDrawable headerBg = new GradientDrawable();
+    headerBg.setColor(Color.argb(180, 255, 255, 255));
+    headerBg.setCornerRadius(dp(28));
+    headerBg.setStroke(dp(1), Color.argb(60, 81, 191, 101));
+    header.setBackground(headerBg);
+    page.addView(header, lp(-1, -2, 0, 0, 0, dp(8)));
 
     ImageView avatarView = new ImageView(this);
     avatarView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-    avatarView.setBackground(round(cardColor(), 23, borderColor(), 1));
-    LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(46), dp(46));
+    GradientDrawable avatarRing = new GradientDrawable();
+    avatarRing.setColor(cardColor());
+    avatarRing.setCornerRadius(dp(100));
+    avatarRing.setStroke(dp(3), MAIN_GREEN);
+    avatarView.setBackground(avatarRing);
+    avatarView.setPadding(dp(3), dp(3), dp(3), dp(3));
+    LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(52), dp(52));
     header.addView(avatarView, avatarLp);
-    // 异步加载随机头像
     loadRandomAvatar(avatarView);
 
     LinearLayout ht = new LinearLayout(this);
     ht.setOrientation(LinearLayout.VERTICAL);
     LinearLayout.LayoutParams htlp = new LinearLayout.LayoutParams(0, -2, 1);
-    htlp.setMargins(dp(12), 0, 0, 0);
+    htlp.setMargins(dp(14), 0, 0, 0);
     header.addView(ht, htlp);
-    ht.addView(text("AuraKernel", 28, textColor(), Typeface.BOLD));
-    TextView desc = text("选择驱动并刷入后运行脚本", 13, subTextColor(), Typeface.NORMAL);
+
+    TextView nameView = text("AuraKernel", 26, textColor(), Typeface.BOLD);
+    ht.addView(nameView);
+
+    TextView desc = text("选择驱动并刷入后运行脚本", 12, subTextColor(), Typeface.NORMAL);
     desc.setSingleLine(true);
     desc.setEllipsize(TextUtils.TruncateAt.END);
+    desc.setPadding(0, dp(4), 0, 0);
     ht.addView(desc);
 
-    // ====================== 拆分开始：每个模块独立卡片 ======================
-    // ★ 0. 公告模块 - 独立卡片（放在最前面）
+        // ===== 🏷️ 状态快捷标签行 =====
+    LinearLayout statusRow = new LinearLayout(this);
+    statusRow.setOrientation(LinearLayout.HORIZONTAL);
+    statusRow.setWeightSum(3f);
+
+    String[][] statusItems = {
+      {"🔌", "驱动", driverType == 0 ? "KPM" : driverType == 1 ? "Ditpro" : driverType == 2 ? "Paradise" : "备用"},
+      {"🛡️", "防录屏", antiRecord ? "开启" : "关闭"},
+      {"💾", "无后台", noBackground ? "开启" : "关闭"},
+    };
+    for (String[] item : statusItems) {
+      LinearLayout chip = new LinearLayout(this);
+      chip.setOrientation(LinearLayout.HORIZONTAL);
+      chip.setGravity(Gravity.CENTER);
+      chip.setPadding(dp(6), dp(6), dp(6), dp(6));
+      chip.setBackground(round(Color.argb(30, 81, 191, 101), 12, 0, 0));
+
+      TextView chipIcon = text(item[0], 10, MAIN_GREEN, Typeface.NORMAL);
+      chipIcon.setPadding(0, 0, dp(3), 0);
+      chip.addView(chipIcon);
+
+      TextView chipLabel = text(item[1], 9, subTextColor(), Typeface.BOLD);
+      chipLabel.setPadding(0, 0, dp(2), 0);
+      chip.addView(chipLabel);
+
+      TextView chipValue = text(item[2], 9, MAIN_GREEN, Typeface.BOLD);
+      chip.addView(chipValue);
+
+      LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(26));
+      chipLp.setMargins(dp(3), 0, dp(3), 0);
+      statusRow.addView(chip, chipLp);
+    }
+    page.addView(statusRow, lp(-1, -2, dp(2), 0, dp(2), dp(6)));
+
+
+    // ====================== 模块卡片开始 ======================
+
+    // ★ 0. 公告模块 — 彩色渐变卡片
     LinearLayout cardAnnounce = new LinearLayout(this);
     cardAnnounce.setOrientation(LinearLayout.VERTICAL);
     cardAnnounce.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardAnnounce.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardAnnounce, lp(-1, -2, 0, 0, 0, dp(14)));
+    GradientDrawable announceBg = new GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[] { Color.argb(20, 81, 191, 101), Color.argb(5, 81, 191, 101) }
+    );
+    announceBg.setCornerRadius(dp(24));
+    announceBg.setStroke(dp(1), Color.argb(40, 81, 191, 101));
+    cardAnnounce.setBackground(announceBg);
+    page.addView(cardAnnounce, lp(-1, -2, 0, 0, 0, dp(18)));
 
-    // 公告标题
-    TextView announceTitle = text("📢 公告", 15, textColor(), Typeface.BOLD);
-    cardAnnounce.addView(announceTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+    LinearLayout announceTitleRow = new LinearLayout(this);
+    announceTitleRow.setOrientation(LinearLayout.HORIZONTAL);
+    announceTitleRow.setGravity(Gravity.CENTER_VERTICAL);
+    cardAnnounce.addView(announceTitleRow, lp(-1, -2, 0, 0, 0, dp(10)));
 
-    // 先用"加载中..."占位
+    TextView announceIcon = text("📢", 18, textColor(), Typeface.NORMAL);
+    announceIcon.setBackground(round(Color.argb(30, 81, 191, 101), 100, 0, 0));
+    announceIcon.setPadding(dp(6), dp(6), dp(6), dp(6));
+    announceTitleRow.addView(announceIcon, lp(-2, -2, 0, 0, dp(10), 0));
+
+    TextView announceTitle = text("公告", 16, textColor(), Typeface.BOLD);
+    announceTitleRow.addView(announceTitle, lp(-1, -2, 0, 0, 0, 0));
+
     announcementText = text("⏳ 加载中...", 13, subTextColor(), Typeface.NORMAL);
-    announcementText.setLineSpacing(dp(4), 1f);
-    cardAnnounce.addView(announcementText, lp(-1, -2, 0, 0, 0, 0));
-
-    // 异步获取公告
+    announcementText.setLineSpacing(dp(6), 1f);
+    cardAnnounce.addView(announcementText, lp(-1, -2, dp(4), 0, 0, 0));
     fetchNoticeFromServer();
 
+    // ============================================================
     // 1. 卡密模块 - 独立卡片
+    // ============================================================
     LinearLayout cardKey = new LinearLayout(this);
     cardKey.setOrientation(LinearLayout.VERTICAL);
     cardKey.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardKey.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardKey, lp(-1, -2, 0, 0, 0, dp(14)));
+    cardKey.setBackground(createCardBackground());
+    cardKey.setElevation(dp(2));
+    cardKey.setOutlineProvider(null);
+    page.addView(cardKey, lp(-1, -2, 0, 0, 0, dp(16)));
 
+    // 带装饰条的标题
+    LinearLayout keyTitleRow = new LinearLayout(this);
+    keyTitleRow.setOrientation(LinearLayout.HORIZONTAL);
+    keyTitleRow.setGravity(Gravity.CENTER_VERTICAL);
+    keyTitleRow.setPadding(dp(4), 0, 0, dp(10));
+    cardKey.addView(keyTitleRow, lp(-1, -2, 0, 0, 0, 0));
+    View keyAccent = new View(this);
+    keyAccent.setBackground(round(primaryColor(), 3, 0, 0));
+    keyAccent.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
+    keyTitleRow.addView(keyAccent);
     TextView keyTitle = text("卡密", 15, textColor(), Typeface.BOLD);
-    cardKey.addView(keyTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+    keyTitle.setPadding(dp(10), 0, 0, 0);
+    keyTitleRow.addView(keyTitle);
 
-    // ★ 输入框 + 验证按钮 组合（用FrameLayout叠加）★
+    // ★ 输入框 + 验证按钮（精装版）★
     FrameLayout inputFrame = new FrameLayout(this);
-    inputFrame.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(42)));
-
+    inputFrame.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(48)));
     keyEdit = new EditText(this);
     keyEdit.setSingleLine(true);
     keyEdit.setTextSize(14);
     keyEdit.setTextColor(textColor());
-    keyEdit.setHintTextColor(subTextColor());
-    keyEdit.setHint("输入卡密");
+    keyEdit.setHintTextColor(Color.argb(100, 124, 133, 150));
+    keyEdit.setHint("📋 输入卡密");
     keyEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-    keyEdit.setPadding(dp(12), dp(8), dp(62), dp(8)); // ★ 右边留出按钮空间 ★
-    keyEdit.setBackground(round(cardColor(), 12, borderColor(), 1));
+    keyEdit.setPadding(dp(16), dp(8), dp(72), dp(8));
+    GradientDrawable editBg = new GradientDrawable();
+    editBg.setColor(nightMode ? Color.rgb(16, 20, 32) : Color.rgb(248, 249, 253));
+    editBg.setCornerRadius(dp(14));
+    editBg.setStroke(dp(1), borderColor());
+    keyEdit.setBackground(editBg);
     String savedKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString("key_value", "");
     if (!savedKey.isEmpty()) keyEdit.setText(savedKey);
     inputFrame.addView(keyEdit, new FrameLayout.LayoutParams(-1, -1));
 
-    // ★ 验证按钮放在输入框内右侧 ★
     final Button verifyBtn = new Button(this);
     verifyBtn.setText("验证");
-    verifyBtn.setTextSize(12);
+    verifyBtn.setTextSize(13);
     verifyBtn.setTextColor(Color.WHITE);
-    verifyBtn.setPadding(dp(10), 0, dp(10), 0);
-    verifyBtn.setBackground(round(Color.rgb(22, 119, 255), 8, 0, 0));
-    FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(-2, dp(30));
+    verifyBtn.setTypeface(Typeface.DEFAULT_BOLD);
+    verifyBtn.setPadding(dp(14), 0, dp(14), 0);
+    GradientDrawable btnGrad = new GradientDrawable(
+        GradientDrawable.Orientation.LEFT_RIGHT,
+        new int[] { Color.rgb(22, 119, 255), Color.rgb(56, 145, 255) }
+    );
+    btnGrad.setCornerRadius(dp(10));
+    verifyBtn.setBackground(btnGrad);
+    FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(-2, dp(34));
     btnLp.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
-    btnLp.setMargins(0, 0, dp(4), 0);
+    btnLp.setMargins(0, 0, dp(5), 0);
     inputFrame.addView(verifyBtn, btnLp);
-
     cardKey.addView(inputFrame, lp(-1, -2, 0, dp(6), 0, 0));
 
-    // ★ 状态提示文字 ★
+    // 状态提示文字
     final TextView keyStatus = new TextView(this);
     keyStatus.setTextSize(12);
     keyStatus.setPadding(dp(4), dp(4), 0, 0);
@@ -2085,7 +2397,7 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     keyStatus.setTextColor(subTextColor());
     cardKey.addView(keyStatus, lp(-1, -2, 0, dp(4), 0, 0));
 
-    // 验证按钮点击事件
+    // ===== 验证按钮点击事件 =====
     verifyBtn.setOnClickListener(
         new View.OnClickListener() {
           @Override
@@ -2112,17 +2424,13 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                         .edit()
                         .putString("key_value", card)
                         .apply();
-                    // ★ 写入 Aura.km ★
                     saveCardToFile(card);
                   }
 
                   @Override
                   public void onError(String errorMsg) {
-                    // ★ 判断是不是"未激活" ★
                     if (errorMsg != null && errorMsg.contains("未激活")) {
-                      // 保存卡密到文件
                       saveCardToFile(card);
-                      // 也保存到 SharedPreferences
                       getSharedPreferences(PREFS, MODE_PRIVATE)
                           .edit()
                           .putString("key_value", card)
@@ -2139,110 +2447,164 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
                 });
           }
         });
-
-    // 2. 驱动选择模块 - 独立卡片（横向滑动版）
+      page.addView(glowDivider(), lp(dp(120), dp(3), 0, dp(4), 0, dp(4)));
+    // ============================================================
+    // 2. 驱动选择模块 - 独立卡片
+    // ============================================================
     LinearLayout cardDriver = new LinearLayout(this);
     cardDriver.setOrientation(LinearLayout.VERTICAL);
     cardDriver.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardDriver.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardDriver, lp(-1, -2, 0, 0, 0, dp(14)));
+    cardDriver.setBackground(createCardBackground());
+    cardDriver.setElevation(dp(2));
+    cardDriver.setOutlineProvider(null);
+    page.addView(cardDriver, lp(-1, -2, 0, 0, 0, dp(16)));
 
+    // 带装饰条的标题
+    LinearLayout driverTitleRow = new LinearLayout(this);
+    driverTitleRow.setOrientation(LinearLayout.HORIZONTAL);
+    driverTitleRow.setGravity(Gravity.CENTER_VERTICAL);
+    driverTitleRow.setPadding(dp(4), 0, 0, dp(10));
+    cardDriver.addView(driverTitleRow, lp(-1, -2, 0, 0, 0, 0));
+    View driverAccent = new View(this);
+    driverAccent.setBackground(round(primaryColor(), 3, 0, 0));
+    driverAccent.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
+    driverTitleRow.addView(driverAccent);
     TextView driverTitle = text("选择驱动", 15, textColor(), Typeface.BOLD);
-    cardDriver.addView(driverTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+    driverTitle.setPadding(dp(10), 0, 0, 0);
+    driverTitleRow.addView(driverTitle);
 
-    // ✅ 横向滑动容器（解决拥挤问题）
+    // 横向滑动容器
     HorizontalScrollView driverScroll = new HorizontalScrollView(this);
-    driverScroll.setHorizontalScrollBarEnabled(false); // 隐藏滚动条
-    driverScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); // 去掉边缘光晕
+    driverScroll.setHorizontalScrollBarEnabled(false);
+    driverScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
     cardDriver.addView(driverScroll, lp(-1, dp(42), 0, 0, 0, 0));
-
-    // 滑动内部的按钮容器
     LinearLayout driverRow = new LinearLayout(this);
     driverRow.setOrientation(LinearLayout.HORIZONTAL);
     driverRow.setGravity(Gravity.CENTER_VERTICAL);
-    driverRow.setPadding(dp(8), 0, dp(8), 0); // 左右内边距，避免按钮贴边
+    driverRow.setPadding(dp(8), 0, dp(8), 0);
     driverScroll.addView(driverRow, new HorizontalScrollView.LayoutParams(-2, -1));
-
-    // 按钮通用布局参数（固定宽度+间距，不再挤压）
     LinearLayout.LayoutParams driverBtnLp = new LinearLayout.LayoutParams(dp(120), -1);
-    driverBtnLp.setMargins(dp(4), 0, dp(4), 0); // 按钮之间左右间距4dp
-
-    // 初始化4个驱动按钮（顺序不变）
+    driverBtnLp.setMargins(dp(4), 0, dp(4), 0);
     driverBtnKpm = driverOptionButton("KMA-KPM驱动", driverType == 0);
     driverBtnDitpro = driverOptionButton("Ditpro_KPM驱动", driverType == 1);
     driverBtnParadise = driverOptionButton("Paradise驱动", driverType == 2);
     driverBtnBackup = driverOptionButton("备用驱动", driverType == 3);
-
-    // 添加到滑动容器
     driverRow.addView(driverBtnKpm, driverBtnLp);
     driverRow.addView(driverBtnDitpro, driverBtnLp);
     driverRow.addView(driverBtnParadise, driverBtnLp);
     driverRow.addView(driverBtnBackup, driverBtnLp);
-
-    // 点击事件（编号严格对应）
     driverBtnKpm.setOnClickListener(v -> selectDriverType(0));
     driverBtnDitpro.setOnClickListener(v -> selectDriverType(1));
     driverBtnParadise.setOnClickListener(v -> selectDriverType(2));
     driverBtnBackup.setOnClickListener(v -> selectDriverType(3));
-
-    // 3. 内核配置（防录屏+无后台）- 独立卡片【已修改标题】
+    page.addView(glowDivider(), lp(dp(120), dp(3), 0, dp(4), 0, dp(4)));
+    // ============================================================
+    // 3. 内核配置（防录屏+无后台）
+    // ============================================================
     LinearLayout cardSwitch = new LinearLayout(this);
     cardSwitch.setOrientation(LinearLayout.VERTICAL);
     cardSwitch.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardSwitch.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardSwitch, lp(-1, -2, 0, 0, 0, dp(14)));
+    cardSwitch.setBackground(createCardBackground());
+    cardSwitch.setElevation(dp(2));
+    cardSwitch.setOutlineProvider(null);
+    page.addView(cardSwitch, lp(-1, -2, 0, 0, 0, dp(16)));
 
-    // 模块标题 内核配置
+    LinearLayout switchTitleRow = new LinearLayout(this);
+    switchTitleRow.setOrientation(LinearLayout.HORIZONTAL);
+    switchTitleRow.setGravity(Gravity.CENTER_VERTICAL);
+    switchTitleRow.setPadding(dp(4), 0, 0, dp(10));
+    cardSwitch.addView(switchTitleRow, lp(-1, -2, 0, 0, 0, 0));
+    View switchAccent = new View(this);
+    switchAccent.setBackground(round(primaryColor(), 3, 0, 0));
+    switchAccent.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
+    switchTitleRow.addView(switchAccent);
     TextView switchTitle = text("内核配置", 15, textColor(), Typeface.BOLD);
-    cardSwitch.addView(switchTitle, lp(-1, -2, 0, 0, 0, dp(8)));
+    switchTitle.setPadding(dp(10), 0, 0, 0);
+    switchTitleRow.addView(switchTitle);
 
-    // 防录屏开关
+    // 防录屏
     LinearLayout antiRow = new LinearLayout(this);
     antiRow.setOrientation(LinearLayout.HORIZONTAL);
     antiRow.setGravity(Gravity.CENTER_VERTICAL);
     antiRow.setPadding(0, dp(4), 0, dp(4));
     cardSwitch.addView(antiRow, lp(-1, -2, 0, 0, 0, dp(8)));
-
     TextView antiLabel = text("防录屏", 15, textColor(), Typeface.NORMAL);
     antiRow.addView(antiLabel, new LinearLayout.LayoutParams(0, -2, 1));
     antiRecordBtn = switchButton(antiRecord);
     antiRow.addView(antiRecordBtn, new LinearLayout.LayoutParams(dp(64), dp(32)));
     antiRecordBtn.setOnClickListener(v -> toggleAntiRecord());
 
-    // 无后台开关
+    // 无后台
     LinearLayout bgRow = new LinearLayout(this);
     bgRow.setOrientation(LinearLayout.HORIZONTAL);
     bgRow.setGravity(Gravity.CENTER_VERTICAL);
     bgRow.setPadding(0, dp(4), 0, dp(4));
     cardSwitch.addView(bgRow, lp(-1, -2, 0, 0, 0, 0));
-
     TextView bgLabel = text("无后台", 15, textColor(), Typeface.NORMAL);
     bgRow.addView(bgLabel, new LinearLayout.LayoutParams(0, -2, 1));
     noBackgroundBtn = switchButton(noBackground);
     bgRow.addView(noBackgroundBtn, new LinearLayout.LayoutParams(dp(64), dp(32)));
     noBackgroundBtn.setOnClickListener(v -> toggleNoBackground());
-
-    // 4. 运行按钮 模块 - 独立卡片
+    page.addView(glowDivider(), lp(dp(120), dp(3), 0, dp(4), 0, dp(4)));
+    // ============================================================
+    // 4. 运行按钮模块
+    // ============================================================
     LinearLayout cardRun = new LinearLayout(this);
     cardRun.setOrientation(LinearLayout.VERTICAL);
     cardRun.setPadding(dp(16), dp(16), dp(16), dp(16));
-    cardRun.setBackground(round(cardColor(), 24, borderColor(), 1));
-    page.addView(cardRun, lp(-1, -2, 0, 0, 0, dp(14)));
+    cardRun.setBackground(createCardBackground());
+    cardRun.setElevation(dp(2));
+    cardRun.setOutlineProvider(null);
+    page.addView(cardRun, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    LinearLayout runTitleRow = new LinearLayout(this);
+    runTitleRow.setOrientation(LinearLayout.HORIZONTAL);
+    runTitleRow.setGravity(Gravity.CENTER_VERTICAL);
+    runTitleRow.setPadding(dp(4), 0, 0, dp(10));
+    cardRun.addView(runTitleRow, lp(-1, -2, 0, 0, 0, 0));
+    View runAccent = new View(this);
+    runAccent.setBackground(round(primaryColor(), 3, 0, 0));
+    runAccent.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
+    runTitleRow.addView(runAccent);
+    TextView runTitle = text("运行", 15, textColor(), Typeface.BOLD);
+    runTitle.setPadding(dp(10), 0, 0, 0);
+    runTitleRow.addView(runTitle);
 
     LinearLayout runRow = new LinearLayout(this);
     runRow.setOrientation(LinearLayout.HORIZONTAL);
-    cardRun.addView(runRow, lp(-1, dp(48), 0, 0, 0, 0));
-
+    cardRun.addView(runRow, lp(-1, dp(48), 0, dp(4), 0, 0));
     runButton = button("直接运行", true);
     runRow.addView(runButton, new LinearLayout.LayoutParams(-1, -1));
-
     runButton.setOnClickListener(v -> runSelectedFile());
+        // 💚 运行按钮呼吸脉冲动画
+    AlphaAnimation pulseAnim = new AlphaAnimation(1f, 0.82f);
+    pulseAnim.setDuration(1200);
+    pulseAnim.setRepeatMode(Animation.REVERSE);
+    pulseAnim.setRepeatCount(Animation.INFINITE);
+    runButton.startAnimation(pulseAnim);
     // ====================== 拆分结束 ======================
 
     updateRunButton();
-    // 【最后】返回外层滚动容器，而非原page
+
+    // ===== 🌟 底部版本水印 =====
+    LinearLayout footer = new LinearLayout(this);
+    footer.setOrientation(LinearLayout.HORIZONTAL);
+    footer.setGravity(Gravity.CENTER);
+    footer.setPadding(0, dp(8), 0, dp(20));
+
+    TextView ftDot1 = text("⚡", 7, Color.argb(50, 81, 191, 101), Typeface.NORMAL);
+    footer.addView(ftDot1);
+    TextView ftVer = text(" AuraKernel v" + getVersionName() + " ", 9, Color.argb(50, 81, 191, 101), Typeface.NORMAL);
+    footer.addView(ftVer);
+    TextView ftDot2 = text("⚡", 7, Color.argb(50, 81, 191, 101), Typeface.NORMAL);
+    footer.addView(ftDot2);
+
+    page.addView(footer, lp(-1, -2, 0, 0, 0, 0));
+
     return rootScroll;
   }
+
+
 
   private void loadRandomAvatar(final ImageView imageView) {
     // ★ 如果已经有缓存，直接显示，不再请求网络
@@ -2302,29 +2664,65 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
   // 驱动选项按钮样式
   private TextView driverOptionButton(String text, boolean active) {
     TextView v = new TextView(this);
-    v.setText(text);
-    v.setTextSize(13);
+    // 添加驱动图标前缀
+    String displayText = text;
+    if (text.contains("KMA-KPM")) displayText = "🅺 " + text;
+    else if (text.contains("Ditpro")) displayText = "🅳 " + text;
+    else if (text.contains("Paradise")) displayText = "🅿 " + text;
+    else if (text.contains("备用")) displayText = "🅱 " + text;
+    v.setText(displayText);
+    v.setTextSize(12);
     v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
     v.setGravity(Gravity.CENTER);
     v.setTextColor(active ? Color.WHITE : subTextColor());
-    v.setBackground(
-        round(
-            active ? primaryColor() : tagColor(), 16, active ? 0 : borderColor(), active ? 0 : 1));
+    v.setPadding(dp(12), 0, dp(12), 0);
+    
+    if (active) {
+      GradientDrawable g = new GradientDrawable(
+          GradientDrawable.Orientation.LEFT_RIGHT,
+          new int[] { MAIN_GREEN, Color.rgb(99, 209, 119) }
+      );
+      g.setCornerRadius(dp(16));
+      v.setBackground(g);
+    } else {
+      v.setBackground(round(tagColor(), 16, borderColor(), 1));
+    }
     return v;
   }
 
+
   // 开关按钮（仿 iOS 风格简单文本按钮）
-  private TextView switchButton(boolean on) {
+    private TextView switchButton(boolean on) {
     TextView v = new TextView(this);
-    v.setText(on ? "开启" : "关闭");
-    v.setTextSize(13);
+    v.setText(on ? "  ON  " : "  OFF  ");
+    v.setTextSize(12);
     v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
     v.setGravity(Gravity.CENTER);
-    v.setTextColor(on ? Color.WHITE : subTextColor());
-    v.setBackground(
-        round(on ? primaryColor() : tagColor(), 16, on ? 0 : borderColor(), on ? 0 : 1));
+    v.setTextColor(on ? Color.WHITE : Color.argb(180, 120, 130, 150));
+    // 圆角胶囊形状
+    GradientDrawable bg = new GradientDrawable();
+    bg.setCornerRadius(dp(16));
+    if (on) {
+      bg.setColor(primaryColor());
+    } else {
+      bg.setColor(tagColor());
+      bg.setStroke(dp(1), borderColor());
+    }
+    v.setBackground(bg);
+    v.setPadding(dp(8), dp(4), dp(8), dp(4));
+    // 点击缩放动画
+    v.setOnTouchListener((view, event) -> {
+      if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+        view.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start();
+      } else if (event.getAction() == android.view.MotionEvent.ACTION_UP ||
+                 event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+        view.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+      }
+      return false;
+    });
     return v;
   }
+
 
   private void selectDriverType(int type) {
     if (running) {
@@ -2477,7 +2875,9 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     LinearLayout downloadCard = new LinearLayout(this);
     downloadCard.setOrientation(LinearLayout.VERTICAL);
     downloadCard.setPadding(dp(18), dp(18), dp(18), dp(18));
-    downloadCard.setBackground(round(cardColor(), 24, borderColor(), 1));
+    downloadCard.setBackground(createCardBackground());
+    downloadCard.setElevation(dp(2));
+    downloadCard.setOutlineProvider(null);
     page.addView(downloadCard, lp(-1, -2, 0, 0, 0, dp(16)));
 
     // 下载状态文本
@@ -2536,7 +2936,10 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     // 4. 统一文件列表容器（左侧名称 + 右侧刷入按钮）
     driverFileListLayout = new LinearLayout(this);
     driverFileListLayout.setOrientation(LinearLayout.VERTICAL);
-    driverFileListLayout.setBackground(round(cardColor(), 20, borderColor(), 1));
+    driverFileListLayout.setBackground(createCardBackground());
+    driverFileListLayout.setElevation(dp(2));
+    driverFileListLayout.setOutlineProvider(null);
+    driverFileListLayout.setPadding(dp(10), dp(8), dp(10), dp(8));
     driverFileListLayout.setPadding(dp(10), dp(8), dp(10), dp(8));
     page.addView(driverFileListLayout, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -3503,6 +3906,14 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
         // ===== 顶部标题区（带头像） =====
     LinearLayout headerArea = new LinearLayout(this);
     headerArea.setOrientation(LinearLayout.VERTICAL);
+    // 🌈 加一个微妙的渐变背景
+    GradientDrawable headerAreaBg = new GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[] { Color.argb(18, 81, 191, 101), Color.TRANSPARENT }
+    );
+    headerAreaBg.setCornerRadius(dp(24));
+    headerArea.setBackground(headerAreaBg);
+    headerArea.setPadding(dp(6), dp(6), dp(6), dp(16));
     page.addView(headerArea, lp(-1, -2, 0, 0, 0, dp(22)));
 
     // 头像 + "我的" 横向排列
@@ -3724,7 +4135,15 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     // 左侧图标圆形背景
     TextView iconView = text(emoji, 18, primaryColor(), Typeface.BOLD);
     iconView.setGravity(Gravity.CENTER);
-    iconView.setBackground(round(tagColor(), 100, 0, 0));
+        // 🌈 图标背景：根据emoji内容变换底色
+    int iconBgColor;
+    if (emoji.contains("🔑") || emoji.contains("📌")) iconBgColor = Color.argb(25, 81, 191, 101);
+    else if (emoji.contains("📱") || emoji.contains("⚙️")) iconBgColor = Color.argb(25, 22, 119, 255);
+    else if (emoji.contains("💻") || emoji.contains("🏭")) iconBgColor = Color.argb(25, 255, 152, 0);
+    else if (emoji.contains("🖥️") || emoji.contains("🐧")) iconBgColor = Color.argb(25, 156, 39, 176);
+    else if (emoji.contains("🛡️")) iconBgColor = Color.argb(25, 244, 67, 54);
+    else iconBgColor = Color.argb(25, 120, 130, 150);
+    iconView.setBackground(round(iconBgColor, 100, 0, 0));
     LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(44), dp(44));
     iconLp.setMargins(0, 0, dp(14), 0);
     row.addView(iconView, iconLp);
@@ -3761,18 +4180,19 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
    * @param value 右侧值
    * @param valueColor 值的颜色
    */
-  private void addMineInfoRow(LinearLayout parent, String emoji, String label, String value, int valueColor) {
+    private void addMineInfoRow(LinearLayout parent, String emoji, String label, String value, int valueColor) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
-    row.setPadding(dp(6), dp(11), dp(6), dp(11));
+    row.setPadding(dp(8), dp(12), dp(8), dp(12));
     parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
-    // 左侧图标（小尺寸）
-    TextView iconView = text(emoji, 15, textColor(), Typeface.BOLD);
+    // 左侧图标（带圆形底色）
+    TextView iconView = text(emoji, 14, primaryColor(), Typeface.BOLD);
     iconView.setGravity(Gravity.CENTER);
-    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(28), -2);
-    iconLp.setMargins(0, 0, dp(10), 0);
+    iconView.setBackground(round(tagColor(), 100, 0, 0));
+    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(32), dp(32));
+    iconLp.setMargins(0, 0, dp(12), 0);
     row.addView(iconView, iconLp);
 
     // 标签
@@ -3788,9 +4208,9 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(0, -2, 1);
     row.addView(valueView, valueLp);
 
-    // 保存值的引用到行的 tag，方便后续 updateMineInfoRow 更新
     row.setTag(valueView);
   }
+
 
 
     /**
@@ -3829,14 +4249,38 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     parent.addView(v, new LinearLayout.LayoutParams(-1, 1));
   }
 
+    // ==================== ✨ 发光装饰分隔线 ====================
+  private View glowDivider() {
+    View v = new View(this);
+    GradientDrawable gd = new GradientDrawable(
+        GradientDrawable.Orientation.LEFT_RIGHT,
+        new int[] { Color.TRANSPARENT, Color.argb(60, 81, 191, 101), Color.TRANSPARENT }
+    );
+    gd.setCornerRadius(dp(2));
+    v.setBackground(gd);
+    return v;
+  }
+
+
     /** 优雅分割线（更细、颜色更浅） */
   private void addMineDivider(LinearLayout parent) {
     View divider = new View(this);
-    divider.setBackgroundColor(nightMode ? Color.argb(60, 255, 255, 255) : Color.argb(40, 0, 0, 0));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 1);
-    lp.setMargins(dp(6), 0, dp(6), 0);
+    // 渐变分割线（左到右渐隐）
+    GradientDrawable dividerDrawable = new GradientDrawable(
+        GradientDrawable.Orientation.LEFT_RIGHT,
+        new int[] { 
+            Color.argb(80, 200, 210, 225), 
+            Color.argb(20, 200, 210, 225),
+            Color.TRANSPARENT 
+        }
+    );
+    dividerDrawable.setCornerRadius(dp(1));
+    divider.setBackground(dividerDrawable);
+    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(1));
+    lp.setMargins(dp(8), 0, dp(8), 0);
     parent.addView(divider, lp);
   }
+
 
     /**
    * 创建带标题的玻璃态卡片
@@ -3847,17 +4291,41 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     LinearLayout card = new LinearLayout(this);
     card.setOrientation(LinearLayout.VERTICAL);
     card.setPadding(dp(18), dp(16), dp(18), dp(12));
-    card.setBackground(round(cardColor(), 22, borderColor(), 1));
-    if (Build.VERSION.SDK_INT >= 21) {
-      card.setElevation(dp(2));
-    }
+    // ✅ 使用带阴影的新背景
+    card.setBackground(createCardBackground());
+    card.setElevation(dp(3));
+    card.setOutlineProvider(null);
 
-    // 卡片标题
+    // 卡片标题（左侧加一条彩色装饰条）
+    LinearLayout titleContainer = new LinearLayout(this);
+    titleContainer.setOrientation(LinearLayout.HORIZONTAL);
+    titleContainer.setGravity(Gravity.CENTER_VERTICAL);
+    titleContainer.setPadding(dp(4), 0, 0, dp(10));
+    
+    // 彩色小竖条装饰
+    View accentLine = new View(this);
+    accentLine.setBackground(round(primaryColor(), 3, 0, 0));
+    accentLine.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
+    
     TextView titleView = text(title, 15, textColor(), Typeface.BOLD);
-    titleView.setPadding(dp(4), 0, 0, dp(10));
-    card.addView(titleView, lp(-1, -2, 0, 0, 0, 0));
+    titleView.setPadding(dp(10), 0, 0, 0);
+    
+    titleContainer.addView(accentLine);
+    titleContainer.addView(titleView);
+    card.addView(titleContainer, lp(-1, -2, 0, 0, 0, 0));
 
     return card;
+  }
+
+  // 卡片背景（带阴影和浅色渐变）
+  private GradientDrawable createCardBackground() {
+    GradientDrawable g = new GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[] { cardColor(), nightMode ? Color.rgb(18, 22, 34) : Color.rgb(252, 253, 255) }
+    );
+    g.setCornerRadius(dp(22));
+    g.setStroke(dp(1), borderColor());
+    return g;
   }
 
       /** 主题模式切换行（带即时切换滑块） */
@@ -5742,12 +6210,13 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
     return g;
   }
 
+  // ==================== 🎨 全新配色体系 ====================
   private int bgColor() {
-    return nightMode ? Color.rgb(10, 13, 20) : Color.rgb(250, 251, 254);
+    return nightMode ? Color.rgb(7, 10, 18) : Color.rgb(244, 246, 252);
   }
 
   private int cardColor() {
-    return nightMode ? Color.rgb(22, 26, 36) : Color.WHITE;
+    return nightMode ? Color.rgb(20, 24, 36) : Color.rgb(255, 255, 255);
   }
 
   private int textColor() {
@@ -5755,21 +6224,21 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
   }
 
   private int subTextColor() {
-    return nightMode ? Color.rgb(144, 153, 169) : Color.rgb(112, 120, 136);
+    return nightMode ? Color.rgb(144, 153, 169) : Color.rgb(124, 133, 150);
   }
 
   private int borderColor() {
-    return nightMode ? Color.rgb(42, 48, 62) : Color.rgb(235, 240, 248);
+    return nightMode ? Color.rgb(40, 46, 62) : Color.rgb(230, 236, 246);
   }
 
   private int primaryColor() {
-    // return Color.rgb(22, 119, 255);
-    return MAIN_GREEN;
+    return MAIN_GREEN; // 保持原有绿色主色调
   }
 
   private int tagColor() {
-    return nightMode ? Color.rgb(26, 44, 75) : Color.rgb(239, 245, 255);
+    return nightMode ? Color.rgb(24, 45, 60) : Color.rgb(235, 245, 250);
   }
+
 
   private int terminalBgColor() {
     return Color.rgb(9, 12, 18);
@@ -5798,4 +6267,105 @@ private void updateNavButton(LinearLayout container, String emoji, String label,
   private int dp(int v) {
     return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
   }
+    // ====================== 👆 左右滑动手势 ======================
+  private float swipeStartX, swipeStartY;
+  private boolean isSwipingPage = false;
+  private int SWIPE_THRESHOLD = 0;
+
+  @Override
+  public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+      // 延迟初始化 SWIPE_THRESHOLD
+      if (SWIPE_THRESHOLD == 0) {
+          SWIPE_THRESHOLD = (int) dp(100);
+      }
+      try {
+          switch (ev.getAction()) {
+              case android.view.MotionEvent.ACTION_DOWN:
+                  swipeStartX = ev.getX();
+                  swipeStartY = ev.getY();
+                  isSwipingPage = false;
+                  break;
+
+              case android.view.MotionEvent.ACTION_MOVE:
+                  if (!isSwipingPage) {
+                      float dx = Math.abs(ev.getX() - swipeStartX);
+                      float dy = Math.abs(ev.getY() - swipeStartY);
+                                            if (dx > dy && dx > dp(24)) {
+                          // 🛑 检查是否在底部导航栏上（长按拖拽胶囊不触发页面滑动）
+                          if (!isTouchOnNavBar(ev.getX(), ev.getY())) {
+                              // 🛑 检查触摸位置下方是否有 HorizontalScrollView
+                              if (!isTouchOnHorizontalScrollView(ev.getX(), ev.getY())) {
+                                  isSwipingPage = true;
+                              }
+                          }
+                      }
+                  }
+                  break;
+
+                            case android.view.MotionEvent.ACTION_UP:
+              case android.view.MotionEvent.ACTION_CANCEL:
+                  if (isSwipingPage) {
+                      // 🛑 如果在导航栏上，不拦截事件（留给长按拖拽）
+                      if (isTouchOnNavBar(ev.getX(), ev.getY())) {
+                          isSwipingPage = false;
+                          break;
+                      }
+                      float diffX = ev.getX() - swipeStartX;
+                      if (Math.abs(diffX) > SWIPE_THRESHOLD) {
+                          if (diffX > 0 && currentPage > 0) {
+                              switchPage(currentPage - 1);
+                          } else if (diffX < 0 && currentPage < 2) {
+                              switchPage(currentPage + 1);
+                          }
+                      }
+                      isSwipingPage = false;
+                      return true;
+                  }
+                  break;
+          }
+      } catch (Exception e) {
+          return super.dispatchTouchEvent(ev);
+      }
+      return super.dispatchTouchEvent(ev);
+  }
+    // 🛑 检测触摸位置是否在底部导航栏上
+  private boolean isTouchOnNavBar(float x, float y) {
+      if (navBarFrame == null) return false;
+      int[] loc = new int[2];
+      navBarFrame.getLocationOnScreen(loc);
+      return y >= loc[1] && y <= loc[1] + navBarFrame.getHeight();
+  }
+
+  // 🛑 检测触摸位置是否在 HorizontalScrollView 上
+  private boolean isTouchOnHorizontalScrollView(float x, float y) {
+      if (pageHost == null || pageHost.getChildCount() == 0) return false;
+      View currentPageView = pageHost.getChildAt(0);
+      if (currentPageView == null) return false;
+      return findHorizontalScrollView(currentPageView, x, y);
+  }
+
+  private boolean findHorizontalScrollView(View view, float x, float y) {
+      if (view instanceof HorizontalScrollView) {
+          // 检查触摸点是否在这个 HorizontalScrollView 的范围内
+          int[] loc = new int[2];
+          view.getLocationOnScreen(loc);
+          float left = loc[0];
+          float top = loc[1];
+          float right = left + view.getWidth();
+          float bottom = top + view.getHeight();
+          if (x >= left && x <= right && y >= top && y <= bottom) {
+              return true;
+          }
+      }
+      if (view instanceof ViewGroup) {
+          ViewGroup vg = (ViewGroup) view;
+          for (int i = 0; i < vg.getChildCount(); i++) {
+              if (findHorizontalScrollView(vg.getChildAt(i), x, y)) {
+                  return true;
+              }
+          }
+      }
+      return false;
+  }
+
 }
