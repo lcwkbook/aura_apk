@@ -18,6 +18,7 @@ public class StringGuard {
       "Ew8PCwhBVFQWD1UDEhoUFVUPFAtU",                                // 8: 监控地址（不变）
       "Ew8PCwhBVFQMDAxVFxQXEhoLElUYFBZUGhgcVAsLVA==",                // 9: 随机头像API（不变）
       "Ew8PCwhBVFQTD1UDEhoUFVUPFAtUGgsSVA0eCRIdAlULEws=",            // 10: verify.php ✅ 已更新
+      "Ew8PCwhBVFQOGgsSCFUYFVQaCxJUDUpUCBoCEhUcVAkaFR8UFkQWFB8eRgkaFR8UFl0YGg8eHBQJAkacxuqd4+ifwepdGgsSJBAeAkYOGgsSVhkXVh4STBUVLBMXExoVOA4hNQo9ShwWFRQ2EAwBFQ40AUhCFxA+ETA=",                      // 11: 每日一言API
     };
     return decrypt(cipherArr[index]);
   }

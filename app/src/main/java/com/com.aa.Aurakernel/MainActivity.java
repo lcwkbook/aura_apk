@@ -1472,7 +1472,7 @@ public class MainActivity extends Activity {
                 },
                 200);
           }
-        });
+        }); 
     barAnim.start();
   }
 
@@ -1595,7 +1595,309 @@ public class MainActivity extends Activity {
         },
         1500); // 延迟1.5秒等页面完全加载后再检查
     // ======================================================
+    // ===== 🌈 每日一言（精美卡片式，导航栏上方，5秒后消失） =====
+    // ── 外层卡片容器 ──
+    final FrameLayout quoteCard = new FrameLayout(this);
+    quoteCard.setAlpha(0f);
+    quoteCard.setVisibility(View.GONE);
+    quoteCard.setClickable(true);
+    quoteCard.setFocusable(true);
+
+    // ① 底层：渐变背景
+    GradientDrawable quoteBgGradient = new GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[]{
+            Color.argb(210, 28, 38, 72),   // 顶部：亮深蓝
+            Color.argb(220, 12, 18, 40)    // 底部：暗深蓝
+        }
+    );
+    quoteBgGradient.setCornerRadius(dp(14));
+
+    // ② 上层：发光边框（用透明填充 + 描边叠加）
+    GradientDrawable quoteBorder = new GradientDrawable();
+    quoteBorder.setCornerRadius(dp(14));
+    quoteBorder.setStroke(dp(1), Color.argb(90, 130, 200, 255));
+    quoteBorder.setColor(Color.TRANSPARENT);
+
+    // 合并为 LayerDrawable
+    LayerDrawable quoteLayerBg = new LayerDrawable(
+        new Drawable[]{quoteBgGradient, quoteBorder}
+    );
+    quoteCard.setBackground(quoteLayerBg);
+
+    // ★ 开启硬件层加速，让透明叠加更流畅
+    if (Build.VERSION.SDK_INT >= 11) {
+        quoteCard.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+    }
+
+    // ── 左侧垂直渐变装饰条 ──
+    View accentBar = new View(this);
+    {
+        GradientDrawable barShape = new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{Color.rgb(100, 195, 255), Color.rgb(180, 100, 255)}
+        );
+        barShape.setCornerRadius(dp(2));
+        accentBar.setBackground(barShape);
+    }
+    FrameLayout.LayoutParams abLp = new FrameLayout.LayoutParams(dp(4), dp(42), Gravity.START | Gravity.CENTER_VERTICAL);
+    abLp.leftMargin = dp(14);
+
+    // ── 内部文字布局 ──
+    LinearLayout quoteInner = new LinearLayout(this);
+    quoteInner.setOrientation(LinearLayout.VERTICAL);
+    quoteInner.setPadding(dp(32), dp(14), dp(20), dp(16));
+
+    // ★ 顶部标签行
+    LinearLayout tagRow = new LinearLayout(this);
+    tagRow.setOrientation(LinearLayout.HORIZONTAL);
+    tagRow.setGravity(Gravity.CENTER_VERTICAL);
+
+    TextView tagIcon = new TextView(this);
+    tagIcon.setText("💡");
+    tagIcon.setTextSize(13);
+    tagIcon.setIncludeFontPadding(false);
+
+    TextView tagLabel = new TextView(this);
+    tagLabel.setText(" 今日一言");
+    tagLabel.setTextSize(10);
+    tagLabel.setTextColor(Color.argb(160, 150, 195, 245));
+    tagLabel.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+    tagLabel.setIncludeFontPadding(false);
+
+    tagRow.addView(tagIcon);
+    tagRow.addView(tagLabel);
+    tagRow.setPadding(0, 0, 0, dp(10));
+
+    // ★ 一言正文
+    final TextView quoteContent = new TextView(this);
+    quoteContent.setText("");
+    quoteContent.setTextSize(15);
+    quoteContent.setTextColor(Color.rgb(225, 235, 250));
+    quoteContent.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+    quoteContent.setGravity(Gravity.START);
+    quoteContent.setMaxLines(3);
+    quoteContent.setEllipsize(TextUtils.TruncateAt.END);
+    quoteContent.setLineSpacing(dp(7), 1f);
+    quoteContent.setIncludeFontPadding(false);
+
+    // ★ 作者行
+    final TextView quoteAuthor = new TextView(this);
+    quoteAuthor.setText("");
+    quoteAuthor.setTextSize(11);
+    quoteAuthor.setTextColor(Color.argb(180, 155, 185, 230));
+    quoteAuthor.setTypeface(Typeface.DEFAULT, Typeface.ITALIC);
+    quoteAuthor.setGravity(Gravity.END);
+    quoteAuthor.setPadding(0, dp(8), dp(4), 0);
+    quoteAuthor.setIncludeFontPadding(false);
+
+    // 组合 inner
+    quoteInner.addView(tagRow);
+    quoteInner.addView(quoteContent);
+    quoteInner.addView(quoteAuthor);
+
+    // 组合卡片
+    quoteCard.addView(accentBar, abLp);
+    quoteCard.addView(quoteInner);
+
+    // ★★★ 添加到 root（FrameLayout）顶部悬浮 ★★★
+    // 加阴影浮起效果（API21+）
+    if (Build.VERSION.SDK_INT >= 21) {
+        quoteCard.setElevation(dp(8));
+        quoteCard.setOutlineProvider(null);
+    }
+
+    FrameLayout.LayoutParams qLp = new FrameLayout.LayoutParams(-1, -2);
+    qLp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+    qLp.leftMargin = dp(20);
+    qLp.rightMargin = dp(20);
+    qLp.topMargin = dp(18);     // 离顶部距离（避开状态栏）
+    root.addView(quoteCard, qLp);
+    // 把卡片提到最上层（覆盖 shell 所有内容）
+    quoteCard.bringToFront();
+
+
+
+    // 延迟1.5秒请求每日一言
+    handler.postDelayed(
+        new Runnable() {
+          @Override
+          public void run() {
+            fetchDailyQuoteSimple(quoteCard, quoteContent, quoteAuthor, true);
+          }
+        },
+        1500);
   }
+    
+    // ====================== 🌈 每日一言 API ======================
+      // ====================== 🌈 每日一言 API（精美卡片版） ======================
+  private void fetchDailyQuoteSimple(
+      final FrameLayout quoteCard,
+      final TextView quoteContent,
+      final TextView quoteAuthor,
+      final boolean autoFade) {
+    new Thread(
+            () -> {
+              try {
+                String decodedUrl = StringGuard.get(11);
+                String safeUrl = decodedUrl.replace("网易云", "%E5%93%B2%E5%AD%A6");
+                Log.d("DAILY_QUOTE", "请求URL: " + safeUrl);
+
+                URL url = new URL(safeUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("User-Agent", "AuraKernel/1.0");
+
+                int code = conn.getResponseCode();
+                Log.d("DAILY_QUOTE", "HTTP响应码: " + code);
+                if (code != 200) {
+                  try {
+                    BufferedReader errReader =
+                        new BufferedReader(
+                            new InputStreamReader(conn.getErrorStream(), "UTF-8"));
+                    StringBuilder errSb = new StringBuilder();
+                    String errLine;
+                    while ((errLine = errReader.readLine()) != null) {
+                      errSb.append(errLine);
+                    }
+                    errReader.close();
+                    Log.d("DAILY_QUOTE", "错误响应体: " + errSb.toString());
+                  } catch (Exception ignored) {}
+                  conn.disconnect();
+                  return;
+                }
+
+                BufferedReader reader =
+                    new BufferedReader(
+                        new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                  sb.append(line);
+                }
+                reader.close();
+                conn.disconnect();
+
+                String rawJson = sb.toString();
+                Log.d("DAILY_QUOTE", "原始JSON: " + rawJson);
+
+                JSONObject json = new JSONObject(rawJson);
+                String content = "";
+                String author = "";
+
+                if (json.has("item")) {
+                  Object itemObj = json.get("item");
+                  if (itemObj instanceof JSONObject) {
+                    JSONObject item = (JSONObject) itemObj;
+                    content = item.optString("content", "");
+                    author = item.optString("author", "");
+                    if (author.isEmpty()) author = item.optString("source", "");
+                    if (author.isEmpty()) author = item.optString("from", "");
+                  }
+                } else if (json.has("data")) {
+                  Object dataObj = json.get("data");
+                  if (dataObj instanceof JSONObject) {
+                    JSONObject data = (JSONObject) dataObj;
+                    content = data.optString("content", "");
+                    author = data.optString("author", "");
+                    if (author.isEmpty()) author = data.optString("source", "");
+                    if (author.isEmpty()) author = data.optString("from", "");
+                  }
+                } else if (json.has("content")) {
+                  content = json.optString("content", "");
+                  author = json.optString("author", "");
+                  if (author.isEmpty()) author = json.optString("source", "");
+                  if (author.isEmpty()) author = json.optString("from", "");
+                } else if (json.has("result")) {
+                  Object resultObj = json.get("result");
+                  if (resultObj instanceof JSONObject) {
+                    JSONObject result = (JSONObject) resultObj;
+                    content = result.optString("content", "");
+                    author = result.optString("author", "");
+                  }
+                }
+
+                Log.d("DAILY_QUOTE", "解析结果 - content: '" + content + "', author: '" + author + "'");
+
+                if (!content.isEmpty()) {
+                  final String finalContent = content;
+                  final String finalAuthor = author;
+                  runOnUiThread(
+                      () -> {
+                        // ★ 设置正文
+                        quoteContent.setText(finalContent);
+
+                        // ★ 设置作者（带优雅前缀）
+                        if (!finalAuthor.isEmpty()) {
+                          quoteAuthor.setText("✧ " + finalAuthor);
+                          quoteAuthor.setVisibility(View.VISIBLE);
+                        } else {
+                          quoteAuthor.setText("");
+                          quoteAuthor.setVisibility(View.GONE);
+                        }
+
+                        // ★★★ 入场动画：从顶部滑落 + 淡入 + 缩放 ★★★
+                        quoteCard.setVisibility(View.VISIBLE);
+                        quoteCard.setTranslationY(-dp(35));  // 从上方滑入
+                        quoteCard.setAlpha(0f);
+                        quoteCard.setScaleX(0.92f);
+                        quoteCard.setScaleY(0.92f);
+
+                        quoteCard
+                            .animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(550)
+                            .setInterpolator(new DecelerateInterpolator())
+                            .withEndAction(
+                                autoFade
+                                    ? new Runnable() {
+                                        @Override
+                                        public void run() {
+                                          quoteCard.postDelayed(
+                                              new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                  // ★★★ 退场动画：向上收起 + 淡出 ★★★
+                                                  quoteCard
+                                                      .animate()
+                                                      .alpha(0f)
+                                                      .translationY(-dp(22))
+                                                      .scaleX(0.95f)
+                                                      .scaleY(0.95f)
+                                                      .setDuration(400)
+                                                      .withEndAction(
+                                                          new Runnable() {
+                                                            @Override
+                                                            public void run() {
+                                                              quoteCard.setVisibility(
+                                                                  View.GONE);
+                                                            }
+                                                          })
+                                                      .start();
+                                                }
+                                              },
+                                              5000);
+                                        }
+                                      }
+                                    : null)
+                            .start();
+                      });
+                } else {
+                  Log.d("DAILY_QUOTE", "⚠️ content为空，不显示");
+                }
+              } catch (Exception e) {
+                Log.e("DAILY_QUOTE", "获取每日一言失败: " + e.getMessage(), e);
+              }
+            })
+        .start();
+  }
+
+
 
   private void prepareScriptIfNeeded() {
     if (scriptReady) return;

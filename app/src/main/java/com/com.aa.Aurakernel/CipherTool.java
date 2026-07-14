@@ -27,6 +27,7 @@ public class CipherTool {
     String dashboardUrl = "https://mt.xiaon.top/";
     String avatarUrl = "https://www.loliapi.com/acg/pp/";
     String verifyUrl = "https://ht.xiaon.top/api/verify.php";
+    String dailyQuoteUrl = "https://uapis.cn/api/v1/saying/random?mode=moment&category=哲学&api_key=uapi-bl-ei7nnWhlhanCuZNqF1gmnoMkwznuOz39lkEjK";
     
 
     System.out.println("=== 填入 StringGuard.java ===");
@@ -44,5 +45,6 @@ public class CipherTool {
     System.out.println("索引8 (Dashboard): " + encrypt(dashboardUrl));
     System.out.println("索引9 (头像API): " + encrypt(avatarUrl));
     System.out.println("索引10 (verify.php): " + encrypt(verifyUrl));
+    System.out.println("索引11 (每日一言): " + encrypt(dailyQuoteUrl));
   }
 }
