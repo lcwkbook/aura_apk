@@ -40,6 +40,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AlphaAnimation;
@@ -95,7 +96,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.json.JSONObject;
-import android.view.ViewGroup;
+
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
   private static Bitmap cachedAvatar = null;
@@ -137,7 +138,9 @@ public class MainActivity extends Activity {
   private UpdateTask updateTask;
   private FrameLayout root;
   private LinearLayout pageHost;
+  private View materialsSwipeZone;
   private LinearLayout navHome;
+  private LinearLayout navMaterials;
   private LinearLayout navMine;
   private View navCapsule;
   private FrameLayout navBarFrame;
@@ -285,74 +288,74 @@ public class MainActivity extends Activity {
   // ============================================================
   // 卡密验证（对接 verify SDK）
   // ============================================================
-   private void initVerifySdk() {
+  private void initVerifySdk() {
     // ★ 多域名列表（按优先级排列）
     final String[] apiUrls = {
-      "http://vip.jsyz.asia",
-      "http://vip.jszun.com",
-      "http://vip.jsjst.top"
+      "http://vip.jsyz.asia", "http://vip.jszun.com", "http://vip.jsjst.top"
     };
 
     // ★ 在子线程中检测可用域名
-    new Thread(() -> {
-      String workingUrl = null;
-      for (String url : apiUrls) {
-        try {
-          // 尝试连接测试（超时3秒）
-          java.net.HttpURLConnection testConn =
-              (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-          testConn.setConnectTimeout(3000);
-          testConn.setReadTimeout(3000);
-          testConn.setRequestMethod("GET");
-          int code = testConn.getResponseCode();
-          testConn.disconnect();
-          if (code >= 200 && code < 500) { // 服务器有响应就算可用
-            workingUrl = url;
-            android.util.Log.i("VERIFY_SDK", "✅ 可用域名: " + url);
-            break;
-          }
-        } catch (Exception e) {
-          android.util.Log.w("VERIFY_SDK", "❌ 域名不可用: " + url + " → " + e.getMessage());
-        }
-      }
+    new Thread(
+            () -> {
+              String workingUrl = null;
+              for (String url : apiUrls) {
+                try {
+                  // 尝试连接测试（超时3秒）
+                  java.net.HttpURLConnection testConn =
+                      (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                  testConn.setConnectTimeout(3000);
+                  testConn.setReadTimeout(3000);
+                  testConn.setRequestMethod("GET");
+                  int code = testConn.getResponseCode();
+                  testConn.disconnect();
+                  if (code >= 200 && code < 500) { // 服务器有响应就算可用
+                    workingUrl = url;
+                    android.util.Log.i("VERIFY_SDK", "✅ 可用域名: " + url);
+                    break;
+                  }
+                } catch (Exception e) {
+                  android.util.Log.w("VERIFY_SDK", "❌ 域名不可用: " + url + " → " + e.getMessage());
+                }
+              }
 
-      if (workingUrl == null) {
-        workingUrl = apiUrls[0]; // 全挂了就默认用第一个
-        android.util.Log.e("VERIFY_SDK", "⚠️ 所有域名均不可用，使用默认: " + workingUrl);
-      }
+              if (workingUrl == null) {
+                workingUrl = apiUrls[0]; // 全挂了就默认用第一个
+                android.util.Log.e("VERIFY_SDK", "⚠️ 所有域名均不可用，使用默认: " + workingUrl);
+              }
 
-      // ★ 使用找到的可用域名初始化 SDK
-      final String finalUrl = workingUrl;
-      runOnUiThread(() -> {
-        try {
-          VerifyConfig.verifyConfig.setApiUrl(finalUrl);
-          VerifyConfig.verifyConfig.setAppId("3575");
-          VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
+              // ★ 使用找到的可用域名初始化 SDK
+              final String finalUrl = workingUrl;
+              runOnUiThread(
+                  () -> {
+                    try {
+                      VerifyConfig.verifyConfig.setApiUrl(finalUrl);
+                      VerifyConfig.verifyConfig.setAppId("3575");
+                      VerifyConfig.verifyConfig.setAppKey("1snamcsfh76mmpi21jmpy55utk0bhy3f");
 
-          // ★ 改成 DH 模式 ★
-          VerifyConfig.verifyConfig.setSecretType(new String[] {"DH密钥交换加密"});
-          VerifyConfig.verifyConfig.setSecretKey(
-              new String[] {
-                "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
-              });
-          VerifyConfig.verifyConfig.setEncodeType("Base64编码");
-          VerifyConfig.verifyConfig.setReqType("全部加密");
-          VerifyConfig.verifyConfig.setResType("全部加密");
-          VerifyConfig.verifyConfig.setRandomType("开");
-          VerifyConfig.verifyConfig.setSignType("MD5");
-          VerifyConfig.verifyConfig.setSignRule("方式二");
-          VerifyConfig.verifyConfig.setLocalTimeVerify("10000");
-          VerifyConfig.verifyConfig.setLogicCode("1");
-          VerifyConfig.verifyConfig.setHeartOpen("关");
+                      // ★ 改成 DH 模式 ★
+                      VerifyConfig.verifyConfig.setSecretType(new String[] {"DH密钥交换加密"});
+                      VerifyConfig.verifyConfig.setSecretKey(
+                          new String[] {
+                            "308202283082011b06092a864886f70d0103013082010c0282010100ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff020102020200e0038201050002820100246135d4410b8094247a96e66a15c19e8ee6cb503c4b8138044edabf8c4e3aa105f757963c3039ab147321731a115fcde2a366a869d2c94938c5a679649ea774e8af1d293b35a71fe99d92799c9ccbee35c440774aeac955a683786603dbe729d9179aa8f37255b4e5267f74e3a920a64790b68f358005a1583969a8b4503f5dc34a9f80802af751f58f40ae6e163b3c8b0375078b5276119d753d6f16f6407f094cf17bcf4ca6c3743481dc2a59dbd94f7f2aaf3f2e8c79f495c20482b89cce281655d0bdf3e5c783567c122dc45d713aac9ddd2143ccce1ed6925464dda6c7be7f02daa089b411a61a421125bd22d9d467bff3d926ab7446e8e6c6d7a261d5"
+                          });
+                      VerifyConfig.verifyConfig.setEncodeType("Base64编码");
+                      VerifyConfig.verifyConfig.setReqType("全部加密");
+                      VerifyConfig.verifyConfig.setResType("全部加密");
+                      VerifyConfig.verifyConfig.setRandomType("开");
+                      VerifyConfig.verifyConfig.setSignType("MD5");
+                      VerifyConfig.verifyConfig.setSignRule("方式二");
+                      VerifyConfig.verifyConfig.setLocalTimeVerify("10000");
+                      VerifyConfig.verifyConfig.setLogicCode("1");
+                      VerifyConfig.verifyConfig.setHeartOpen("关");
 
-          android.util.Log.i("VERIFY_SDK", "🚀 SDK 初始化完成，API: " + finalUrl);
-        } catch (Exception e) {
-          android.util.Log.e("VERIFY_SDK", "❌ SDK 初始化失败: " + e.getMessage());
-        }
-      });
-    }).start();
+                      android.util.Log.i("VERIFY_SDK", "🚀 SDK 初始化完成，API: " + finalUrl);
+                    } catch (Exception e) {
+                      android.util.Log.e("VERIFY_SDK", "❌ SDK 初始化失败: " + e.getMessage());
+                    }
+                  });
+            })
+        .start();
   }
-
 
   /**
    * 从服务器验证卡密信息（异步）
@@ -667,20 +670,20 @@ public class MainActivity extends Activity {
         in.close();
 
         // 赋予执行权限
-                // 赋予执行权限（使用root + 777）
+        // 赋予执行权限（使用root + 777）
         try {
-            // 先尝试用root赋予777权限
-            Process suProcess = Runtime.getRuntime().exec("su");
-            BufferedWriter suWriter = new BufferedWriter(new OutputStreamWriter(suProcess.getOutputStream()));
-            suWriter.write("chmod 777 " + outFile.getAbsolutePath() + "\n");
-            suWriter.write("exit\n");
-            suWriter.flush();
-            suProcess.waitFor();
+          // 先尝试用root赋予777权限
+          Process suProcess = Runtime.getRuntime().exec("su");
+          BufferedWriter suWriter =
+              new BufferedWriter(new OutputStreamWriter(suProcess.getOutputStream()));
+          suWriter.write("chmod 777 " + outFile.getAbsolutePath() + "\n");
+          suWriter.write("exit\n");
+          suWriter.flush();
+          suProcess.waitFor();
         } catch (Exception e2) {
-            // fallback: 无root时尝试普通chmod 777
-            Runtime.getRuntime().exec("chmod 777 " + outFile.getAbsolutePath()).waitFor();
+          // fallback: 无root时尝试普通chmod 777
+          Runtime.getRuntime().exec("chmod 777 " + outFile.getAbsolutePath()).waitFor();
         }
-
       }
     } catch (Exception e) {
       e.printStackTrace();
@@ -886,7 +889,7 @@ public class MainActivity extends Activity {
                 cleanPost.accept("⏳ 正在执行，请稍候...\n\n");
                 cleanPost.accept("🔑 尝试获取Root权限执行...\n");
 
-                                // 先用root赋予777权限，再用sh执行脚本
+                // 先用root赋予777权限，再用sh执行脚本
                 cleanPost.accept("  🔧 设置 777 权限...\n");
                 Process chmodProc =
                     new ProcessBuilder("su", "-c", "chmod 777 " + scriptFile.getAbsolutePath())
@@ -899,7 +902,6 @@ public class MainActivity extends Activity {
                     new ProcessBuilder("su", "-c", "sh " + scriptFile.getAbsolutePath())
                         .redirectErrorStream(true)
                         .start();
-
 
                 BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -1151,7 +1153,7 @@ public class MainActivity extends Activity {
         .start();
   }
 
-    // ========== 🔥 方案二：回到前台时检查远程脚本更新 ==========
+  // ========== 🔥 方案二：回到前台时检查远程脚本更新 ==========
   @Override
   protected void onResume() {
     super.onResume();
@@ -1210,7 +1212,6 @@ public class MainActivity extends Activity {
             })
         .start();
   }
-
 
   @Override
   public void onBackPressed() {
@@ -1472,7 +1473,7 @@ public class MainActivity extends Activity {
                 },
                 200);
           }
-        }); 
+        });
     barAnim.start();
   }
 
@@ -1569,7 +1570,7 @@ public class MainActivity extends Activity {
     shell.setBackgroundColor(bgColor());
     root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
 
-        pageHost = new LinearLayout(this);
+    pageHost = new LinearLayout(this);
     pageHost.setOrientation(LinearLayout.VERTICAL);
     shell.addView(pageHost, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -1604,13 +1605,13 @@ public class MainActivity extends Activity {
     quoteCard.setFocusable(true);
 
     // ① 底层：渐变背景
-    GradientDrawable quoteBgGradient = new GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        new int[]{
-            Color.argb(210, 28, 38, 72),   // 顶部：亮深蓝
-            Color.argb(220, 12, 18, 40)    // 底部：暗深蓝
-        }
-    );
+    GradientDrawable quoteBgGradient =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {
+              Color.argb(210, 28, 38, 72), // 顶部：亮深蓝
+              Color.argb(220, 12, 18, 40) // 底部：暗深蓝
+            });
     quoteBgGradient.setCornerRadius(dp(14));
 
     // ② 上层：发光边框（用透明填充 + 描边叠加）
@@ -1620,27 +1621,26 @@ public class MainActivity extends Activity {
     quoteBorder.setColor(Color.TRANSPARENT);
 
     // 合并为 LayerDrawable
-    LayerDrawable quoteLayerBg = new LayerDrawable(
-        new Drawable[]{quoteBgGradient, quoteBorder}
-    );
+    LayerDrawable quoteLayerBg = new LayerDrawable(new Drawable[] {quoteBgGradient, quoteBorder});
     quoteCard.setBackground(quoteLayerBg);
 
     // ★ 开启硬件层加速，让透明叠加更流畅
     if (Build.VERSION.SDK_INT >= 11) {
-        quoteCard.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+      quoteCard.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
     }
 
     // ── 左侧垂直渐变装饰条 ──
     View accentBar = new View(this);
     {
-        GradientDrawable barShape = new GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[]{Color.rgb(100, 195, 255), Color.rgb(180, 100, 255)}
-        );
-        barShape.setCornerRadius(dp(2));
-        accentBar.setBackground(barShape);
+      GradientDrawable barShape =
+          new GradientDrawable(
+              GradientDrawable.Orientation.TOP_BOTTOM,
+              new int[] {Color.rgb(100, 195, 255), Color.rgb(180, 100, 255)});
+      barShape.setCornerRadius(dp(2));
+      accentBar.setBackground(barShape);
     }
-    FrameLayout.LayoutParams abLp = new FrameLayout.LayoutParams(dp(4), dp(42), Gravity.START | Gravity.CENTER_VERTICAL);
+    FrameLayout.LayoutParams abLp =
+        new FrameLayout.LayoutParams(dp(4), dp(42), Gravity.START | Gravity.CENTER_VERTICAL);
     abLp.leftMargin = dp(14);
 
     // ── 内部文字布局 ──
@@ -1703,20 +1703,18 @@ public class MainActivity extends Activity {
     // ★★★ 添加到 root（FrameLayout）顶部悬浮 ★★★
     // 加阴影浮起效果（API21+）
     if (Build.VERSION.SDK_INT >= 21) {
-        quoteCard.setElevation(dp(8));
-        quoteCard.setOutlineProvider(null);
+      quoteCard.setElevation(dp(8));
+      quoteCard.setOutlineProvider(null);
     }
 
     FrameLayout.LayoutParams qLp = new FrameLayout.LayoutParams(-1, -2);
     qLp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
     qLp.leftMargin = dp(20);
     qLp.rightMargin = dp(20);
-    qLp.topMargin = dp(18);     // 离顶部距离（避开状态栏）
+    qLp.topMargin = dp(18); // 离顶部距离（避开状态栏）
     root.addView(quoteCard, qLp);
     // 把卡片提到最上层（覆盖 shell 所有内容）
     quoteCard.bringToFront();
-
-
 
     // 延迟1.5秒请求每日一言
     handler.postDelayed(
@@ -1728,9 +1726,9 @@ public class MainActivity extends Activity {
         },
         1500);
   }
-    
-    // ====================== 🌈 每日一言 API ======================
-      // ====================== 🌈 每日一言 API（精美卡片版） ======================
+
+  // ====================== 🌈 每日一言 API ======================
+  // ====================== 🌈 每日一言 API（精美卡片版） ======================
   private void fetchDailyQuoteSimple(
       final FrameLayout quoteCard,
       final TextView quoteContent,
@@ -1755,8 +1753,7 @@ public class MainActivity extends Activity {
                 if (code != 200) {
                   try {
                     BufferedReader errReader =
-                        new BufferedReader(
-                            new InputStreamReader(conn.getErrorStream(), "UTF-8"));
+                        new BufferedReader(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
                     StringBuilder errSb = new StringBuilder();
                     String errLine;
                     while ((errLine = errReader.readLine()) != null) {
@@ -1764,14 +1761,14 @@ public class MainActivity extends Activity {
                     }
                     errReader.close();
                     Log.d("DAILY_QUOTE", "错误响应体: " + errSb.toString());
-                  } catch (Exception ignored) {}
+                  } catch (Exception ignored) {
+                  }
                   conn.disconnect();
                   return;
                 }
 
                 BufferedReader reader =
-                    new BufferedReader(
-                        new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                    new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
                 StringBuilder sb = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -1840,7 +1837,7 @@ public class MainActivity extends Activity {
 
                         // ★★★ 入场动画：从顶部滑落 + 淡入 + 缩放 ★★★
                         quoteCard.setVisibility(View.VISIBLE);
-                        quoteCard.setTranslationY(-dp(35));  // 从上方滑入
+                        quoteCard.setTranslationY(-dp(35)); // 从上方滑入
                         quoteCard.setAlpha(0f);
                         quoteCard.setScaleX(0.92f);
                         quoteCard.setScaleY(0.92f);
@@ -1856,34 +1853,33 @@ public class MainActivity extends Activity {
                             .withEndAction(
                                 autoFade
                                     ? new Runnable() {
-                                        @Override
-                                        public void run() {
-                                          quoteCard.postDelayed(
-                                              new Runnable() {
-                                                @Override
-                                                public void run() {
-                                                  // ★★★ 退场动画：向上收起 + 淡出 ★★★
-                                                  quoteCard
-                                                      .animate()
-                                                      .alpha(0f)
-                                                      .translationY(-dp(22))
-                                                      .scaleX(0.95f)
-                                                      .scaleY(0.95f)
-                                                      .setDuration(400)
-                                                      .withEndAction(
-                                                          new Runnable() {
-                                                            @Override
-                                                            public void run() {
-                                                              quoteCard.setVisibility(
-                                                                  View.GONE);
-                                                            }
-                                                          })
-                                                      .start();
-                                                }
-                                              },
-                                              5000);
-                                        }
+                                      @Override
+                                      public void run() {
+                                        quoteCard.postDelayed(
+                                            new Runnable() {
+                                              @Override
+                                              public void run() {
+                                                // ★★★ 退场动画：向上收起 + 淡出 ★★★
+                                                quoteCard
+                                                    .animate()
+                                                    .alpha(0f)
+                                                    .translationY(-dp(22))
+                                                    .scaleX(0.95f)
+                                                    .scaleY(0.95f)
+                                                    .setDuration(400)
+                                                    .withEndAction(
+                                                        new Runnable() {
+                                                          @Override
+                                                          public void run() {
+                                                            quoteCard.setVisibility(View.GONE);
+                                                          }
+                                                        })
+                                                    .start();
+                                              }
+                                            },
+                                            5000);
                                       }
+                                    }
                                     : null)
                             .start();
                       });
@@ -1896,8 +1892,6 @@ public class MainActivity extends Activity {
             })
         .start();
   }
-
-
 
   private void prepareScriptIfNeeded() {
     if (scriptReady) return;
@@ -2164,316 +2158,343 @@ public class MainActivity extends Activity {
         });
   }
 
+  private View createBottomNav() {
+    LinearLayout wrap = new LinearLayout(this);
+    wrap.setGravity(Gravity.CENTER);
+    wrap.setPadding(dp(16), dp(4), dp(16), dp(16));
+    wrap.setBackground(null);
 
-      private View createBottomNav() {
-      LinearLayout wrap = new LinearLayout(this);
-      wrap.setGravity(Gravity.CENTER);
-      wrap.setPadding(dp(16), dp(4), dp(16), dp(16));
-      wrap.setBackground(null);
+    // 主容器（FrameLayout 用于叠加滑动胶囊）
+    navBarFrame = new FrameLayout(this);
 
-      // 主容器（FrameLayout 用于叠加滑动胶囊）
-      navBarFrame = new FrameLayout(this);
+    // 背景
+    GradientDrawable glassBg = new GradientDrawable();
+    glassBg.setColor(nightMode ? Color.argb(200, 20, 24, 36) : Color.argb(200, 255, 255, 255));
+    glassBg.setCornerRadius(dp(30));
+    glassBg.setStroke(dp(1), borderColor());
+    navBarFrame.setBackground(glassBg);
 
-      // 背景
-      GradientDrawable glassBg = new GradientDrawable();
-      glassBg.setColor(nightMode ? Color.argb(200, 20, 24, 36) : Color.argb(200, 255, 255, 255));
-      glassBg.setCornerRadius(dp(30));
-      glassBg.setStroke(dp(1), borderColor());
-      navBarFrame.setBackground(glassBg);
+    if (Build.VERSION.SDK_INT >= 21) {
+      navBarFrame.setElevation(dp(12));
+      navBarFrame.setOutlineProvider(null);
+    }
 
-      if (Build.VERSION.SDK_INT >= 21) {
-          navBarFrame.setElevation(dp(12));
-          navBarFrame.setOutlineProvider(null);
-      }
+    // 🟢 滑动胶囊
+    View capsule = new View(this);
+    GradientDrawable capsuleBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {MAIN_GREEN, Color.rgb(99, 209, 119)});
+    capsuleBg.setCornerRadius(dp(26));
+    capsule.setBackground(capsuleBg);
+    capsule.setAlpha(0.22f);
 
-      // 🟢 滑动胶囊
-      View capsule = new View(this);
-      GradientDrawable capsuleBg = new GradientDrawable(
-          GradientDrawable.Orientation.LEFT_RIGHT,
-          new int[] { MAIN_GREEN, Color.rgb(99, 209, 119) }
-      );
-      capsuleBg.setCornerRadius(dp(26));
-      capsule.setBackground(capsuleBg);
-      capsule.setAlpha(0.22f);
+    // Tab 行
+    LinearLayout tabRow = new LinearLayout(this);
+    tabRow.setOrientation(LinearLayout.HORIZONTAL);
+    tabRow.setGravity(Gravity.CENTER);
+    tabRow.setPadding(dp(6), dp(6), dp(6), dp(6));
 
-      // Tab 行
-      LinearLayout tabRow = new LinearLayout(this);
-      tabRow.setOrientation(LinearLayout.HORIZONTAL);
-      tabRow.setGravity(Gravity.CENTER);
-      tabRow.setPadding(dp(6), dp(6), dp(6), dp(6));
+    navHome = buildNavTab("🏠", "主页", true);
+    navDriver = buildNavTab("📦", "驱动", false);
+    navMaterials = buildNavTab("🎒", "物资", false);
+    navMine = buildNavTab("👤", "我的", false);
 
-      navHome = buildNavTab("🏠", "主页", true);
-      navDriver = buildNavTab("📦", "驱动", false);
-      navMine = buildNavTab("👤", "我的", false);
+    tabRow.addView(navHome, new LinearLayout.LayoutParams(0, dp(52), 1));
+    tabRow.addView(navDriver, new LinearLayout.LayoutParams(0, dp(52), 1));
+    tabRow.addView(navMaterials, new LinearLayout.LayoutParams(0, dp(52), 1));
+    tabRow.addView(navMine, new LinearLayout.LayoutParams(0, dp(52), 1));
 
-      tabRow.addView(navHome, new LinearLayout.LayoutParams(0, dp(52), 1));
-      tabRow.addView(navDriver, new LinearLayout.LayoutParams(0, dp(52), 1));
-      tabRow.addView(navMine, new LinearLayout.LayoutParams(0, dp(52), 1));
+    navBarFrame.addView(tabRow, new FrameLayout.LayoutParams(-1, -1));
+    FrameLayout.LayoutParams capLp = new FrameLayout.LayoutParams(0, dp(52));
+    capLp.setMargins(dp(6), dp(6), 0, 0);
+    capsule.setLayoutParams(capLp);
+    navBarFrame.addView(capsule, 0);
+    navCapsule = capsule;
 
-      navBarFrame.addView(tabRow, new FrameLayout.LayoutParams(-1, -1));
-      FrameLayout.LayoutParams capLp = new FrameLayout.LayoutParams(0, dp(52));
-      capLp.setMargins(dp(6), dp(6), 0, 0);
-      capsule.setLayoutParams(capLp);
-      navBarFrame.addView(capsule, 0);
-      navCapsule = capsule;
-
-            // ===== 👆 长按拖拽（实时切换页面）=====
-      android.view.View.OnTouchListener tabTouchListener = (v, event) -> {
+    // ===== 👆 长按拖拽（实时切换页面）=====
+    android.view.View.OnTouchListener tabTouchListener =
+        (v, event) -> {
           switch (event.getAction()) {
-              case android.view.MotionEvent.ACTION_DOWN:
-                  dragStartX = event.getX();
-                  isDragMode = false;
-                  if (longPressRunnable != null) longPressHandler.removeCallbacks(longPressRunnable);
-                  longPressRunnable = () -> {
-                      isDragMode = true;
-                      try {
-                          ((android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE))
-                              .vibrate(20);
-                      } catch (Exception ignored) {}
-                      capsule.setAlpha(0.45f);
+            case android.view.MotionEvent.ACTION_DOWN:
+              dragStartX = event.getX();
+              isDragMode = false;
+              if (longPressRunnable != null) longPressHandler.removeCallbacks(longPressRunnable);
+              longPressRunnable =
+                  () -> {
+                    isDragMode = true;
+                    try {
+                      ((android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE))
+                          .vibrate(20);
+                    } catch (Exception ignored) {
+                    }
+                    capsule.setAlpha(0.45f);
                   };
-                  longPressHandler.postDelayed(longPressRunnable, 200);
-                  return true;
+              longPressHandler.postDelayed(longPressRunnable, 200);
+              return true;
 
-              case android.view.MotionEvent.ACTION_MOVE:
-                  if (isDragMode) {
-                      float rawX = event.getRawX();
-                      int[] barLoc = new int[2];
-                      navBarFrame.getLocationOnScreen(barLoc);
-                      float xInBar = rawX - barLoc[0];
-                      float barW = navBarFrame.getWidth();
-                      if (barW <= 0) return true;
+            case android.view.MotionEvent.ACTION_MOVE:
+              if (isDragMode) {
+                float rawX = event.getRawX();
+                int[] barLoc = new int[2];
+                navBarFrame.getLocationOnScreen(barLoc);
+                float xInBar = rawX - barLoc[0];
+                float barW = navBarFrame.getWidth();
+                if (barW <= 0) return true;
 
-                      float minX = dp(6);
-                      float maxX = barW - dp(6);
-                      xInBar = Math.max(minX, Math.min(maxX, xInBar));
+                float minX = dp(6);
+                float maxX = barW - dp(6);
+                xInBar = Math.max(minX, Math.min(maxX, xInBar));
 
-                      float tabW = barW / 3f;
-                      int capWidth = (int) (tabW - dp(12));
-                      int capLeft = (int) (xInBar - capWidth / 2f);
-                      capLeft = (int) Math.max(dp(6), Math.min(barW - dp(6) - capWidth, capLeft));
+                float tabW = barW / 4f;
+                int capWidth = (int) (tabW - dp(12));
+                int capLeft = (int) (xInBar - capWidth / 2f);
+                capLeft = (int) Math.max(dp(6), Math.min(barW - dp(6) - capWidth, capLeft));
 
-                      FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
-                      lp.leftMargin = capLeft;
-                      lp.width = capWidth;
-                      capsule.setLayoutParams(lp);
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
+                lp.leftMargin = capLeft;
+                lp.width = capWidth;
+                capsule.setLayoutParams(lp);
 
-                      // 🔄 实时切换：悬停到新Tab就立刻切页面
-                      int hoverIndex = (int) ((xInBar - dp(6)) / tabW);
-                      hoverIndex = Math.max(0, Math.min(2, hoverIndex));
-                      if (hoverIndex != currentPage) {
-                          switchPageContentOnly(hoverIndex);
-                      }
-                      updateNavTabPreview(hoverIndex);
-                      return true;
-                  } else {
-                      if (Math.abs(event.getX() - dragStartX) > dp(10)) {
-                          longPressHandler.removeCallbacks(longPressRunnable);
-                      }
-                      return true;
-                  }
-
-                            case android.view.MotionEvent.ACTION_UP:
-              case android.view.MotionEvent.ACTION_CANCEL:
+                // 🔄 实时切换：悬停到新Tab就立刻切页面
+                int hoverIndex = (int) ((xInBar - dp(6)) / tabW);
+                hoverIndex = Math.max(0, Math.min(3, hoverIndex));
+                if (hoverIndex != currentPage) {
+                  switchPageContentOnly(hoverIndex);
+                }
+                updateNavTabPreview(hoverIndex);
+                return true;
+              } else {
+                if (Math.abs(event.getX() - dragStartX) > dp(10)) {
                   longPressHandler.removeCallbacks(longPressRunnable);
-                  if (isDragMode) {
-                      isDragMode = false;
-                      capsule.setAlpha(0.22f);
+                }
+                return true;
+              }
 
-                      // 🎯 直接吸附到 currentPage（MOVE中已实时切换，这里不用重新计算）
-                      float barW = navBarFrame.getWidth();
-                      if (barW > 0) {
-                          float tabW = barW / 3f;
-                          FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
-                          int correctLeft = (int) (dp(6) + tabW * currentPage);
-                          int correctWidth = (int) (tabW - dp(12));
-                          lp.leftMargin = correctLeft;
-                          lp.width = correctWidth;
-                          capsule.setLayoutParams(lp);
-                          updateNavTabStyle();
-                      }
-                      return true;
-                  }
-                  v.performClick();
-                  return true;
+            case android.view.MotionEvent.ACTION_UP:
+            case android.view.MotionEvent.ACTION_CANCEL:
+              longPressHandler.removeCallbacks(longPressRunnable);
+              if (isDragMode) {
+                isDragMode = false;
+                capsule.setAlpha(0.22f);
+
+                // 🎯 直接吸附到 currentPage（MOVE中已实时切换，这里不用重新计算）
+                float barW = navBarFrame.getWidth();
+                if (barW > 0) {
+                  float tabW = barW / 4f;
+                  FrameLayout.LayoutParams lp =
+                      (FrameLayout.LayoutParams) capsule.getLayoutParams();
+                  int correctLeft = (int) (dp(6) + tabW * currentPage);
+                  int correctWidth = (int) (tabW - dp(12));
+                  lp.leftMargin = correctLeft;
+                  lp.width = correctWidth;
+                  capsule.setLayoutParams(lp);
+                  updateNavTabStyle();
+                }
+                return true;
+              }
+              v.performClick();
+              return true;
           }
           return true;
-      };
+        };
 
-      navHome.setOnTouchListener(tabTouchListener);
-      navDriver.setOnTouchListener(tabTouchListener);
-      navMine.setOnTouchListener(tabTouchListener);
+    navHome.setOnTouchListener(tabTouchListener);
+    navDriver.setOnTouchListener(tabTouchListener);
+    navMaterials.setOnTouchListener(tabTouchListener);
+    navMine.setOnTouchListener(tabTouchListener);
 
-      wrap.addView(navBarFrame, new LinearLayout.LayoutParams(-1, dp(64)));
+    wrap.addView(navBarFrame, new LinearLayout.LayoutParams(-1, dp(64)));
 
-      navHome.setOnClickListener(v -> switchPage(0));
-      navDriver.setOnClickListener(v -> switchPage(1));
-      navMine.setOnClickListener(v -> switchPage(2));
+    navHome.setOnClickListener(v -> switchPage(0));
+    navDriver.setOnClickListener(v -> switchPage(1));
+    navMaterials.setOnClickListener(v -> switchPage(2));
+    navMine.setOnClickListener(v -> switchPage(3));
 
-      // 胶囊初始宽度
-      navBarFrame.post(() -> {
+    // 胶囊初始宽度
+    navBarFrame.post(
+        () -> {
           int barW = navBarFrame.getWidth();
-          int tabW = barW / 3;
+          int tabW = barW / 4;
           FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
           cp.width = tabW - dp(12);
           capsule.setLayoutParams(cp);
-      });
+        });
 
-      return wrap;
+    return wrap;
   }
 
   // 🎯 单个导航项（新风格：图标+文字，选中时缩放+变色）
   private LinearLayout buildNavTab(String emoji, String label, boolean active) {
-      LinearLayout tab = new LinearLayout(this);
-      tab.setOrientation(LinearLayout.HORIZONTAL);
-      tab.setGravity(Gravity.CENTER);
-      tab.setPadding(dp(6), dp(4), dp(6), dp(4));
+    LinearLayout tab = new LinearLayout(this);
+    tab.setOrientation(LinearLayout.HORIZONTAL);
+    tab.setGravity(Gravity.CENTER);
+    tab.setPadding(dp(6), dp(4), dp(6), dp(4));
 
-      TextView icon = text(emoji, 20,
-          active ? MAIN_GREEN : subTextColor(), Typeface.NORMAL);
-      icon.setGravity(Gravity.CENTER);
-      tab.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
+    TextView icon = text(emoji, 20, active ? MAIN_GREEN : subTextColor(), Typeface.NORMAL);
+    icon.setGravity(Gravity.CENTER);
+    tab.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
 
-      TextView lbl = text(label, 12,
-          active ? MAIN_GREEN : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
-      lbl.setGravity(Gravity.CENTER);
-      tab.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
+    TextView lbl =
+        text(
+            label,
+            12,
+            active ? MAIN_GREEN : subTextColor(),
+            active ? Typeface.BOLD : Typeface.NORMAL);
+    lbl.setGravity(Gravity.CENTER);
+    tab.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
 
-      return tab;
+    return tab;
   }
 
-    // 🟢 胶囊滑动动画
+  // 🟢 胶囊滑动动画
   private void updateNavCapsule(int targetIndex) {
-      if (navCapsule == null) return;
-      View capsule = navCapsule;
-      FrameLayout barFrame = (FrameLayout) capsule.getParent();
-      if (barFrame == null) return;
+    if (navCapsule == null) return;
+    View capsule = navCapsule;
+    FrameLayout barFrame = (FrameLayout) capsule.getParent();
+    if (barFrame == null) return;
 
-      int barW = barFrame.getWidth();
-      if (barW <= 0) return;
+    int barW = barFrame.getWidth();
+    if (barW <= 0) return;
 
-      int tabW = barW / 3;
-      int targetLeft = (int)(dp(6) + tabW * targetIndex);
-      int targetWidth = tabW - (int)dp(12);
+    int tabW = barW / 4;
+    int targetLeft = (int) (dp(6) + tabW * targetIndex);
+    int targetWidth = tabW - (int) dp(12);
 
-      // 🎬 丝滑动画：位置+宽度同时变化
-      ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
-      final int startLeft = capsule.getLeft();
-      final int startWidth = capsule.getWidth();
-      anim.addUpdateListener(animation -> {
+    // 🎬 丝滑动画：位置+宽度同时变化
+    ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+    final int startLeft = capsule.getLeft();
+    final int startWidth = capsule.getWidth();
+    anim.addUpdateListener(
+        animation -> {
           float fraction = animation.getAnimatedFraction();
-          int curLeft = (int)(startLeft + (targetLeft - startLeft) * fraction);
-          int curWidth = (int)(startWidth + (targetWidth - startWidth) * fraction);
+          int curLeft = (int) (startLeft + (targetLeft - startLeft) * fraction);
+          int curWidth = (int) (startWidth + (targetWidth - startWidth) * fraction);
           FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) capsule.getLayoutParams();
           lp.leftMargin = curLeft;
           lp.width = curWidth;
           capsule.setLayoutParams(lp);
-      });
-      anim.setDuration(350);
-      anim.setInterpolator(new DecelerateInterpolator(2f));
-      anim.start();
+        });
+    anim.setDuration(350);
+    anim.setInterpolator(new DecelerateInterpolator(2f));
+    anim.start();
   }
 
-    // ====================== 🎬 页面切换 ======================
+  // ====================== 🎬 页面切换 ======================
   private void switchPage(int page) {
-      if (pageHost == null) return;
-      if (page == currentPage && pageHost.getChildCount() > 0) return;
-      int from = currentPage;
-      currentPage = page;
-      pageHost.removeAllViews();
-      pageHost.setBackgroundColor(bgColor());
+    if (pageHost == null) return;
+    if (page == currentPage && pageHost.getChildCount() > 0) return;
+    int from = currentPage;
+    currentPage = page;
+    pageHost.removeAllViews();
+    pageHost.setBackgroundColor(bgColor());
 
-      View next = null;
-      if (page == 0) next = createHomePage();
-      else if (page == 1) next = createDriverPage();
-      else next = createMinePage();
+    View next = null;
+    if (page == 0) next = createHomePage();
+    else if (page == 1) next = createDriverPage();
+    else if (page == 2) next = createMaterialsPage();
+    else next = createMinePage();
 
-      pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
+    pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
 
-      // 🎬 页面淡入
-      AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
-      fadeIn.setDuration(300);
-      next.startAnimation(fadeIn);
+    // 🎬 页面淡入
+    AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
+    fadeIn.setDuration(300);
+    next.startAnimation(fadeIn);
 
-      // 🔄 胶囊滑动（只在有旧页时动画，首次不滑）
-      if (from != page) {
-          updateNavCapsule(page);
-      }
-      updateNavTabStyle();
+    // 🔄 胶囊滑动（只在有旧页时动画，首次不滑）
+    if (from != page) {
+      updateNavCapsule(page);
+    }
+    updateNavTabStyle();
   }
 
-    // 🔄 仅切换页面内容（不动胶囊动画，用于拖拽中实时切页）
+  // 🔄 仅切换页面内容（不动胶囊动画，用于拖拽中实时切页）
   private void switchPageContentOnly(int page) {
-      if (pageHost == null) return;
-      if (page == currentPage) return;
-      currentPage = page;
-      pageHost.removeAllViews();
-      pageHost.setBackgroundColor(bgColor());
+    if (pageHost == null) return;
+    if (page == currentPage) return;
+    currentPage = page;
+    pageHost.removeAllViews();
+    pageHost.setBackgroundColor(bgColor());
 
-      View next;
-      if (page == 0) next = createHomePage();
-      else if (page == 1) next = createDriverPage();
-      else next = createMinePage();
+    View next;
+    if (page == 0) next = createHomePage();
+    else if (page == 1) next = createDriverPage();
+    else if (page == 2) next = createMaterialsPage();
+    else next = createMinePage();
 
-      pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
+    pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
 
-      AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
-      fadeIn.setDuration(200);
-      next.startAnimation(fadeIn);
+    AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
+    fadeIn.setDuration(200);
+    next.startAnimation(fadeIn);
 
-      updateNavTabStyle();
+    updateNavTabStyle();
   }
-
 
   // 🔄 拖拽时实时预览tab颜色变化
   private void updateNavTabPreview(int hoverIndex) {
-      updateSingleTab(navHome, "🏠", "主页", currentPage == 0 && hoverIndex == 0);
-      updateSingleTab(navDriver, "📦", "驱动", currentPage == 1 && hoverIndex == 1);
-      updateSingleTab(navMine, "👤", "我的", currentPage == 2 && hoverIndex == 2);
-      // 如果拖到另一个tab，临时高亮它
-      if (hoverIndex != currentPage) {
-          LinearLayout target = hoverIndex == 0 ? navHome : hoverIndex == 1 ? navDriver : navMine;
-          target.removeAllViews();
-          String[] data = hoverIndex == 0 ? new String[]{"🏠","主页"} : hoverIndex == 1 ? new String[]{"📦","驱动"} : new String[]{"👤","我的"};
-          TextView icon = text(data[0], 22, MAIN_GREEN, Typeface.NORMAL);
-          icon.setGravity(Gravity.CENTER);
-          target.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
-          TextView lbl = text(data[1], 11, MAIN_GREEN, Typeface.BOLD);
-          lbl.setGravity(Gravity.CENTER);
-          target.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
-      }
+    updateSingleTab(navHome, "🏠", "主页", currentPage == 0 && hoverIndex == 0);
+    updateSingleTab(navDriver, "📦", "驱动", currentPage == 1 && hoverIndex == 1);
+    updateSingleTab(navMaterials, "🎒", "物资", currentPage == 2 && hoverIndex == 2);
+    updateSingleTab(navMine, "👤", "我的", currentPage == 3 && hoverIndex == 3);
+    if (hoverIndex != currentPage) {
+      LinearLayout target =
+          hoverIndex == 0
+              ? navHome
+              : hoverIndex == 1 ? navDriver : hoverIndex == 2 ? navMaterials : navMine;
+      target.removeAllViews();
+      String[] data =
+          hoverIndex == 0
+              ? new String[] {"🏠", "主页"}
+              : hoverIndex == 1
+                  ? new String[] {"📦", "驱动"}
+                  : hoverIndex == 2 ? new String[] {"🎒", "物资"} : new String[] {"👤", "我的"};
+      TextView icon = text(data[0], 22, MAIN_GREEN, Typeface.NORMAL);
+      icon.setGravity(Gravity.CENTER);
+      target.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
+      TextView lbl = text(data[1], 11, MAIN_GREEN, Typeface.BOLD);
+      lbl.setGravity(Gravity.CENTER);
+      target.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
+    }
   }
-
 
   // ====================== 🔄 导航更新 ======================
   private void updateNavTabStyle() {
-      updateSingleTab(navHome, "🏠", "主页", currentPage == 0);
-      updateSingleTab(navDriver, "📦", "驱动", currentPage == 1);
-      updateSingleTab(navMine, "👤", "我的", currentPage == 2);
+    updateSingleTab(navHome, "🏠", "主页", currentPage == 0);
+    updateSingleTab(navDriver, "📦", "驱动", currentPage == 1);
+    updateSingleTab(navMaterials, "🎒", "物资", currentPage == 2);
+    updateSingleTab(navMine, "👤", "我的", currentPage == 3);
   }
-  
 
   private void updateSingleTab(LinearLayout tab, String emoji, String label, boolean active) {
-      if (tab == null) return;
-      tab.removeAllViews();
+    if (tab == null) return;
+    tab.removeAllViews();
 
-      TextView icon = text(emoji, 20,
-          active ? MAIN_GREEN : subTextColor(), Typeface.NORMAL);
-      icon.setGravity(Gravity.CENTER);
-      tab.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
+    TextView icon = text(emoji, 20, active ? MAIN_GREEN : subTextColor(), Typeface.NORMAL);
+    icon.setGravity(Gravity.CENTER);
+    tab.addView(icon, lp(-2, dp(28), 0, 0, dp(4), 0));
 
-      TextView lbl = text(label, 12,
-          active ? MAIN_GREEN : subTextColor(), active ? Typeface.BOLD : Typeface.NORMAL);
-      lbl.setGravity(Gravity.CENTER);
-      tab.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
+    TextView lbl =
+        text(
+            label,
+            12,
+            active ? MAIN_GREEN : subTextColor(),
+            active ? Typeface.BOLD : Typeface.NORMAL);
+    lbl.setGravity(Gravity.CENTER);
+    tab.addView(lbl, lp(-2, -2, 0, 0, 0, 0));
 
-      // 🎬 选中时图标弹入动画
-      if (active) {
-          icon.setScaleX(0.7f);
-          icon.setScaleY(0.7f);
-          icon.animate().scaleX(1f).scaleY(1f).setDuration(300)
-              .setInterpolator(new android.view.animation.OvershootInterpolator()).start();
-      }
+    // 🎬 选中时图标弹入动画
+    if (active) {
+      icon.setScaleX(0.7f);
+      icon.setScaleY(0.7f);
+      icon.animate()
+          .scaleX(1f)
+          .scaleY(1f)
+          .setDuration(300)
+          .setInterpolator(new android.view.animation.OvershootInterpolator())
+          .start();
+    }
   }
 
   private void animatePageIn(View view, int direction) {
@@ -2497,7 +2518,6 @@ public class MainActivity extends Activity {
     view.startAnimation(set);
   }
 
-
   private int getStatusBarHeight() {
     int result = 0;
     int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
@@ -2507,7 +2527,7 @@ public class MainActivity extends Activity {
     return result;
   }
 
-    private View createHomePage() {
+  private View createHomePage() {
     // 【修复】外层嵌套 ScrollView，整个主页支持全局滚动
     ScrollView rootScroll = new ScrollView(this);
     rootScroll.setVerticalScrollBarEnabled(false);
@@ -2559,13 +2579,17 @@ public class MainActivity extends Activity {
     desc.setPadding(0, dp(4), 0, 0);
     ht.addView(desc);
 
-        // ===== 🏷️ 状态快捷标签行 =====
+    // ===== 🏷️ 状态快捷标签行 =====
     LinearLayout statusRow = new LinearLayout(this);
     statusRow.setOrientation(LinearLayout.HORIZONTAL);
     statusRow.setWeightSum(3f);
 
     String[][] statusItems = {
-      {"🔌", "驱动", driverType == 0 ? "KPM" : driverType == 1 ? "Ditpro" : driverType == 2 ? "Paradise" : "备用"},
+      {
+        "🔌",
+        "驱动",
+        driverType == 0 ? "KPM" : driverType == 1 ? "Ditpro" : driverType == 2 ? "Paradise" : "备用"
+      },
       {"🛡️", "防录屏", antiRecord ? "开启" : "关闭"},
       {"💾", "无后台", noBackground ? "开启" : "关闭"},
     };
@@ -2593,17 +2617,16 @@ public class MainActivity extends Activity {
     }
     page.addView(statusRow, lp(-1, -2, dp(2), 0, dp(2), dp(6)));
 
-
     // ====================== 模块卡片开始 ======================
 
     // ★ 0. 公告模块 — 彩色渐变卡片
     LinearLayout cardAnnounce = new LinearLayout(this);
     cardAnnounce.setOrientation(LinearLayout.VERTICAL);
     cardAnnounce.setPadding(dp(16), dp(16), dp(16), dp(16));
-    GradientDrawable announceBg = new GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        new int[] { Color.argb(20, 81, 191, 101), Color.argb(5, 81, 191, 101) }
-    );
+    GradientDrawable announceBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {Color.argb(20, 81, 191, 101), Color.argb(5, 81, 191, 101)});
     announceBg.setCornerRadius(dp(24));
     announceBg.setStroke(dp(1), Color.argb(40, 81, 191, 101));
     cardAnnounce.setBackground(announceBg);
@@ -2678,10 +2701,10 @@ public class MainActivity extends Activity {
     verifyBtn.setTextColor(Color.WHITE);
     verifyBtn.setTypeface(Typeface.DEFAULT_BOLD);
     verifyBtn.setPadding(dp(14), 0, dp(14), 0);
-    GradientDrawable btnGrad = new GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        new int[] { Color.rgb(22, 119, 255), Color.rgb(56, 145, 255) }
-    );
+    GradientDrawable btnGrad =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {Color.rgb(22, 119, 255), Color.rgb(56, 145, 255)});
     btnGrad.setCornerRadius(dp(10));
     verifyBtn.setBackground(btnGrad);
     FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(-2, dp(34));
@@ -2749,7 +2772,7 @@ public class MainActivity extends Activity {
                 });
           }
         });
-      page.addView(glowDivider(), lp(dp(120), dp(3), 0, dp(4), 0, dp(4)));
+    page.addView(glowDivider(), lp(dp(120), dp(3), 0, dp(4), 0, dp(4)));
     // ============================================================
     // 2. 驱动选择模块 - 独立卡片
     // ============================================================
@@ -2878,7 +2901,7 @@ public class MainActivity extends Activity {
     runButton = button("直接运行", true);
     runRow.addView(runButton, new LinearLayout.LayoutParams(-1, -1));
     runButton.setOnClickListener(v -> runSelectedFile());
-        // 💚 运行按钮呼吸脉冲动画
+    // 💚 运行按钮呼吸脉冲动画
     AlphaAnimation pulseAnim = new AlphaAnimation(1f, 0.82f);
     pulseAnim.setDuration(1200);
     pulseAnim.setRepeatMode(Animation.REVERSE);
@@ -2896,7 +2919,12 @@ public class MainActivity extends Activity {
 
     TextView ftDot1 = text("⚡", 7, Color.argb(50, 81, 191, 101), Typeface.NORMAL);
     footer.addView(ftDot1);
-    TextView ftVer = text(" AuraKernel v" + getVersionName() + " ", 9, Color.argb(50, 81, 191, 101), Typeface.NORMAL);
+    TextView ftVer =
+        text(
+            " AuraKernel v" + getVersionName() + " ",
+            9,
+            Color.argb(50, 81, 191, 101),
+            Typeface.NORMAL);
     footer.addView(ftVer);
     TextView ftDot2 = text("⚡", 7, Color.argb(50, 81, 191, 101), Typeface.NORMAL);
     footer.addView(ftDot2);
@@ -2905,8 +2933,6 @@ public class MainActivity extends Activity {
 
     return rootScroll;
   }
-
-
 
   private void loadRandomAvatar(final ImageView imageView) {
     // ★ 如果已经有缓存，直接显示，不再请求网络
@@ -2978,12 +3004,12 @@ public class MainActivity extends Activity {
     v.setGravity(Gravity.CENTER);
     v.setTextColor(active ? Color.WHITE : subTextColor());
     v.setPadding(dp(12), 0, dp(12), 0);
-    
+
     if (active) {
-      GradientDrawable g = new GradientDrawable(
-          GradientDrawable.Orientation.LEFT_RIGHT,
-          new int[] { MAIN_GREEN, Color.rgb(99, 209, 119) }
-      );
+      GradientDrawable g =
+          new GradientDrawable(
+              GradientDrawable.Orientation.LEFT_RIGHT,
+              new int[] {MAIN_GREEN, Color.rgb(99, 209, 119)});
       g.setCornerRadius(dp(16));
       v.setBackground(g);
     } else {
@@ -2992,9 +3018,8 @@ public class MainActivity extends Activity {
     return v;
   }
 
-
   // 开关按钮（仿 iOS 风格简单文本按钮）
-    private TextView switchButton(boolean on) {
+  private TextView switchButton(boolean on) {
     TextView v = new TextView(this);
     v.setText(on ? "  ON  " : "  OFF  ");
     v.setTextSize(12);
@@ -3013,18 +3038,18 @@ public class MainActivity extends Activity {
     v.setBackground(bg);
     v.setPadding(dp(8), dp(4), dp(8), dp(4));
     // 点击缩放动画
-    v.setOnTouchListener((view, event) -> {
-      if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
-        view.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start();
-      } else if (event.getAction() == android.view.MotionEvent.ACTION_UP ||
-                 event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
-        view.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
-      }
-      return false;
-    });
+    v.setOnTouchListener(
+        (view, event) -> {
+          if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+            view.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start();
+          } else if (event.getAction() == android.view.MotionEvent.ACTION_UP
+              || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+            view.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+          }
+          return false;
+        });
     return v;
   }
-
 
   private void selectDriverType(int type) {
     if (running) {
@@ -3102,15 +3127,13 @@ public class MainActivity extends Activity {
     updateSwitchButton(noBackgroundBtn, noBackground);
   }
 
-    private void updateSwitchButton(TextView btn, boolean on) {
+  private void updateSwitchButton(TextView btn, boolean on) {
     if (btn == null) return;
     btn.setText(on ? "开启" : "关闭");
     btn.setTextColor(on ? Color.WHITE : subTextColor());
     btn.setBackground(
         round(on ? primaryColor() : tagColor(), 16, on ? 0 : borderColor(), on ? 0 : 1));
   }
-
-
 
   private TextView modeButton(String text, boolean active) {
     TextView v = text(text, 13, active ? Color.WHITE : subTextColor(), Typeface.BOLD);
@@ -4195,7 +4218,8 @@ public class MainActivity extends Activity {
     file.delete();
   }
 
-    private View createMinePage() {
+  // ====================== 📦 物资列表页面 ======================
+  private View createMaterialsPage() {
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(true);
     scroll.setVerticalScrollBarEnabled(false);
@@ -4205,14 +4229,1250 @@ public class MainActivity extends Activity {
     page.setBackgroundColor(bgColor());
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
-        // ===== 顶部标题区（带头像） =====
+    // === 顶部标题 ===
+    LinearLayout headerArea = new LinearLayout(this);
+    headerArea.setOrientation(LinearLayout.VERTICAL);
+    GradientDrawable headerAreaBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {Color.argb(18, 81, 191, 101), Color.TRANSPARENT});
+    headerAreaBg.setCornerRadius(dp(24));
+    headerArea.setBackground(headerAreaBg);
+    headerArea.setPadding(dp(6), dp(6), dp(6), dp(16));
+    page.addView(headerArea, lp(-1, -2, 0, 0, 0, dp(22)));
+
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    headerArea.addView(titleRow, lp(-1, -2, 0, 0, 0, dp(4)));
+
+    TextView titleIcon = text("🎒", 28, textColor(), Typeface.NORMAL);
+    titleRow.addView(titleIcon, lp(-2, -2, 0, 0, dp(12), 0));
+
+    TextView title = text("物资列表", 28, textColor(), Typeface.BOLD);
+    titleRow.addView(title, lp(-2, -2, 0, 0, 0, 0));
+
+    LinearLayout subRow = new LinearLayout(this);
+    subRow.setOrientation(LinearLayout.HORIZONTAL);
+    subRow.setGravity(Gravity.CENTER_VERTICAL);
+    TextView sub = text("查看和管理游戏物资", 12, subTextColor(), Typeface.NORMAL);
+    subRow.addView(sub, new LinearLayout.LayoutParams(0, -2, 1));
+    headerArea.addView(subRow, lp(-1, -2, 0, dp(2), 0, 0));
+
+    // ================================================================
+    // 📋 主内容区
+    // ================================================================
+    final LinearLayout contentArea = new LinearLayout(this);
+    contentArea.setOrientation(LinearLayout.VERTICAL);
+    page.addView(contentArea, lp(-1, -2, 0, 0, 0, 0));
+
+    // ========== Tab 切换栏 ==========
+    final LinearLayout tabBar = new LinearLayout(this);
+    tabBar.setOrientation(LinearLayout.HORIZONTAL);
+    tabBar.setBackground(round(Color.argb(15, 255, 255, 255), dp(14), 0, 0));
+    tabBar.setPadding(dp(4), dp(4), dp(4), dp(4));
+    contentArea.addView(tabBar, lp(-1, dp(46), 0, 0, 0, dp(16)));
+
+    final TextView[] tabViews = new TextView[2];
+    final String[] tabNames = {"📋 我的物资", "☁️ 云端物资"};
+    final View[] tabIndicators = new View[1]; // 用来存指示条
+
+    for (int i = 0; i < 2; i++) {
+      final int tabIndex = i;
+      LinearLayout tabItem = new LinearLayout(this);
+      tabItem.setOrientation(LinearLayout.VERTICAL);
+      tabItem.setGravity(Gravity.CENTER);
+      tabItem.setPadding(0, dp(8), 0, dp(6));
+
+      TextView tabText = text(tabNames[i], 14, i == 0 ? MAIN_GREEN : subTextColor(), Typeface.BOLD);
+      tabText.setGravity(Gravity.CENTER);
+      tabItem.addView(tabText, lp(-1, -2, 0, 0, 0, 0));
+      tabViews[i] = tabText;
+
+      View indicator = new View(this);
+      indicator.setBackground(round(MAIN_GREEN, 2, 0, 0));
+      indicator.setLayoutParams(new LinearLayout.LayoutParams(0, dp(3)));
+      indicator.setVisibility(i == 0 ? View.VISIBLE : View.INVISIBLE);
+      tabItem.addView(indicator, lp(dp(40), dp(3), 0, dp(4), 0, 0));
+      if (i == 0) tabIndicators[0] = indicator;
+
+      tabItem.setOnClickListener(
+          v -> {
+            // 更新文字颜色
+            for (int j = 0; j < 2; j++) {
+              tabViews[j].setTextColor(j == tabIndex ? MAIN_GREEN : subTextColor());
+              tabViews[j].setTypeface(null, Typeface.BOLD);
+            }
+            // 更新指示条显示
+            LinearLayout tb = (LinearLayout) tabBar;
+            for (int j = 0; j < tb.getChildCount(); j++) {
+              View child = tb.getChildAt(j);
+              if (child instanceof LinearLayout) {
+                LinearLayout tabItemLayout = (LinearLayout) child;
+                for (int k = 0; k < tabItemLayout.getChildCount(); k++) {
+                  View innerChild = tabItemLayout.getChildAt(k);
+                  if (innerChild != tabViews[j]) {
+                    innerChild.setVisibility(j == tabIndex ? View.VISIBLE : View.INVISIBLE);
+                  }
+                }
+              }
+            }
+            refreshContent(contentArea, tabIndex == 0, tabBar);
+          });
+
+      tabBar.addView(tabItem, new LinearLayout.LayoutParams(0, -1, 1));
+    }
+
+    // ========== 初次加载 ==========
+    // ========== 初次加载 ==========
+    refreshContent(contentArea, true, tabBar);
+
+    // 👆 保存引用供主页面滑动检测使用
+    materialsSwipeZone = scroll;
+
+    // 👆 在物资内容区域添加左右滑动切换标签
+    final float[] swipeStartX = new float[1];
+    final float[] swipeStartY = new float[1];
+    final boolean[] isSwipingTab = new boolean[1];
+    final int[] currentTabIndex = new int[1]; // 0=我的物资, 1=云端物资
+
+    scroll.setOnTouchListener(new View.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, android.view.MotionEvent event) {
+            switch (event.getAction()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    swipeStartX[0] = event.getX();
+                    swipeStartY[0] = event.getY();
+                    isSwipingTab[0] = false;
+                    // 判断当前显示的是哪个标签
+                    currentTabIndex[0] = 0;
+                    // 从 tabViews 文字颜色判断当前选中哪个
+                    if (tabViews[1].getCurrentTextColor() == MAIN_GREEN) {
+                        currentTabIndex[0] = 1;
+                    }
+                    break;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    if (!isSwipingTab[0]) {
+                        float dx = event.getX() - swipeStartX[0];
+                        float dy = Math.abs(event.getY() - swipeStartY[0]);
+                        if (Math.abs(dx) > dp(30) && Math.abs(dx) > dy) {
+                            isSwipingTab[0] = true;
+                        }
+                    }
+                    break;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    if (isSwipingTab[0]) {
+                        float diffX = event.getX() - swipeStartX[0];
+                        int targetTab = currentTabIndex[0];
+                        if (diffX > dp(40) && currentTabIndex[0] == 1) {
+                            targetTab = 0; // 右滑 → 我的物资
+                        } else if (diffX < -dp(40) && currentTabIndex[0] == 0) {
+                            targetTab = 1; // 左滑 → 云端物资
+                        }
+                        if (targetTab != currentTabIndex[0]) {
+                            // 模拟点击标签
+                            tabBar.getChildAt(targetTab).performClick();
+                        }
+                        isSwipingTab[0] = false;
+                        return true;
+                    }
+                    break;
+            }
+            return false; // 不消费事件，让 ScrollView 正常滚动
+        }
+    });
+
+    return scroll;
+
+  }
+
+  // ================================================================
+  // 🔄 刷新内容区域
+  // ================================================================
+  private void refreshContent(
+      final LinearLayout contentArea, final boolean isLocal, final View tabBar) {
+    // 保留 tabBar（索引0），移除后面所有子视图
+    while (contentArea.getChildCount() > 1) {
+      View child = contentArea.getChildAt(contentArea.getChildCount() - 1);
+      contentArea.removeView(child);
+    }
+
+    if (isLocal) {
+      buildLocalView(contentArea, tabBar);
+    } else {
+      buildCloudView(contentArea, tabBar);
+    }
+  }
+
+  // ================================================================
+  // 📋 本地物资视图 — 与云端统一风格
+  // ================================================================
+  private void buildLocalView(final LinearLayout contentArea, final View tabBar) {
+    // === 操作按钮行 ===
+    LinearLayout actionRow = new LinearLayout(this);
+    actionRow.setOrientation(LinearLayout.HORIZONTAL);
+    actionRow.setGravity(Gravity.CENTER_VERTICAL);
+    contentArea.addView(actionRow, lp(-1, -2, 0, 0, 0, dp(10)));
+
+    Button addBtn = new Button(this);
+    addBtn.setText("＋ 添加物资");
+    addBtn.setTextSize(13);
+    addBtn.setTypeface(null, Typeface.BOLD);
+    addBtn.setTextColor(Color.WHITE);
+    addBtn.setBackground(round(MAIN_GREEN, dp(10), 0, 0));
+    addBtn.setPadding(dp(18), dp(0), dp(18), dp(0));
+    addBtn.setAllCaps(false);
+    actionRow.addView(addBtn, lp(-2, dp(36), 0, 0, 0, 0));
+    addBtn.setOnClickListener(v -> showAddItemDialog(contentArea, tabBar));
+
+    Button refreshBtn = new Button(this);
+    refreshBtn.setText("↻");
+    refreshBtn.setTextSize(16);
+    refreshBtn.setTypeface(null, Typeface.NORMAL);
+    refreshBtn.setTextColor(subTextColor());
+    refreshBtn.setBackground(round(Color.argb(12, 255, 255, 255), dp(10), 0, 0));
+    refreshBtn.setPadding(0, 0, 0, 0);
+    refreshBtn.setAllCaps(false);
+    actionRow.addView(refreshBtn, lp(dp(36), dp(36), dp(8), 0, 0, 0));
+    refreshBtn.setOnClickListener(v -> refreshContent(contentArea, true, tabBar));
+
+    // === 读本地文件 ===
+    final List<String> items = new ArrayList<>();
+    File itemFile = new File("/storage/emulated/0/AuraKernel/自定义物资.txt");
+    if (itemFile.exists()) {
+      try {
+        BufferedReader br =
+            new BufferedReader(new InputStreamReader(new FileInputStream(itemFile), "UTF-8"));
+        String line;
+        while ((line = br.readLine()) != null) {
+          line = line.trim();
+          if (!line.isEmpty()) items.add(line);
+        }
+        br.close();
+      } catch (Exception ignored) {
+      }
+    }
+
+    // === 物资列表卡片 ===
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setPadding(dp(14), dp(14), dp(14), dp(14));
+    card.setBackground(createCardBackground());
+    card.setElevation(dp(2));
+    card.setOutlineProvider(null);
+    contentArea.addView(card, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    // === 简洁标题行 ===
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    titleRow.setPadding(0, 0, 0, dp(12));
+    card.addView(titleRow, lp(-1, -2, 0, 0, 0, 0));
+
+    TextView cardTitle = text("📦 我的物资", 15, textColor(), Typeface.BOLD);
+    titleRow.addView(cardTitle, lp(-2, -2, 0, 0, 0, 0));
+
+    // 计数标签
+    TextView countBadge = new TextView(this);
+    countBadge.setText(String.valueOf(items.size()));
+    countBadge.setTextSize(10);
+    countBadge.setTypeface(null, Typeface.BOLD);
+    countBadge.setTextColor(Color.WHITE);
+    countBadge.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+    countBadge.setGravity(Gravity.CENTER);
+    countBadge.setPadding(dp(7), dp(1), dp(7), dp(1));
+    titleRow.addView(countBadge, lp(-2, dp(18), dp(6), 0, 0, 0));
+
+    // 空状态
+    if (items.isEmpty()) {
+      LinearLayout emptyArea = new LinearLayout(this);
+      emptyArea.setOrientation(LinearLayout.VERTICAL);
+      emptyArea.setGravity(Gravity.CENTER);
+      emptyArea.setPadding(0, dp(20), 0, dp(20));
+      card.addView(emptyArea, lp(-1, -2, 0, 0, 0, 0));
+
+      TextView emptyIcon = text("📭", 28, subTextColor(), Typeface.NORMAL);
+      emptyIcon.setGravity(Gravity.CENTER);
+      emptyArea.addView(emptyIcon, lp(-1, -2, 0, 0, 0, dp(6)));
+
+      TextView empty = text("暂无自定义物资", 13, subTextColor(), Typeface.NORMAL);
+      empty.setGravity(Gravity.CENTER);
+      emptyArea.addView(empty, lp(-1, -2, 0, 0, 0, dp(2)));
+
+      TextView emptySub =
+          text("点击上方「＋ 添加物资」来创建", 11, Color.argb(80, 255, 255, 255), Typeface.NORMAL);
+      emptySub.setGravity(Gravity.CENTER);
+      emptyArea.addView(emptySub, lp(-1, -2, 0, 0, 0, 0));
+      return;
+    }
+
+    // === 列表项（与云端统一风格：左边色块+名称/类名+右侧RGBA） ===
+    for (int i = 0; i < items.size(); i++) {
+      final int index = i;
+      final String item = items.get(i);
+      String[] parts = parseItem(item);
+
+      // 整行
+      LinearLayout itemRow = new LinearLayout(this);
+      itemRow.setOrientation(LinearLayout.HORIZONTAL);
+      itemRow.setGravity(Gravity.CENTER_VERTICAL);
+      itemRow.setPadding(dp(4), dp(10), dp(4), dp(10));
+      card.addView(itemRow, lp(-1, -2, 0, 0, 0, 0));
+
+      // 左侧颜色预览圆块（与云端一致：dp(16)圆角方块）
+      int dotColor = parts[2] != null ? parseColor(parts[2]) : MAIN_GREEN;
+      View colorDot = new View(this);
+      colorDot.setBackground(round(dotColor, dp(12), 0, 0));
+      colorDot.setLayoutParams(new LinearLayout.LayoutParams(dp(16), dp(16)));
+      itemRow.addView(colorDot);
+
+      // 中间：名称 + 类名（与云端一致）
+      LinearLayout infoCol = new LinearLayout(this);
+      infoCol.setOrientation(LinearLayout.VERTICAL);
+      infoCol.setPadding(dp(12), 0, 0, 0);
+      itemRow.addView(infoCol, new LinearLayout.LayoutParams(0, -2, 1));
+
+      int nameColor = parts[2] != null ? parseColor(parts[2]) : textColor();
+      TextView nameView = text(parts[1], 15, nameColor, Typeface.BOLD);
+      infoCol.addView(nameView, lp(-2, -2, 0, 0, dp(2), 0));
+
+      TextView classView = text(parts[0], 11, subTextColor(), Typeface.NORMAL);
+      infoCol.addView(classView, lp(-2, -2, 0, 0, 0, 0));
+
+      // 右侧：RGBA颜色值显示
+      if (parts[2] != null && !parts[2].isEmpty()) {
+        TextView rgbaLabel = new TextView(this);
+        rgbaLabel.setText(parts[2]);
+        rgbaLabel.setTextSize(9);
+        rgbaLabel.setTypeface(null, Typeface.NORMAL);
+        rgbaLabel.setTextColor(Color.argb(80, 255, 255, 255));
+        rgbaLabel.setBackground(round(Color.argb(10, 255, 255, 255), dp(4), 0, 0));
+        rgbaLabel.setPadding(dp(6), dp(2), dp(6), dp(2));
+        rgbaLabel.setGravity(Gravity.CENTER);
+        itemRow.addView(rgbaLabel, lp(-2, -2, 0, 0, dp(6), 0));
+      }
+
+      Button delBtn = new Button(this);
+      delBtn.setText("删除"); // 改为中文"删除"
+      delBtn.setTextSize(11);
+      delBtn.setTypeface(null, Typeface.BOLD);
+      delBtn.setTextColor(Color.argb(220, 255, 100, 100));
+      delBtn.setBackground(
+          round(Color.argb(18, 255, 80, 80), dp(8), Color.argb(40, 255, 80, 80), 1));
+      delBtn.setPadding(dp(10), dp(2), dp(10), dp(2));
+      delBtn.setAllCaps(false);
+      delBtn.setMinWidth(0);
+      delBtn.setMinimumWidth(0);
+      delBtn.setMinHeight(0);
+      delBtn.setMinimumHeight(0);
+      delBtn.setClickable(true);
+      delBtn.setFocusable(true);
+      delBtn.setFocusableInTouchMode(true); // 防止事件穿透
+      itemRow.addView(delBtn, lp(-2, dp(28), dp(6), 0, 0, 0));
+
+      delBtn.setOnClickListener(
+          v -> {
+            items.remove(index);
+            saveItemsToFile(items);
+            refreshContent(contentArea, true, tabBar);
+          });
+
+      // 点击行编辑
+      final int itemIndex = i;
+      itemRow.setOnClickListener(v -> showEditItemDialog(contentArea, tabBar, items, itemIndex));
+
+      // 分割线（极淡）
+      if (i < items.size() - 1) {
+        View divider = new View(this);
+        divider.setBackgroundColor(Color.argb(4, 255, 255, 255));
+        card.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
+      }
+    }
+  }
+
+  // ================================================================
+  // ☁️ 云端物资视图
+  // ================================================================
+  private void buildCloudView(final LinearLayout contentArea, final View tabBar) {
+    // === 操作按钮行 + 搜索框 ===
+    LinearLayout actionRow = new LinearLayout(this);
+    actionRow.setOrientation(LinearLayout.HORIZONTAL);
+    actionRow.setGravity(Gravity.CENTER_VERTICAL);
+    contentArea.addView(actionRow, lp(-1, -2, 0, 0, 0, dp(12)));
+
+    final TextView statusText = text("☁️ 加载中...", 13, subTextColor(), Typeface.NORMAL);
+    actionRow.addView(statusText, lp(-2, -2, 0, 0, 0, 0));
+
+    // 搜索框
+    final EditText searchInput = new EditText(this);
+    searchInput.setHint("🔍 搜索物资名称...");
+    searchInput.setHintTextColor(Color.argb(80, 255, 255, 255));
+    searchInput.setTextColor(textColor());
+    searchInput.setBackground(round(Color.argb(15, 255, 255, 255), dp(10), 0, 0));
+    searchInput.setPadding(dp(12), dp(6), dp(12), dp(6));
+    searchInput.setTextSize(13);
+    searchInput.setSingleLine(true);
+    actionRow.addView(searchInput, new LinearLayout.LayoutParams(0, dp(36), 1));
+    ((LinearLayout.LayoutParams) searchInput.getLayoutParams()).leftMargin = dp(10);
+
+    // === 加载本地已有的（用于判断哪些已添加）===
+    final List<String> localItems = new ArrayList<>();
+    File itemFile = new File("/storage/emulated/0/AuraKernel/自定义物资.txt");
+    if (itemFile.exists()) {
+      try {
+        BufferedReader br =
+            new BufferedReader(new InputStreamReader(new FileInputStream(itemFile), "UTF-8"));
+        String line;
+        while ((line = br.readLine()) != null) {
+          line = line.trim();
+          if (!line.isEmpty()) localItems.add(line);
+        }
+        br.close();
+      } catch (Exception ignored) {
+      }
+    }
+    final Set<String> localClassNames = new HashSet<>();
+    for (String s : localItems) {
+      String[] p = parseItem(s);
+      if (p[0] != null) localClassNames.add(p[0]);
+    }
+
+    // === 卡片容器 ===
+    final LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setPadding(dp(16), dp(16), dp(16), dp(16));
+    card.setBackground(createCardBackground());
+    card.setElevation(dp(2));
+    card.setOutlineProvider(null);
+    contentArea.addView(card, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    titleRow.setPadding(dp(4), 0, 0, dp(12));
+    card.addView(titleRow, lp(-1, -2, 0, 0, 0, 0));
+    View accent = new View(this);
+    accent.setBackground(round(primaryColor(), 3, 0, 0));
+    accent.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
+    titleRow.addView(accent);
+    final TextView cardTitle = text("云端物资", 15, textColor(), Typeface.BOLD);
+    cardTitle.setPadding(dp(10), 0, 0, 0);
+    titleRow.addView(cardTitle);
+
+    // 存储所有云端数据（用于搜索过滤）
+    final List<String> allCloudItems = new ArrayList<>();
+
+    // === 渲染卡片内容的函数（支持搜索过滤）===
+    final Runnable renderCloudItems =
+        new Runnable() {
+          @Override
+          public void run() {
+            // 清除 card 中 titleRow 之后的所有子视图
+            while (card.getChildCount() > 1) {
+              card.removeViewAt(card.getChildCount() - 1);
+            }
+
+            String keyword = searchInput.getText().toString().trim().toLowerCase();
+
+            // 过滤
+            List<String> filtered = new ArrayList<>();
+            for (String s : allCloudItems) {
+              if (keyword.isEmpty()) {
+                filtered.add(s);
+              } else {
+                String[] p = parseItem(s);
+                if (p[1] != null && p[1].toLowerCase().contains(keyword)) {
+                  filtered.add(s);
+                } else if (p[0] != null && p[0].toLowerCase().contains(keyword)) {
+                  filtered.add(s);
+                }
+              }
+            }
+
+            if (filtered.isEmpty()) {
+              String msg = keyword.isEmpty() ? "📭 暂无云端数据" : "🔍 未找到匹配「" + keyword + "」的物资";
+              TextView empty = text(msg, 13, subTextColor(), Typeface.NORMAL);
+              empty.setGravity(Gravity.CENTER);
+              empty.setPadding(0, dp(30), 0, dp(30));
+              card.addView(empty, lp(-1, -2, 0, 0, 0, 0));
+              return;
+            }
+
+            cardTitle.setText("云端物资 (" + filtered.size() + "/" + allCloudItems.size() + ")");
+
+            for (int i = 0; i < filtered.size(); i++) {
+              final String itemStr = filtered.get(i);
+              String[] parts = parseItem(itemStr);
+              final boolean alreadyHas = localClassNames.contains(parts[0]);
+
+              LinearLayout itemRow = new LinearLayout(MainActivity.this);
+              itemRow.setOrientation(LinearLayout.HORIZONTAL);
+              itemRow.setGravity(Gravity.CENTER_VERTICAL);
+              itemRow.setPadding(dp(4), dp(10), dp(4), dp(10));
+              card.addView(itemRow, lp(-1, -2, 0, 0, 0, 0));
+
+              View dot = new View(MainActivity.this);
+              int dotColor = parts[2] != null ? parseColor(parts[2]) : MAIN_GREEN;
+              dot.setBackground(round(dotColor, dp(12), 0, 0));
+              dot.setLayoutParams(new LinearLayout.LayoutParams(dp(16), dp(16)));
+              itemRow.addView(dot);
+
+              LinearLayout infoCol = new LinearLayout(MainActivity.this);
+              infoCol.setOrientation(LinearLayout.VERTICAL);
+              infoCol.setPadding(dp(12), 0, 0, 0);
+              itemRow.addView(infoCol, new LinearLayout.LayoutParams(0, -2, 1));
+
+              int nameColor = parts[2] != null ? parseColor(parts[2]) : textColor();
+              TextView nameView = text(parts[1], 15, nameColor, Typeface.BOLD);
+              infoCol.addView(nameView, lp(-2, -2, 0, 0, dp(2), 0));
+
+              TextView classView = text(parts[0], 11, subTextColor(), Typeface.NORMAL);
+              infoCol.addView(classView, lp(-2, -2, 0, 0, 0, 0));
+
+              if (alreadyHas) {
+                TextView addedTag = text("✓ 已添加", 12, MAIN_GREEN, Typeface.BOLD);
+                itemRow.addView(addedTag, lp(-2, -2, 0, 0, dp(8), 0));
+              } else {
+                Button addCloudBtn = new Button(MainActivity.this);
+                addCloudBtn.setText("＋添加");
+                addCloudBtn.setTextSize(12);
+                addCloudBtn.setTypeface(null, Typeface.BOLD);
+                addCloudBtn.setTextColor(Color.WHITE);
+                addCloudBtn.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+                addCloudBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
+                addCloudBtn.setAllCaps(false);
+                itemRow.addView(addCloudBtn, lp(-2, dp(30), 0, 0, 0, 0));
+
+                addCloudBtn.setOnClickListener(
+                    v -> {
+                      localItems.add(itemStr);
+                      localClassNames.add(parts[0]);
+                      saveItemsToFile(localItems);
+                      addCloudBtn.setText("✓ 已添加");
+                      addCloudBtn.setBackground(round(Color.argb(60, 81, 191, 101), dp(8), 0, 0));
+                      addCloudBtn.setEnabled(false);
+                      Toast.makeText(
+                              MainActivity.this, "✅ 已添加「" + parts[1] + "」", Toast.LENGTH_SHORT)
+                          .show();
+                    });
+              }
+
+              if (i < filtered.size() - 1) {
+                View divider = new View(MainActivity.this);
+                divider.setBackgroundColor(Color.argb(12, 255, 255, 255));
+                card.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
+              }
+            }
+          }
+        };
+
+    // 搜索监听
+    searchInput.addTextChangedListener(
+        new android.text.TextWatcher() {
+          @Override
+          public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+          @Override
+          public void afterTextChanged(android.text.Editable s) {}
+
+          @Override
+          public void onTextChanged(CharSequence s, int start, int before, int count) {
+            renderCloudItems.run();
+          }
+        });
+
+    // === 异步加载云端数据（带缓存）===
+    new Thread(
+            () -> {
+              // 先检查缓存
+              String cachedRaw = CacheManager.getCachedCloudItems();
+              if (cachedRaw != null) {
+                try {
+                  JSONObject json = new JSONObject(cachedRaw);
+                  final boolean success = json.optBoolean("success", false);
+                  final int count = json.optInt("count", 0);
+                  final org.json.JSONArray dataArr = json.optJSONArray("data");
+
+                  runOnUiThread(
+                      () -> {
+                        statusText.setText(success ? "☁️ (已缓存) 共 " + count + " 个物资" : "❌ 加载失败");
+                        if (dataArr != null) {
+                          allCloudItems.clear();
+                          for (int i = 0; i < dataArr.length(); i++) {
+                            String s = dataArr.optString(i, "");
+                            if (!s.isEmpty()) allCloudItems.add(s);
+                          }
+                          renderCloudItems.run();
+                        }
+                      });
+                  return; // 缓存命中，跳过网络请求
+                } catch (Exception ignored) {
+                }
+              }
+
+              // 缓存未命中，发起网络请求
+              try {
+                URL url = new URL("https://ht.xiaon.top/api/items.php");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+                conn.setRequestMethod("GET");
+
+                BufferedReader br =
+                    new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                conn.disconnect();
+
+                final String rawJson = sb.toString();
+
+                // ✅ 存入缓存
+                CacheManager.setCachedCloudItems(rawJson);
+
+                JSONObject json = new JSONObject(rawJson);
+                final boolean success = json.optBoolean("success", false);
+                final int count = json.optInt("count", 0);
+                final org.json.JSONArray dataArr = json.optJSONArray("data");
+
+                runOnUiThread(
+                    () -> {
+                      statusText.setText(success ? "☁️ 共 " + count + " 个物资" : "❌ 加载失败");
+                      if (dataArr != null) {
+                        allCloudItems.clear();
+                        for (int i = 0; i < dataArr.length(); i++) {
+                          String s = dataArr.optString(i, "");
+                          if (!s.isEmpty()) allCloudItems.add(s);
+                        }
+                        renderCloudItems.run();
+                      } else {
+                        TextView empty = text("📭 暂无云端数据", 13, subTextColor(), Typeface.NORMAL);
+                        empty.setGravity(Gravity.CENTER);
+                        empty.setPadding(0, dp(30), 0, dp(30));
+                        card.addView(empty, lp(-1, -2, 0, 0, 0, 0));
+                      }
+                    });
+
+              } catch (final Exception e) {
+                runOnUiThread(
+                    () -> {
+                      statusText.setText("❌ 网络错误");
+                      TextView err =
+                          text(
+                              "⚠️ " + e.getMessage(),
+                              12,
+                              Color.rgb(255, 100, 100),
+                              Typeface.NORMAL);
+                      err.setGravity(Gravity.CENTER);
+                      err.setPadding(0, dp(20), 0, dp(20));
+                      card.addView(err, lp(-1, -2, 0, 0, 0, 0));
+                    });
+              }
+            })
+        .start();
+  }
+
+  // ================================================================
+  // ➕ 添加物资对话框
+  // ================================================================
+    private void showAddItemDialog(final LinearLayout contentArea, final View tabBar) {
+    final Dialog dialog =
+        new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
+
+    ScrollView scrollWrapper = new ScrollView(this);
+    scrollWrapper.setFillViewport(false);
+    scrollWrapper.setVerticalScrollBarEnabled(false);
+
+    LinearLayout layout = new LinearLayout(this);
+    layout.setOrientation(LinearLayout.VERTICAL);
+    layout.setPadding(dp(24), dp(24), dp(24), dp(24));
+
+    // ☀️ 白色卡片背景
+    GradientDrawable bgDrawable = new GradientDrawable();
+    bgDrawable.setColor(cardColor());
+    bgDrawable.setCornerRadius(dp(20));
+    bgDrawable.setStroke(dp(1), borderColor());
+    layout.setBackground(bgDrawable);
+
+    // === 顶部装饰条 + 标题 ===
+    View accentBar = new View(this);
+    accentBar.setBackground(round(MAIN_GREEN, dp(3), 0, 0));
+    accentBar.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(4)));
+    layout.addView(accentBar, lp(-2, dp(4), 0, 0, 0, dp(16)));
+
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    layout.addView(titleRow, lp(-1, -2, 0, 0, 0, dp(20)));
+
+    TextView titleIcon = text("📦", 22, textColor(), Typeface.NORMAL);
+    titleRow.addView(titleIcon, lp(-2, -2, 0, 0, dp(10), 0));
+
+    TextView title = text("添加物资", 20, textColor(), Typeface.BOLD);
+    titleRow.addView(title, lp(-2, -2, 0, 0, 0, 0));
+
+    TextView titleSub = text("填写以下信息创建新的游戏物资", 11, subTextColor(), Typeface.NORMAL);
+    titleSub.setPadding(dp(34), 0, 0, 0);
+    layout.addView(titleSub, lp(-1, -2, 0, 0, 0, dp(22)));
+
+    // ===== 类名 =====
+    TextView lblClass = text("🔤 类名", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblClass, lp(-1, -2, 0, 0, 0, dp(6)));
+    final EditText inputClass = new EditText(this);
+    inputClass.setHint("例如: Pills_Pickup_C");
+    inputClass.setTextColor(textColor());
+    inputClass.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg = new GradientDrawable();
+    inputBg.setColor(Color.argb(10, 0, 0, 0));
+    inputBg.setCornerRadius(dp(10));
+    inputBg.setStroke(dp(1), borderColor());
+    inputClass.setBackground(inputBg);
+    inputClass.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputClass.setTextSize(14);
+    layout.addView(inputClass, lp(-1, dp(46), 0, 0, 0, dp(18)));
+
+    // ===== 名称 =====
+    TextView lblName = text("📝 显示名称", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblName, lp(-1, -2, 0, 0, 0, dp(6)));
+    final EditText inputName = new EditText(this);
+    inputName.setHint("例如: 止痛药");
+    inputName.setTextColor(textColor());
+    inputName.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg2 = new GradientDrawable();
+    inputBg2.setColor(Color.argb(10, 0, 0, 0));
+    inputBg2.setCornerRadius(dp(10));
+    inputBg2.setStroke(dp(1), borderColor());
+    inputName.setBackground(inputBg2);
+    inputName.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputName.setTextSize(14);
+    layout.addView(inputName, lp(-1, dp(46), 0, 0, 0, dp(18)));
+
+    // ===== 颜色 =====
+    TextView lblColor = text("🎨 颜色", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblColor, lp(-1, -2, 0, 0, 0, dp(6)));
+    LinearLayout colorRow = new LinearLayout(this);
+    colorRow.setOrientation(LinearLayout.HORIZONTAL);
+    colorRow.setGravity(Gravity.CENTER_VERTICAL);
+    final EditText inputColor = new EditText(this);
+    inputColor.setHint("R,G,B,A 格式");
+    inputColor.setTextColor(textColor());
+    inputColor.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg3 = new GradientDrawable();
+    inputBg3.setColor(Color.argb(10, 0, 0, 0));
+    inputBg3.setCornerRadius(dp(10));
+    inputBg3.setStroke(dp(1), borderColor());
+    inputColor.setBackground(inputBg3);
+    inputColor.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputColor.setTextSize(14);
+    inputColor.setText("0,255,38,255");
+    colorRow.addView(inputColor, new LinearLayout.LayoutParams(0, dp(46), 1));
+    // 颜色预览圆点 — 点击弹出调色盘
+    final View colorPreview = new View(this);
+    colorPreview.setBackground(round(parseColor("0,255,38,255"), dp(8), borderColor(), 1));
+    colorPreview.setLayoutParams(new LinearLayout.LayoutParams(dp(34), dp(34)));
+    colorPreview.setClickable(true);
+    colorPreview.setFocusable(true);
+    colorRow.addView(colorPreview, lp(dp(34), dp(34), dp(10), 0, 0, 0));
+
+    // 点击预览圆点 → 弹出调色盘
+    colorPreview.setOnClickListener(v -> showColorPickerDialog(inputColor, colorPreview));
+
+    inputColor.addTextChangedListener(
+        new android.text.TextWatcher() {
+          @Override
+          public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+          @Override
+          public void onTextChanged(CharSequence s, int start, int before, int count) {}
+          @Override
+          public void afterTextChanged(android.text.Editable s) {
+            try {
+              String[] parts = s.toString().split(",");
+              if (parts.length >= 3) {
+                int r = Integer.parseInt(parts[0].trim());
+                int g = Integer.parseInt(parts[1].trim());
+                int b = Integer.parseInt(parts[2].trim());
+                int a = parts.length >= 4 ? Integer.parseInt(parts[3].trim()) : 255;
+                colorPreview.setBackground(round(Color.argb(a, r, g, b), dp(8), borderColor(), 1));
+              }
+            } catch (Exception ignored) {}
+          }
+        });
+    layout.addView(colorRow, lp(-1, -2, 0, 0, 0, dp(18)));
+
+    // ===== 字体大小 =====
+    TextView lblSize = text("🔠 字体大小", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblSize, lp(-1, -2, 0, 0, 0, dp(6)));
+    final EditText inputSize = new EditText(this);
+    inputSize.setHint("例如: 25");
+    inputSize.setTextColor(textColor());
+    inputSize.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg4 = new GradientDrawable();
+    inputBg4.setColor(Color.argb(10, 0, 0, 0));
+    inputBg4.setCornerRadius(dp(10));
+    inputBg4.setStroke(dp(1), borderColor());
+    inputSize.setBackground(inputBg4);
+    inputSize.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputSize.setTextSize(14);
+    inputSize.setText("25");
+    inputSize.setInputType(InputType.TYPE_CLASS_NUMBER);
+    layout.addView(inputSize, lp(-1, dp(46), 0, 0, 0, dp(28)));
+
+    // ===== 按钮行 =====
+    LinearLayout btnRow = new LinearLayout(this);
+    btnRow.setOrientation(LinearLayout.HORIZONTAL);
+
+    Button cancelBtn = new Button(this);
+    cancelBtn.setText("取消");
+    cancelBtn.setTextSize(14);
+    cancelBtn.setTypeface(null, Typeface.BOLD);
+    cancelBtn.setTextColor(subTextColor());
+    cancelBtn.setBackground(round(Color.argb(8, 0, 0, 0), dp(12), borderColor(), 1));
+    cancelBtn.setPadding(0, dp(14), 0, dp(14));
+    cancelBtn.setAllCaps(false);
+    btnRow.addView(cancelBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
+
+    cancelBtn.setOnClickListener(v -> dialog.dismiss());
+
+    // 间隔
+    View btnSpacer = new View(this);
+    btnSpacer.setLayoutParams(new LinearLayout.LayoutParams(dp(12), 0));
+    btnRow.addView(btnSpacer);
+
+    Button confirmBtn = new Button(this);
+    confirmBtn.setText("确认添加");
+    confirmBtn.setTextSize(14);
+    confirmBtn.setTypeface(null, Typeface.BOLD);
+    confirmBtn.setTextColor(Color.WHITE);
+    GradientDrawable confirmBg = new GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[]{MAIN_GREEN, Color.rgb(65, 175, 85)});
+    confirmBg.setCornerRadius(dp(12));
+    confirmBtn.setBackground(confirmBg);
+    confirmBtn.setPadding(0, dp(14), 0, dp(14));
+    confirmBtn.setAllCaps(false);
+    btnRow.addView(confirmBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
+
+    confirmBtn.setOnClickListener(
+        v -> {
+          String cls = inputClass.getText().toString().trim();
+          String name = inputName.getText().toString().trim();
+          String color = inputColor.getText().toString().trim();
+          String size = inputSize.getText().toString().trim();
+
+          if (cls.isEmpty() || name.isEmpty()) {
+            Toast.makeText(this, "⚠️ 类名和名称不能为空", Toast.LENGTH_SHORT).show();
+            return;
+          }
+          if (size.isEmpty()) size = "25";
+
+          String newItem = cls + "@" + name + "@" + color + "@" + size;
+
+          try {
+            File dir = new File("/storage/emulated/0/AuraKernel");
+            if (!dir.exists()) dir.mkdirs();
+            File file = new File(dir, "自定义物资.txt");
+            FileOutputStream fos = new FileOutputStream(file, true);
+            fos.write((newItem + "\n").getBytes("UTF-8"));
+            fos.close();
+            Toast.makeText(this, "✅ 已添加「" + name + "」", Toast.LENGTH_SHORT).show();
+          } catch (Exception e) {
+            Toast.makeText(this, "❌ 写入失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+          }
+
+          dialog.dismiss();
+          refreshContent(contentArea, true, tabBar);
+        });
+
+    layout.addView(btnRow, lp(-1, -2, 0, dp(8), 0, 0));
+
+    scrollWrapper.addView(layout);
+    dialog.setContentView(scrollWrapper);
+    Window win = dialog.getWindow();
+    if (win != null) {
+      win.setLayout(dp(360), -2);
+      win.setBackgroundDrawable(null);
+      win.setDimAmount(0.5f);
+    }
+    dialog.show();
+  }
+
+  // ================================================================
+  // 🛠 工具方法
+  // ================================================================
+
+  // 解析一行物资数据：类名@名称@R,G,B,A@字体大小
+  private String[] parseItem(String item) {
+    String[] result = new String[4]; // 0=类名, 1=名称, 2=颜色, 3=字体大小
+    if (item == null || item.isEmpty()) return result;
+    String[] parts = item.split("@", -1);
+    if (parts.length >= 1) result[0] = parts[0].trim();
+    if (parts.length >= 2) result[1] = parts[1].trim();
+    if (parts.length >= 3) result[2] = parts[2].trim();
+    if (parts.length >= 4) result[3] = parts[3].trim();
+    return result;
+  }
+
+  // 解析 "R,G,B,A" 格式的颜色字符串
+  private int parseColor(String colorStr) {
+    try {
+      String[] parts = colorStr.split(",");
+      if (parts.length >= 3) {
+        int r = Integer.parseInt(parts[0].trim());
+        int g = Integer.parseInt(parts[1].trim());
+        int b = Integer.parseInt(parts[2].trim());
+        int a = parts.length >= 4 ? Integer.parseInt(parts[3].trim()) : 255;
+        return Color.argb(a, r, g, b);
+      }
+    } catch (Exception ignored) {
+    }
+    return MAIN_GREEN;
+  }
+
+  // 保存物资列表到文件（覆盖写入）
+  private void saveItemsToFile(List<String> items) {
+    try {
+      File dir = new File("/storage/emulated/0/AuraKernel");
+      if (!dir.exists()) dir.mkdirs();
+      File file = new File(dir, "自定义物资.txt");
+      FileOutputStream fos = new FileOutputStream(file, false);
+      for (String item : items) {
+        fos.write((item + "\n").getBytes("UTF-8"));
+      }
+      fos.close();
+    } catch (Exception ignored) {
+    }
+  }
+
+  // ✏️ 编辑物资对话框
+    private void showEditItemDialog(
+      final LinearLayout contentArea,
+      final View tabBar,
+      final List<String> items,
+      final int index) {
+    final String oldItem = items.get(index);
+    final String[] oldParts = parseItem(oldItem);
+
+    final Dialog dialog =
+        new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
+
+    ScrollView scrollWrapper = new ScrollView(this);
+    scrollWrapper.setFillViewport(false);
+    scrollWrapper.setVerticalScrollBarEnabled(false);
+
+    LinearLayout layout = new LinearLayout(this);
+    layout.setOrientation(LinearLayout.VERTICAL);
+    layout.setPadding(dp(24), dp(24), dp(24), dp(24));
+
+    // ☀️ 白色卡片背景
+    GradientDrawable bgDrawable = new GradientDrawable();
+    bgDrawable.setColor(cardColor());
+    bgDrawable.setCornerRadius(dp(20));
+    bgDrawable.setStroke(dp(1), borderColor());
+    layout.setBackground(bgDrawable);
+
+    // === 顶部装饰条 + 标题 ===
+    View accentBar = new View(this);
+    accentBar.setBackground(round(MAIN_GREEN, dp(3), 0, 0));
+    accentBar.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(4)));
+    layout.addView(accentBar, lp(-2, dp(4), 0, 0, 0, dp(16)));
+
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER_VERTICAL);
+    layout.addView(titleRow, lp(-1, -2, 0, 0, 0, dp(20)));
+
+    TextView titleIcon = text("✏️", 22, textColor(), Typeface.NORMAL);
+    titleRow.addView(titleIcon, lp(-2, -2, 0, 0, dp(10), 0));
+
+    TextView title = text("编辑物资", 20, textColor(), Typeface.BOLD);
+    titleRow.addView(title, lp(-2, -2, 0, 0, 0, 0));
+
+    TextView titleSub = text("修改当前物资的配置信息", 11, subTextColor(), Typeface.NORMAL);
+    titleSub.setPadding(dp(34), 0, 0, 0);
+    layout.addView(titleSub, lp(-1, -2, 0, 0, 0, dp(22)));
+
+    // 当前正在编辑的物资名称提示
+    String currentName = oldParts[1] != null && !oldParts[1].isEmpty() ? oldParts[1] : "未命名";
+    TextView editHint = text("正在编辑: 「" + currentName + "」", 11, MAIN_GREEN, Typeface.NORMAL);
+    editHint.setPadding(dp(34), 0, 0, dp(12));
+    layout.addView(editHint, lp(-1, -2, 0, 0, 0, dp(4)));
+
+    // ===== 类名 =====
+    TextView lblClass = text("🔤 类名", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblClass, lp(-1, -2, 0, 0, 0, dp(6)));
+    final EditText inputClass = new EditText(this);
+    inputClass.setHint("例如: Pills_Pickup_C");
+    inputClass.setText(oldParts[0]);
+    inputClass.setTextColor(textColor());
+    inputClass.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg = new GradientDrawable();
+    inputBg.setColor(Color.argb(10, 0, 0, 0));
+    inputBg.setCornerRadius(dp(10));
+    inputBg.setStroke(dp(1), borderColor());
+    inputClass.setBackground(inputBg);
+    inputClass.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputClass.setTextSize(14);
+    layout.addView(inputClass, lp(-1, dp(46), 0, 0, 0, dp(18)));
+
+    // ===== 名称 =====
+    TextView lblName = text("📝 显示名称", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblName, lp(-1, -2, 0, 0, 0, dp(6)));
+    final EditText inputName = new EditText(this);
+    inputName.setHint("例如: 止痛药");
+    inputName.setText(oldParts[1]);
+    inputName.setTextColor(textColor());
+    inputName.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg2 = new GradientDrawable();
+    inputBg2.setColor(Color.argb(10, 0, 0, 0));
+    inputBg2.setCornerRadius(dp(10));
+    inputBg2.setStroke(dp(1), borderColor());
+    inputName.setBackground(inputBg2);
+    inputName.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputName.setTextSize(14);
+    layout.addView(inputName, lp(-1, dp(46), 0, 0, 0, dp(18)));
+
+    // ===== 颜色 =====
+    TextView lblColor = text("🎨 颜色", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblColor, lp(-1, -2, 0, 0, 0, dp(6)));
+    LinearLayout colorRow = new LinearLayout(this);
+    colorRow.setOrientation(LinearLayout.HORIZONTAL);
+    colorRow.setGravity(Gravity.CENTER_VERTICAL);
+    final EditText inputColor = new EditText(this);
+    inputColor.setHint("R,G,B,A 格式");
+    String oldColor = oldParts[2] != null ? oldParts[2] : "0,255,38,255";
+    inputColor.setText(oldColor);
+    inputColor.setTextColor(textColor());
+    inputColor.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg3 = new GradientDrawable();
+    inputBg3.setColor(Color.argb(10, 0, 0, 0));
+    inputBg3.setCornerRadius(dp(10));
+    inputBg3.setStroke(dp(1), borderColor());
+    inputColor.setBackground(inputBg3);
+    inputColor.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputColor.setTextSize(14);
+    colorRow.addView(inputColor, new LinearLayout.LayoutParams(0, dp(46), 1));
+    // 颜色预览圆点 — 点击弹出调色盘
+    final View colorPreview = new View(this);
+    int initColor = parseColor(oldColor);
+    colorPreview.setBackground(round(initColor, dp(8), borderColor(), 1));
+    colorPreview.setLayoutParams(new LinearLayout.LayoutParams(dp(34), dp(34)));
+    colorPreview.setClickable(true);
+    colorPreview.setFocusable(true);
+    colorRow.addView(colorPreview, lp(dp(34), dp(34), dp(10), 0, 0, 0));
+
+    // 点击预览圆点 → 弹出调色盘
+    colorPreview.setOnClickListener(v -> showColorPickerDialog(inputColor, colorPreview));
+
+    inputColor.addTextChangedListener(
+        new android.text.TextWatcher() {
+          @Override
+          public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+          @Override
+          public void onTextChanged(CharSequence s, int start, int before, int count) {}
+          @Override
+          public void afterTextChanged(android.text.Editable s) {
+            try {
+              String[] parts = s.toString().split(",");
+              if (parts.length >= 3) {
+                int r = Integer.parseInt(parts[0].trim());
+                int g = Integer.parseInt(parts[1].trim());
+                int b = Integer.parseInt(parts[2].trim());
+                int a = parts.length >= 4 ? Integer.parseInt(parts[3].trim()) : 255;
+                colorPreview.setBackground(round(Color.argb(a, r, g, b), dp(8), borderColor(), 1));
+              }
+            } catch (Exception ignored) {}
+          }
+        });
+    layout.addView(colorRow, lp(-1, -2, 0, 0, 0, dp(18)));
+
+    // ===== 字体大小 =====
+    TextView lblSize = text("🔠 字体大小", 12, textColor(), Typeface.BOLD);
+    layout.addView(lblSize, lp(-1, -2, 0, 0, 0, dp(6)));
+    final EditText inputSize = new EditText(this);
+    inputSize.setHint("例如: 25");
+    String oldSize = oldParts[3] != null ? oldParts[3] : "25";
+    inputSize.setText(oldSize);
+    inputSize.setTextColor(textColor());
+    inputSize.setHintTextColor(Color.argb(120, 140, 150, 160));
+    GradientDrawable inputBg4 = new GradientDrawable();
+    inputBg4.setColor(Color.argb(10, 0, 0, 0));
+    inputBg4.setCornerRadius(dp(10));
+    inputBg4.setStroke(dp(1), borderColor());
+    inputSize.setBackground(inputBg4);
+    inputSize.setPadding(dp(14), dp(12), dp(14), dp(12));
+    inputSize.setTextSize(14);
+    inputSize.setInputType(InputType.TYPE_CLASS_NUMBER);
+    layout.addView(inputSize, lp(-1, dp(46), 0, 0, 0, dp(28)));
+
+    // ===== 按钮行 =====
+    LinearLayout btnRow = new LinearLayout(this);
+    btnRow.setOrientation(LinearLayout.HORIZONTAL);
+
+    Button cancelBtn = new Button(this);
+    cancelBtn.setText("取消");
+    cancelBtn.setTextSize(14);
+    cancelBtn.setTypeface(null, Typeface.BOLD);
+    cancelBtn.setTextColor(subTextColor());
+    cancelBtn.setBackground(round(Color.argb(8, 0, 0, 0), dp(12), borderColor(), 1));
+    cancelBtn.setPadding(0, dp(14), 0, dp(14));
+    cancelBtn.setAllCaps(false);
+    btnRow.addView(cancelBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
+
+    cancelBtn.setOnClickListener(v -> dialog.dismiss());
+
+    // 间隔
+    View btnSpacer = new View(this);
+    btnSpacer.setLayoutParams(new LinearLayout.LayoutParams(dp(12), 0));
+    btnRow.addView(btnSpacer);
+
+    Button confirmBtn = new Button(this);
+    confirmBtn.setText("保存修改");
+    confirmBtn.setTextSize(14);
+    confirmBtn.setTypeface(null, Typeface.BOLD);
+    confirmBtn.setTextColor(Color.WHITE);
+    GradientDrawable confirmBg = new GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[]{MAIN_GREEN, Color.rgb(65, 175, 85)});
+    confirmBg.setCornerRadius(dp(12));
+    confirmBtn.setBackground(confirmBg);
+    confirmBtn.setPadding(0, dp(14), 0, dp(14));
+    confirmBtn.setAllCaps(false);
+    btnRow.addView(confirmBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
+
+    confirmBtn.setOnClickListener(
+        v -> {
+          String cls = inputClass.getText().toString().trim();
+          String name = inputName.getText().toString().trim();
+          String color = inputColor.getText().toString().trim();
+          String size = inputSize.getText().toString().trim();
+
+          if (cls.isEmpty() || name.isEmpty()) {
+            Toast.makeText(this, "⚠️ 类名和名称不能为空", Toast.LENGTH_SHORT).show();
+            return;
+          }
+          if (size.isEmpty()) size = "25";
+
+          String newItem = cls + "@" + name + "@" + color + "@" + size;
+
+          items.set(index, newItem);
+          saveItemsToFile(items);
+          Toast.makeText(this, "✅ 已更新「" + name + "」", Toast.LENGTH_SHORT).show();
+
+          dialog.dismiss();
+          refreshContent(contentArea, true, tabBar);
+        });
+
+    layout.addView(btnRow, lp(-1, -2, 0, dp(8), 0, 0));
+
+    scrollWrapper.addView(layout);
+    dialog.setContentView(scrollWrapper);
+    Window win = dialog.getWindow();
+    if (win != null) {
+      win.setLayout(dp(360), -2);
+      win.setBackgroundDrawable(null);
+      win.setDimAmount(0.5f);
+    }
+    dialog.show();
+  }
+
+    // ================================================================
+  // 🎨 调色盘对话框 — 点击颜色预览圆点弹出
+  // ================================================================
+  private void showColorPickerDialog(final EditText colorInput, final View previewDot) {
+    final Dialog picker = new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+    picker.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    picker.setCancelable(true);
+
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setPadding(dp(20), dp(20), dp(20), dp(20));
+
+    GradientDrawable rootBg = new GradientDrawable();
+    rootBg.setColor(cardColor());
+    rootBg.setCornerRadius(dp(16));
+    rootBg.setStroke(dp(1), borderColor());
+    root.setBackground(rootBg);
+
+    // 标题
+    TextView title = text("🎨 选择颜色", 16, textColor(), Typeface.BOLD);
+    title.setGravity(Gravity.CENTER);
+    root.addView(title, lp(-1, -2, 0, 0, 0, dp(16)));
+
+    // 预设颜色数组 (R,G,B,A) 格式字符串
+    final String[][] colorPalette = {
+        {"255,255,255,255", "200,200,200,255", "160,160,160,255", "120,120,120,255", "80,80,80,255", "40,40,40,255"},
+        {"255,80,80,255",   "255,150,50,255",  "255,210,50,255", "180,220,60,255", "80,200,100,255", "50,180,160,255"},
+        {"60,140,220,255",  "80,100,200,255",  "140,90,200,255", "200,80,180,255", "220,100,140,255", "180,120,80,255"},
+        {"0,255,38,255",    "0,200,200,255",   "255,200,0,255",  "255,100,0,255",  "255,0,100,255",  "200,0,200,255"},
+        {"100,200,255,255", "150,255,180,255", "255,255,150,255","255,200,150,255","255,150,200,255","200,180,255,255"},
+    };
+
+    for (int row = 0; row < colorPalette.length; row++) {
+      LinearLayout rowLayout = new LinearLayout(this);
+      rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+      rowLayout.setGravity(Gravity.CENTER);
+      rowLayout.setPadding(0, 0, 0, dp(8));
+
+      for (int col = 0; col < colorPalette[row].length; col++) {
+        final String colorStr = colorPalette[row][col];
+        final View colorDot = new View(this);
+        int dotColor = parseColor(colorStr);
+        colorDot.setBackground(round(dotColor, dp(8), borderColor(), 1));
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(38), dp(38));
+        if (col < colorPalette[row].length - 1) {
+          dotLp.setMargins(0, 0, dp(8), 0);
+        }
+        colorDot.setLayoutParams(dotLp);
+        colorDot.setClickable(true);
+        colorDot.setFocusable(true);
+
+        colorDot.setOnClickListener(v -> {
+          colorInput.setText(colorStr);
+          colorInput.setSelection(colorStr.length());
+          previewDot.setBackground(round(parseColor(colorStr), dp(8), borderColor(), 1));
+          picker.dismiss();
+        });
+
+        rowLayout.addView(colorDot);
+      }
+      root.addView(rowLayout, lp(-1, -2, 0, 0, 0, 0));
+    }
+
+    picker.setContentView(root);
+    Window win = picker.getWindow();
+    if (win != null) {
+      win.setLayout(dp(320), -2);
+      win.setBackgroundDrawable(null);
+      win.setDimAmount(0.4f);
+    }
+    picker.show();
+  }
+
+
+  private View createMinePage() {
+    ScrollView scroll = new ScrollView(this);
+    scroll.setFillViewport(true);
+    scroll.setVerticalScrollBarEnabled(false);
+    LinearLayout page = new LinearLayout(this);
+    page.setOrientation(LinearLayout.VERTICAL);
+    page.setPadding(dp(20), dp(22) + getStatusBarHeight(), dp(20), dp(20));
+    page.setBackgroundColor(bgColor());
+    scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
+
+    // ===== 顶部标题区（带头像） =====
     LinearLayout headerArea = new LinearLayout(this);
     headerArea.setOrientation(LinearLayout.VERTICAL);
     // 🌈 加一个微妙的渐变背景
-    GradientDrawable headerAreaBg = new GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        new int[] { Color.argb(18, 81, 191, 101), Color.TRANSPARENT }
-    );
+    GradientDrawable headerAreaBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {Color.argb(18, 81, 191, 101), Color.TRANSPARENT});
     headerAreaBg.setCornerRadius(dp(24));
     headerArea.setBackground(headerAreaBg);
     headerArea.setPadding(dp(6), dp(6), dp(6), dp(16));
@@ -4236,7 +5496,6 @@ public class MainActivity extends Activity {
     TextView title = text("我的", 28, textColor(), Typeface.BOLD);
     titleRow.addView(title, lp(-2, -2, 0, 0, 0, 0));
 
-
     LinearLayout subRow = new LinearLayout(this);
     subRow.setOrientation(LinearLayout.HORIZONTAL);
     subRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -4252,7 +5511,7 @@ public class MainActivity extends Activity {
     // ================================================================
     // 📋 卡片1：卡密信息
     // ================================================================
-       // ================================================================
+    // ================================================================
     // 📋 卡片1：卡密信息
     // ================================================================
     LinearLayout cardKami = createGlassCard("💳 卡密信息");
@@ -4262,9 +5521,12 @@ public class MainActivity extends Activity {
     boolean hasKey = !savedKey.isEmpty();
 
     // 行1：卡密卡号（中间打码）
-    String kamiDisplay = hasKey
-        ? savedKey.substring(0, Math.min(4, savedKey.length())) + "****" + savedKey.substring(Math.max(0, savedKey.length() - 4))
-        : "暂无";
+    String kamiDisplay =
+        hasKey
+            ? savedKey.substring(0, Math.min(4, savedKey.length()))
+                + "****"
+                + savedKey.substring(Math.max(0, savedKey.length() - 4))
+            : "暂无";
     addMineInfoRow(cardKami, "🔑", "卡密卡号", kamiDisplay, hasKey ? primaryColor() : subTextColor());
     addMineDivider(cardKami);
 
@@ -4286,7 +5548,8 @@ public class MainActivity extends Activity {
       //    child[0] = 标题, child[1]=卡号行, child[2]=分割线, child[3]=状态行,
       //    child[4]=分割线, child[5]=类型行, child[6]=分割线, child[7]=时间行
       final int[] rowIdx = {3, 5, 7}; // 状态行、类型行、时间行的正确索引！
-      verifyCardFromServer(savedKey,
+      verifyCardFromServer(
+          savedKey,
           new VerifyCallback() {
             @Override
             public void onSuccess(String type, String endTime, String status) {
@@ -4303,7 +5566,6 @@ public class MainActivity extends Activity {
             }
           });
     }
-
 
     // ================================================================
     // 📋 卡片2：设备信息
@@ -4333,27 +5595,43 @@ public class MainActivity extends Activity {
 
     // 1. 清理配置
     View cleanConfigRow = addMineActionRow(cardClean, "⚙️", "清理配置", "删除 AuraKernel 配置文件");
-    cleanConfigRow.setOnClickListener(v -> {
-      new Thread(() -> {
-        File configFile = new File("/storage/emulated/0/AuraKernel/Aura选择配置.json");
-        boolean deleted = configFile.exists() && configFile.delete();
-        handler.post(() -> Toast.makeText(MainActivity.this,
-            deleted ? "配置文件已删除" : "配置文件不存在或删除失败", Toast.LENGTH_SHORT).show());
-      }).start();
-    });
+    cleanConfigRow.setOnClickListener(
+        v -> {
+          new Thread(
+                  () -> {
+                    File configFile = new File("/storage/emulated/0/AuraKernel/Aura选择配置.json");
+                    boolean deleted = configFile.exists() && configFile.delete();
+                    handler.post(
+                        () ->
+                            Toast.makeText(
+                                    MainActivity.this,
+                                    deleted ? "配置文件已删除" : "配置文件不存在或删除失败",
+                                    Toast.LENGTH_SHORT)
+                                .show());
+                  })
+              .start();
+        });
     addMineDivider(cardClean);
 
     // 2. 清理内核&驱动
     View cleanKernelRow = addMineActionRow(cardClean, "🧹", "清理内核&驱动", "清除已刷入的内核、驱动文件");
-    cleanKernelRow.setOnClickListener(v -> {
-      new Thread(() -> {
-        boolean success = deleteDirContents(new File(getFilesDir(), "drivers"));
-        handler.post(() -> {
-          Toast.makeText(MainActivity.this, success ? "内核和驱动已清理" : "清理失败", Toast.LENGTH_SHORT).show();
-          if (currentPage == 1) refreshDriverFileList();
+    cleanKernelRow.setOnClickListener(
+        v -> {
+          new Thread(
+                  () -> {
+                    boolean success = deleteDirContents(new File(getFilesDir(), "drivers"));
+                    handler.post(
+                        () -> {
+                          Toast.makeText(
+                                  MainActivity.this,
+                                  success ? "内核和驱动已清理" : "清理失败",
+                                  Toast.LENGTH_SHORT)
+                              .show();
+                          if (currentPage == 1) refreshDriverFileList();
+                        });
+                  })
+              .start();
         });
-      }).start();
-    });
     addMineDivider(cardClean);
 
     // 3. 低级清理
@@ -4378,7 +5656,8 @@ public class MainActivity extends Activity {
 
     // 7. 清理说明
     View cleanDescRow = addMineActionRow(cardClean, "ℹ️", "清理说明", "查看各级清理功能介绍");
-    cleanDescRow.setOnClickListener(v -> Toast.makeText(MainActivity.this, "清理说明开发中", Toast.LENGTH_SHORT).show());
+    cleanDescRow.setOnClickListener(
+        v -> Toast.makeText(MainActivity.this, "清理说明开发中", Toast.LENGTH_SHORT).show());
 
     // ================================================================
     // 📋 卡片4：设置
@@ -4406,9 +5685,8 @@ public class MainActivity extends Activity {
     exitRow.setOnClickListener(v -> finish());
 
     // ===== 底部的提示文字 =====
-    TextView tip = text(
-        "💡 运行程序采用实时管道模式，stdout/stderr 会实时显示在终端",
-        11, subTextColor(), Typeface.NORMAL);
+    TextView tip =
+        text("💡 运行程序采用实时管道模式，stdout/stderr 会实时显示在终端", 11, subTextColor(), Typeface.NORMAL);
     tip.setLineSpacing(dp(2), 1f);
     tip.setPadding(dp(2), dp(10), dp(2), 0);
     page.addView(tip, lp(-1, -2, 0, 0, 0, 0));
@@ -4416,16 +5694,17 @@ public class MainActivity extends Activity {
     return scroll;
   }
 
-
-    /**
+  /**
    * 我的页面：带右箭头的操作行（用于清理工具、设置列表）
+   *
    * @param parent 父容器卡片
    * @param emoji 左侧图标
    * @param title 标题文字
    * @param desc 描述文字
    * @return 返回整行 View，用于设置点击事件
    */
-  private LinearLayout addMineActionRow(LinearLayout parent, String emoji, String title, String desc) {
+  private LinearLayout addMineActionRow(
+      LinearLayout parent, String emoji, String title, String desc) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
@@ -4437,12 +5716,15 @@ public class MainActivity extends Activity {
     // 左侧图标圆形背景
     TextView iconView = text(emoji, 18, primaryColor(), Typeface.BOLD);
     iconView.setGravity(Gravity.CENTER);
-        // 🌈 图标背景：根据emoji内容变换底色
+    // 🌈 图标背景：根据emoji内容变换底色
     int iconBgColor;
     if (emoji.contains("🔑") || emoji.contains("📌")) iconBgColor = Color.argb(25, 81, 191, 101);
-    else if (emoji.contains("📱") || emoji.contains("⚙️")) iconBgColor = Color.argb(25, 22, 119, 255);
-    else if (emoji.contains("💻") || emoji.contains("🏭")) iconBgColor = Color.argb(25, 255, 152, 0);
-    else if (emoji.contains("🖥️") || emoji.contains("🐧")) iconBgColor = Color.argb(25, 156, 39, 176);
+    else if (emoji.contains("📱") || emoji.contains("⚙️"))
+      iconBgColor = Color.argb(25, 22, 119, 255);
+    else if (emoji.contains("💻") || emoji.contains("🏭"))
+      iconBgColor = Color.argb(25, 255, 152, 0);
+    else if (emoji.contains("🖥️") || emoji.contains("🐧"))
+      iconBgColor = Color.argb(25, 156, 39, 176);
     else if (emoji.contains("🛡️")) iconBgColor = Color.argb(25, 244, 67, 54);
     else iconBgColor = Color.argb(25, 120, 130, 150);
     iconView.setBackground(round(iconBgColor, 100, 0, 0));
@@ -4473,16 +5755,17 @@ public class MainActivity extends Activity {
     return row;
   }
 
-
-    /**
+  /**
    * 我的页面：信息展示行（左侧图标 + 标签 + 右侧值，无箭头）
+   *
    * @param parent 父容器卡片
    * @param emoji 左侧小图标
    * @param label 标签名
    * @param value 右侧值
    * @param valueColor 值的颜色
    */
-    private void addMineInfoRow(LinearLayout parent, String emoji, String label, String value, int valueColor) {
+  private void addMineInfoRow(
+      LinearLayout parent, String emoji, String label, String value, int valueColor) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
@@ -4513,16 +5796,16 @@ public class MainActivity extends Activity {
     row.setTag(valueView);
   }
 
-
-
-    /**
+  /**
    * 更新我的页面中的信息行数值
+   *
    * @param parent 父卡片
    * @param childIndex 行在卡片中的索引
    * @param newValue 新值
    * @param valueColor 新值的颜色
    */
-  private void updateMineInfoRow(LinearLayout parent, int childIndex, String newValue, int valueColor) {
+  private void updateMineInfoRow(
+      LinearLayout parent, int childIndex, String newValue, int valueColor) {
     if (parent == null || childIndex < 0 || childIndex >= parent.getChildCount()) return;
     View child = parent.getChildAt(childIndex);
     if (child instanceof LinearLayout) {
@@ -4544,38 +5827,35 @@ public class MainActivity extends Activity {
     }
   }
 
-    /** 🔵 旧版分割线（驱动页面、浏览器等共用）—— 必须保留！ */
+  /** 🔵 旧版分割线（驱动页面、浏览器等共用）—— 必须保留！ */
   private void addDivider(LinearLayout parent) {
     View v = new View(this);
     v.setBackgroundColor(borderColor());
     parent.addView(v, new LinearLayout.LayoutParams(-1, 1));
   }
 
-    // ==================== ✨ 发光装饰分隔线 ====================
+  // ==================== ✨ 发光装饰分隔线 ====================
   private View glowDivider() {
     View v = new View(this);
-    GradientDrawable gd = new GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        new int[] { Color.TRANSPARENT, Color.argb(60, 81, 191, 101), Color.TRANSPARENT }
-    );
+    GradientDrawable gd =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {Color.TRANSPARENT, Color.argb(60, 81, 191, 101), Color.TRANSPARENT});
     gd.setCornerRadius(dp(2));
     v.setBackground(gd);
     return v;
   }
 
-
-    /** 优雅分割线（更细、颜色更浅） */
+  /** 优雅分割线（更细、颜色更浅） */
   private void addMineDivider(LinearLayout parent) {
     View divider = new View(this);
     // 渐变分割线（左到右渐隐）
-    GradientDrawable dividerDrawable = new GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        new int[] { 
-            Color.argb(80, 200, 210, 225), 
-            Color.argb(20, 200, 210, 225),
-            Color.TRANSPARENT 
-        }
-    );
+    GradientDrawable dividerDrawable =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {
+              Color.argb(80, 200, 210, 225), Color.argb(20, 200, 210, 225), Color.TRANSPARENT
+            });
     dividerDrawable.setCornerRadius(dp(1));
     divider.setBackground(dividerDrawable);
     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(1));
@@ -4583,9 +5863,9 @@ public class MainActivity extends Activity {
     parent.addView(divider, lp);
   }
 
-
-    /**
+  /**
    * 创建带标题的玻璃态卡片
+   *
    * @param title 卡片标题（含 emoji，如 "🔑 卡密信息"）
    * @return 卡片 LinearLayout（VERTICAL 方向）
    */
@@ -4603,15 +5883,15 @@ public class MainActivity extends Activity {
     titleContainer.setOrientation(LinearLayout.HORIZONTAL);
     titleContainer.setGravity(Gravity.CENTER_VERTICAL);
     titleContainer.setPadding(dp(4), 0, 0, dp(10));
-    
+
     // 彩色小竖条装饰
     View accentLine = new View(this);
     accentLine.setBackground(round(primaryColor(), 3, 0, 0));
     accentLine.setLayoutParams(new LinearLayout.LayoutParams(dp(4), dp(16)));
-    
+
     TextView titleView = text(title, 15, textColor(), Typeface.BOLD);
     titleView.setPadding(dp(10), 0, 0, 0);
-    
+
     titleContainer.addView(accentLine);
     titleContainer.addView(titleView);
     card.addView(titleContainer, lp(-1, -2, 0, 0, 0, 0));
@@ -4621,16 +5901,16 @@ public class MainActivity extends Activity {
 
   // 卡片背景（带阴影和浅色渐变）
   private GradientDrawable createCardBackground() {
-    GradientDrawable g = new GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        new int[] { cardColor(), nightMode ? Color.rgb(18, 22, 34) : Color.rgb(252, 253, 255) }
-    );
+    GradientDrawable g =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {cardColor(), nightMode ? Color.rgb(18, 22, 34) : Color.rgb(252, 253, 255)});
     g.setCornerRadius(dp(22));
     g.setStroke(dp(1), borderColor());
     return g;
   }
 
-      /** 主题模式切换行（带即时切换滑块） */
+  /** 主题模式切换行（带即时切换滑块） */
   private LinearLayout createThemeToggleRow() {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.HORIZONTAL);
@@ -4655,7 +5935,8 @@ public class MainActivity extends Activity {
     TextView titleView = text("主题模式", 15, textColor(), Typeface.BOLD);
     textArea.addView(titleView, lp(-1, -2, 0, 0, 0, dp(3)));
 
-    final TextView descView = text(nightMode ? "当前为夜间模式" : "当前为日间模式", 12, subTextColor(), Typeface.NORMAL);
+    final TextView descView =
+        text(nightMode ? "当前为夜间模式" : "当前为日间模式", 12, subTextColor(), Typeface.NORMAL);
     textArea.addView(descView, lp(-1, -2, 0, 0, 0, 0));
 
     // 自定义滑块开关
@@ -4673,18 +5954,18 @@ public class MainActivity extends Activity {
     row.addView(switchWrap, swLp);
 
     // 点击切换
-    row.setOnClickListener(v -> {
-      toggleTheme();
-      // 更新滑块状态
-      boolean isNight = nightMode;
-      switchWrap.setBackground(round(isNight ? primaryColor() : disabledColor(), 14, 0, 0));
-      switchText.setText(isNight ? "🌙 夜间" : "☀️ 日间");
-      descView.setText(isNight ? "当前为夜间模式" : "当前为日间模式");
-    });
+    row.setOnClickListener(
+        v -> {
+          toggleTheme();
+          // 更新滑块状态
+          boolean isNight = nightMode;
+          switchWrap.setBackground(round(isNight ? primaryColor() : disabledColor(), 14, 0, 0));
+          switchText.setText(isNight ? "🌙 夜间" : "☀️ 日间");
+          descView.setText(isNight ? "当前为夜间模式" : "当前为日间模式");
+        });
 
     return row;
   }
-
 
   private void runSelectedFile() {
     // ===== 签名校验 =====
@@ -4702,7 +5983,7 @@ public class MainActivity extends Activity {
       return;
     }
 
-       // ===== 🔒 方案四：防重复点击（立即锁定按钮）=====
+    // ===== 🔒 方案四：防重复点击（立即锁定按钮）=====
     if (running) return;
     running = true;
     updateRunButton();
@@ -4728,10 +6009,11 @@ public class MainActivity extends Activity {
                   conn.getOutputStream().write(body.toString().getBytes());
 
                   if (conn.getResponseCode() != 200) {
-                    handler.post(() -> {
-                      append("⚠️ 服务器验证失败，终止运行\n");
-                      unlockRunButton(); // ← 解锁
-                    });
+                    handler.post(
+                        () -> {
+                          append("⚠️ 服务器验证失败，终止运行\n");
+                          unlockRunButton(); // ← 解锁
+                        });
                     conn.disconnect();
                     return;
                   }
@@ -4769,10 +6051,11 @@ public class MainActivity extends Activity {
                   handler.post(() -> showHomeTerminalDialog());
 
                 } catch (Exception e) {
-                  handler.post(() -> {
-                    append("⚠️ 验证过程出错：" + e.getMessage() + "\n");
-                    unlockRunButton(); // ← 解锁
-                  });
+                  handler.post(
+                      () -> {
+                        append("⚠️ 验证过程出错：" + e.getMessage() + "\n");
+                        unlockRunButton(); // ← 解锁
+                      });
                 }
               })
           .start();
@@ -5225,7 +6508,7 @@ public class MainActivity extends Activity {
         });
   }
 
-        /** 解锁运行按钮（失败/取消时调用） */
+  /** 解锁运行按钮（失败/取消时调用） */
   private void unlockRunButton() {
     running = false;
     if (runButton != null) {
@@ -6541,7 +7824,6 @@ public class MainActivity extends Activity {
     return nightMode ? Color.rgb(24, 45, 60) : Color.rgb(235, 245, 250);
   }
 
-
   private int terminalBgColor() {
     return Color.rgb(9, 12, 18);
   }
@@ -6569,105 +7851,120 @@ public class MainActivity extends Activity {
   private int dp(int v) {
     return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
   }
-    // ====================== 👆 左右滑动手势 ======================
+
+  // ====================== 👆 左右滑动手势 ======================
   private float swipeStartX, swipeStartY;
   private boolean isSwipingPage = false;
   private int SWIPE_THRESHOLD = 0;
 
   @Override
   public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
-      // 延迟初始化 SWIPE_THRESHOLD
-      if (SWIPE_THRESHOLD == 0) {
-          SWIPE_THRESHOLD = (int) dp(100);
-      }
-      try {
-          switch (ev.getAction()) {
-              case android.view.MotionEvent.ACTION_DOWN:
-                  swipeStartX = ev.getX();
-                  swipeStartY = ev.getY();
-                  isSwipingPage = false;
-                  break;
+    // 延迟初始化 SWIPE_THRESHOLD
+    if (SWIPE_THRESHOLD == 0) {
+      SWIPE_THRESHOLD = (int) dp(100);
+    }
+    try {
+      switch (ev.getAction()) {
+        case android.view.MotionEvent.ACTION_DOWN:
+          swipeStartX = ev.getX();
+          swipeStartY = ev.getY();
+          isSwipingPage = false;
+          break;
 
-              case android.view.MotionEvent.ACTION_MOVE:
-                  if (!isSwipingPage) {
-                      float dx = Math.abs(ev.getX() - swipeStartX);
-                      float dy = Math.abs(ev.getY() - swipeStartY);
-                                            if (dx > dy && dx > dp(24)) {
-                          // 🛑 检查是否在底部导航栏上（长按拖拽胶囊不触发页面滑动）
-                          if (!isTouchOnNavBar(ev.getX(), ev.getY())) {
-                              // 🛑 检查触摸位置下方是否有 HorizontalScrollView
-                              if (!isTouchOnHorizontalScrollView(ev.getX(), ev.getY())) {
-                                  isSwipingPage = true;
-                              }
-                          }
-                      }
-                  }
-                  break;
-
-                            case android.view.MotionEvent.ACTION_UP:
-              case android.view.MotionEvent.ACTION_CANCEL:
-                  if (isSwipingPage) {
-                      // 🛑 如果在导航栏上，不拦截事件（留给长按拖拽）
-                      if (isTouchOnNavBar(ev.getX(), ev.getY())) {
-                          isSwipingPage = false;
-                          break;
-                      }
-                      float diffX = ev.getX() - swipeStartX;
-                      if (Math.abs(diffX) > SWIPE_THRESHOLD) {
-                          if (diffX > 0 && currentPage > 0) {
-                              switchPage(currentPage - 1);
-                          } else if (diffX < 0 && currentPage < 2) {
-                              switchPage(currentPage + 1);
-                          }
-                      }
-                      isSwipingPage = false;
-                      return true;
-                  }
-                  break;
+        case android.view.MotionEvent.ACTION_MOVE:
+          if (!isSwipingPage) {
+            float dx = Math.abs(ev.getX() - swipeStartX);
+            float dy = Math.abs(ev.getY() - swipeStartY);
+            if (dx > dy && dx > dp(24)) {
+              // 🛑 检查是否在底部导航栏上（长按拖拽胶囊不触发页面滑动）
+              if (!isTouchOnNavBar(ev.getX(), ev.getY())) {
+                // 🛑 检查触摸位置下方是否有 HorizontalScrollView
+                if (!isTouchOnHorizontalScrollView(ev.getX(), ev.getY())) {
+                  isSwipingPage = true;
+                }
+              }
+            }
           }
-      } catch (Exception e) {
-          return super.dispatchTouchEvent(ev);
+          break;
+
+        case android.view.MotionEvent.ACTION_UP:
+        case android.view.MotionEvent.ACTION_CANCEL:
+          if (isSwipingPage) {
+            // 🛑 如果在导航栏上，不拦截事件（留给长按拖拽）
+            if (isTouchOnNavBar(ev.getX(), ev.getY())) {
+              isSwipingPage = false;
+              break;
+            }
+            float diffX = ev.getX() - swipeStartX;
+            if (Math.abs(diffX) > SWIPE_THRESHOLD) {
+              if (diffX > 0 && currentPage > 0) {
+                switchPage(currentPage - 1);
+              } else if (diffX < 0 && currentPage < 3) {
+                switchPage(currentPage + 1);
+              }
+            }
+            isSwipingPage = false;
+            return true;
+          }
+          break;
       }
+    } catch (Exception e) {
       return super.dispatchTouchEvent(ev);
+    }
+    return super.dispatchTouchEvent(ev);
   }
-    // 🛑 检测触摸位置是否在底部导航栏上
+
+  // 🛑 检测触摸位置是否在底部导航栏上
   private boolean isTouchOnNavBar(float x, float y) {
-      if (navBarFrame == null) return false;
-      int[] loc = new int[2];
-      navBarFrame.getLocationOnScreen(loc);
-      return y >= loc[1] && y <= loc[1] + navBarFrame.getHeight();
+    if (navBarFrame == null) return false;
+    int[] loc = new int[2];
+    navBarFrame.getLocationOnScreen(loc);
+    return y >= loc[1] && y <= loc[1] + navBarFrame.getHeight();
   }
 
   // 🛑 检测触摸位置是否在 HorizontalScrollView 上
   private boolean isTouchOnHorizontalScrollView(float x, float y) {
-      if (pageHost == null || pageHost.getChildCount() == 0) return false;
-      View currentPageView = pageHost.getChildAt(0);
-      if (currentPageView == null) return false;
-      return findHorizontalScrollView(currentPageView, x, y);
+    if (pageHost == null || pageHost.getChildCount() == 0) return false;
+    View currentPageView = pageHost.getChildAt(0);
+    if (currentPageView == null) return false;
+    return findHorizontalScrollView(currentPageView, x, y);
   }
 
-  private boolean findHorizontalScrollView(View view, float x, float y) {
-      if (view instanceof HorizontalScrollView) {
-          // 检查触摸点是否在这个 HorizontalScrollView 的范围内
-          int[] loc = new int[2];
-          view.getLocationOnScreen(loc);
-          float left = loc[0];
-          float top = loc[1];
-          float right = left + view.getWidth();
-          float bottom = top + view.getHeight();
-          if (x >= left && x <= right && y >= top && y <= bottom) {
-              return true;
-          }
+    private boolean findHorizontalScrollView(View view, float x, float y) {
+    // 🛑 如果触摸在物资页面的滑动区域，视为水平滑动区，阻止主页切换
+    if (materialsSwipeZone != null && view == materialsSwipeZone) {
+      int[] loc = new int[2];
+      materialsSwipeZone.getLocationOnScreen(loc);
+      float left = loc[0];
+      float top = loc[1];
+      float right = left + materialsSwipeZone.getWidth();
+      float bottom = top + materialsSwipeZone.getHeight();
+      if (x >= left && x <= right && y >= top && y <= bottom) {
+        return true;
       }
-      if (view instanceof ViewGroup) {
-          ViewGroup vg = (ViewGroup) view;
-          for (int i = 0; i < vg.getChildCount(); i++) {
-              if (findHorizontalScrollView(vg.getChildAt(i), x, y)) {
-                  return true;
-              }
-          }
+    }
+
+    if (view instanceof HorizontalScrollView) {
+      // 检查触摸点是否在这个 HorizontalScrollView 的范围内
+      int[] loc = new int[2];
+      view.getLocationOnScreen(loc);
+      float left = loc[0];
+      float top = loc[1];
+      float right = left + view.getWidth();
+      float bottom = top + view.getHeight();
+      if (x >= left && x <= right && y >= top && y <= bottom) {
+        return true;
       }
-      return false;
+    }
+    if (view instanceof ViewGroup) {
+      ViewGroup vg = (ViewGroup) view;
+      for (int i = 0; i < vg.getChildCount(); i++) {
+        if (findHorizontalScrollView(vg.getChildAt(i), x, y)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
 }
