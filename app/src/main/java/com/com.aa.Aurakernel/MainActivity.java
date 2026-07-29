@@ -49,6 +49,7 @@ import android.view.animation.AnimationSet;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.TranslateAnimation;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -100,6 +101,12 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
   private boolean[] isRunning = new boolean[1];
   private static Bitmap cachedAvatar = null;
+  // === 物资列表多选状态 ===
+  private final Set<Integer> localSelectedSet = new HashSet<>();
+  private final boolean[] localBatchMode = new boolean[] {false};
+  private final Set<Integer> cloudSelectedSet = new HashSet<>();
+  private final boolean[] cloudBatchMode = new boolean[] {false};
+  private List<String> cachedCloudItems = null;
 
   private String getScriptUrl() {
     return StringGuard.get(0);
@@ -4336,55 +4343,55 @@ public class MainActivity extends Activity {
     final boolean[] isSwipingTab = new boolean[1];
     final int[] currentTabIndex = new int[1]; // 0=我的物资, 1=云端物资
 
-    scroll.setOnTouchListener(new View.OnTouchListener() {
-        @Override
-        public boolean onTouch(View v, android.view.MotionEvent event) {
+    scroll.setOnTouchListener(
+        new View.OnTouchListener() {
+          @Override
+          public boolean onTouch(View v, android.view.MotionEvent event) {
             switch (event.getAction()) {
-                case android.view.MotionEvent.ACTION_DOWN:
-                    swipeStartX[0] = event.getX();
-                    swipeStartY[0] = event.getY();
-                    isSwipingTab[0] = false;
-                    // 判断当前显示的是哪个标签
-                    currentTabIndex[0] = 0;
-                    // 从 tabViews 文字颜色判断当前选中哪个
-                    if (tabViews[1].getCurrentTextColor() == MAIN_GREEN) {
-                        currentTabIndex[0] = 1;
-                    }
-                    break;
-                case android.view.MotionEvent.ACTION_MOVE:
-                    if (!isSwipingTab[0]) {
-                        float dx = event.getX() - swipeStartX[0];
-                        float dy = Math.abs(event.getY() - swipeStartY[0]);
-                        if (Math.abs(dx) > dp(30) && Math.abs(dx) > dy) {
-                            isSwipingTab[0] = true;
-                        }
-                    }
-                    break;
-                case android.view.MotionEvent.ACTION_UP:
-                case android.view.MotionEvent.ACTION_CANCEL:
-                    if (isSwipingTab[0]) {
-                        float diffX = event.getX() - swipeStartX[0];
-                        int targetTab = currentTabIndex[0];
-                        if (diffX > dp(40) && currentTabIndex[0] == 1) {
-                            targetTab = 0; // 右滑 → 我的物资
-                        } else if (diffX < -dp(40) && currentTabIndex[0] == 0) {
-                            targetTab = 1; // 左滑 → 云端物资
-                        }
-                        if (targetTab != currentTabIndex[0]) {
-                            // 模拟点击标签
-                            tabBar.getChildAt(targetTab).performClick();
-                        }
-                        isSwipingTab[0] = false;
-                        return true;
-                    }
-                    break;
+              case android.view.MotionEvent.ACTION_DOWN:
+                swipeStartX[0] = event.getX();
+                swipeStartY[0] = event.getY();
+                isSwipingTab[0] = false;
+                // 判断当前显示的是哪个标签
+                currentTabIndex[0] = 0;
+                // 从 tabViews 文字颜色判断当前选中哪个
+                if (tabViews[1].getCurrentTextColor() == MAIN_GREEN) {
+                  currentTabIndex[0] = 1;
+                }
+                break;
+              case android.view.MotionEvent.ACTION_MOVE:
+                if (!isSwipingTab[0]) {
+                  float dx = event.getX() - swipeStartX[0];
+                  float dy = Math.abs(event.getY() - swipeStartY[0]);
+                  if (Math.abs(dx) > dp(30) && Math.abs(dx) > dy) {
+                    isSwipingTab[0] = true;
+                  }
+                }
+                break;
+              case android.view.MotionEvent.ACTION_UP:
+              case android.view.MotionEvent.ACTION_CANCEL:
+                if (isSwipingTab[0]) {
+                  float diffX = event.getX() - swipeStartX[0];
+                  int targetTab = currentTabIndex[0];
+                  if (diffX > dp(40) && currentTabIndex[0] == 1) {
+                    targetTab = 0; // 右滑 → 我的物资
+                  } else if (diffX < -dp(40) && currentTabIndex[0] == 0) {
+                    targetTab = 1; // 左滑 → 云端物资
+                  }
+                  if (targetTab != currentTabIndex[0]) {
+                    // 模拟点击标签
+                    tabBar.getChildAt(targetTab).performClick();
+                  }
+                  isSwipingTab[0] = false;
+                  return true;
+                }
+                break;
             }
             return false; // 不消费事件，让 ScrollView 正常滚动
-        }
-    });
+          }
+        });
 
     return scroll;
-
   }
 
   // ================================================================
@@ -4484,13 +4491,52 @@ public class MainActivity extends Activity {
     countBadge.setPadding(dp(7), dp(1), dp(7), dp(1));
     titleRow.addView(countBadge, lp(-2, dp(18), dp(6), 0, 0, 0));
 
+    // 用权重占位把按钮推到右边
+    titleRow.addView(new View(MainActivity.this), new LinearLayout.LayoutParams(0, 0, 1));
+
+    // === 全部删除按钮 ===
+    final Button delAllBtn = new Button(MainActivity.this);
+    delAllBtn.setText("全部删除");
+    delAllBtn.setTextSize(11);
+    delAllBtn.setTypeface(null, Typeface.BOLD);
+    delAllBtn.setTextColor(Color.argb(220, 255, 100, 100));
+    delAllBtn.setBackground(
+        round(Color.argb(18, 255, 80, 80), dp(8), Color.argb(40, 255, 80, 80), 1));
+    delAllBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+    delAllBtn.setAllCaps(false);
+    titleRow.addView(delAllBtn, lp(-2, dp(26), dp(6), 0, 0, 0));
+
+    // === 批量删除按钮（多选模式）===
+    final Button batchDelBtn = new Button(MainActivity.this);
+    batchDelBtn.setText("☑ 批量删除");
+    batchDelBtn.setTextSize(11);
+    batchDelBtn.setTypeface(null, Typeface.BOLD);
+    batchDelBtn.setTextColor(Color.argb(220, 255, 100, 100));
+    batchDelBtn.setBackground(
+        round(Color.argb(18, 255, 80, 80), dp(8), Color.argb(40, 255, 80, 80), 1));
+    batchDelBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+    batchDelBtn.setAllCaps(false);
+    titleRow.addView(batchDelBtn, lp(-2, dp(26), 0, 0, 0, 0));
+    batchDelBtn.setVisibility(View.GONE);
+
+    // === 可滚动物资列表容器（固定高度）===
+    final ScrollView itemsScroll = new ScrollView(MainActivity.this);
+    itemsScroll.setVerticalScrollBarEnabled(false);
+    itemsScroll.setFillViewport(false);
+    // 固定高度为屏幕高度的一半左右
+    int maxHeight = dp(380);
+    card.addView(itemsScroll, lp(-1, maxHeight, 0, 0, 0, 0));
+
+    final LinearLayout itemsContainer = new LinearLayout(MainActivity.this);
+    itemsContainer.setOrientation(LinearLayout.VERTICAL);
+    itemsScroll.addView(itemsContainer, new ScrollView.LayoutParams(-1, -2));
     // 空状态
     if (items.isEmpty()) {
       LinearLayout emptyArea = new LinearLayout(this);
       emptyArea.setOrientation(LinearLayout.VERTICAL);
       emptyArea.setGravity(Gravity.CENTER);
       emptyArea.setPadding(0, dp(20), 0, dp(20));
-      card.addView(emptyArea, lp(-1, -2, 0, 0, 0, 0));
+      itemsContainer.addView(emptyArea, lp(-1, -2, 0, 0, 0, 0));
 
       TextView emptyIcon = text("📭", 28, subTextColor(), Typeface.NORMAL);
       emptyIcon.setGravity(Gravity.CENTER);
@@ -4518,16 +4564,64 @@ public class MainActivity extends Activity {
       itemRow.setOrientation(LinearLayout.HORIZONTAL);
       itemRow.setGravity(Gravity.CENTER_VERTICAL);
       itemRow.setPadding(dp(4), dp(10), dp(4), dp(10));
-      card.addView(itemRow, lp(-1, -2, 0, 0, 0, 0));
+      itemsContainer.addView(itemRow, lp(-1, -2, 0, 0, 0, 0));
 
-      // 左侧颜色预览圆块（与云端一致：dp(16)圆角方块）
+      // === 多选 CheckBox ===
+      final CheckBox checkBox = new CheckBox(MainActivity.this);
+      checkBox.setVisibility(localBatchMode[0] ? View.VISIBLE : View.GONE);
+      checkBox.setChecked(localSelectedSet.contains(index));
+      checkBox.setButtonDrawable(null);
+      GradientDrawable cbBg = new GradientDrawable();
+      cbBg.setShape(GradientDrawable.RECTANGLE);
+      cbBg.setSize(dp(18), dp(18));
+      cbBg.setCornerRadius(dp(4));
+      cbBg.setStroke(dp(2), Color.argb(100, 255, 255, 255));
+      if (checkBox.isChecked()) {
+        cbBg.setColor(Color.argb(180, 255, 100, 100));
+        cbBg.setStroke(dp(2), Color.argb(200, 255, 100, 100));
+      }
+      checkBox.setBackground(cbBg);
+      checkBox.setPadding(dp(3), dp(3), dp(3), dp(3));
+      itemRow.addView(checkBox, lp(dp(22), dp(22), 0, 0, dp(8), 0));
+
+      checkBox.setOnCheckedChangeListener(
+          (buttonView, isChecked) -> {
+            if (isChecked) {
+              localSelectedSet.add(index);
+            } else {
+              localSelectedSet.remove(index);
+            }
+            GradientDrawable bg = (GradientDrawable) checkBox.getBackground();
+            if (isChecked) {
+              bg.setColor(Color.argb(180, 255, 100, 100));
+              bg.setStroke(dp(2), Color.argb(200, 255, 100, 100));
+            } else {
+              bg.setColor(Color.TRANSPARENT);
+              bg.setStroke(dp(2), Color.argb(100, 255, 255, 255));
+            }
+            int selCount = localSelectedSet.size();
+            batchDelBtn.setText("☑ 删除 (" + selCount + ")");
+            batchDelBtn.setVisibility(selCount > 0 ? View.VISIBLE : View.GONE);
+          });
+
+      // 点击行切换勾选
+      itemRow.setOnClickListener(
+          v -> {
+            if (localBatchMode[0]) {
+              checkBox.toggle();
+            } else {
+              showEditItemDialog(contentArea, tabBar, items, index);
+            }
+          });
+
+      // 左侧颜色预览圆块
       int dotColor = parts[2] != null ? parseColor(parts[2]) : MAIN_GREEN;
       View colorDot = new View(this);
       colorDot.setBackground(round(dotColor, dp(12), 0, 0));
       colorDot.setLayoutParams(new LinearLayout.LayoutParams(dp(16), dp(16)));
       itemRow.addView(colorDot);
 
-      // 中间：名称 + 类名（与云端一致）
+      // 中间：名称 + 类名
       LinearLayout infoCol = new LinearLayout(this);
       infoCol.setOrientation(LinearLayout.VERTICAL);
       infoCol.setPadding(dp(12), 0, 0, 0);
@@ -4553,8 +4647,9 @@ public class MainActivity extends Activity {
         itemRow.addView(rgbaLabel, lp(-2, -2, 0, 0, dp(6), 0));
       }
 
+      // 删除按钮（多选模式下隐藏）
       Button delBtn = new Button(this);
-      delBtn.setText("删除"); // 改为中文"删除"
+      delBtn.setText("删除");
       delBtn.setTextSize(11);
       delBtn.setTypeface(null, Typeface.BOLD);
       delBtn.setTextColor(Color.argb(220, 255, 100, 100));
@@ -4568,7 +4663,8 @@ public class MainActivity extends Activity {
       delBtn.setMinimumHeight(0);
       delBtn.setClickable(true);
       delBtn.setFocusable(true);
-      delBtn.setFocusableInTouchMode(true); // 防止事件穿透
+      delBtn.setFocusableInTouchMode(true);
+      delBtn.setVisibility(localBatchMode[0] ? View.GONE : View.VISIBLE);
       itemRow.addView(delBtn, lp(-2, dp(28), dp(6), 0, 0, 0));
 
       delBtn.setOnClickListener(
@@ -4578,17 +4674,74 @@ public class MainActivity extends Activity {
             refreshContent(contentArea, true, tabBar);
           });
 
-      // 点击行编辑
-      final int itemIndex = i;
-      itemRow.setOnClickListener(v -> showEditItemDialog(contentArea, tabBar, items, itemIndex));
-
       // 分割线（极淡）
       if (i < items.size() - 1) {
         View divider = new View(this);
         divider.setBackgroundColor(Color.argb(4, 255, 255, 255));
-        card.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
+        itemsContainer.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
       }
     }
+    // === 全部删除按钮 ===
+    delAllBtn.setOnClickListener(
+        v -> {
+          new android.app.AlertDialog.Builder(MainActivity.this)
+              .setTitle("⚠️ 确认删除全部")
+              .setMessage("确定要删除全部 " + items.size() + " 个物资吗？\n此操作不可撤销！")
+              .setPositiveButton(
+                  "确认删除",
+                  (dialog, which) -> {
+                    items.clear();
+                    saveItemsToFile(items);
+                    refreshContent(contentArea, true, tabBar);
+                    Toast.makeText(MainActivity.this, "🗑️ 已删除全部物资", Toast.LENGTH_SHORT).show();
+                  })
+              .setNegativeButton("取消", null)
+              .show();
+        });
+
+    // === 批量删除按钮 ===
+    batchDelBtn.setOnClickListener(
+        v -> {
+          if (localSelectedSet.isEmpty()) return;
+          int count = localSelectedSet.size();
+          new android.app.AlertDialog.Builder(MainActivity.this)
+              .setTitle("⚠️ 确认批量删除")
+              .setMessage("确定要删除选中的 " + count + " 个物资吗？\n此操作不可撤销！")
+              .setPositiveButton(
+                  "确认删除",
+                  (dialog, which) -> {
+                    // 从后往前删，避免索引错乱
+                    List<Integer> sorted = new ArrayList<>(localSelectedSet);
+                    Collections.sort(sorted, (a, b) -> b - a);
+                    for (int idx : sorted) {
+                      items.remove(idx);
+                    }
+                    localSelectedSet.clear();
+                    saveItemsToFile(items);
+                    refreshContent(contentArea, true, tabBar);
+                    Toast.makeText(
+                            MainActivity.this, "🗑️ 已删除 " + count + " 个物资", Toast.LENGTH_SHORT)
+                        .show();
+                  })
+              .setNegativeButton("取消", null)
+              .show();
+        });
+
+    // === 长按标题进入多选模式 ===
+    titleRow.setOnLongClickListener(
+        v -> {
+          localBatchMode[0] = !localBatchMode[0];
+          if (!localBatchMode[0]) {
+            localSelectedSet.clear();
+          }
+          refreshContent(contentArea, true, tabBar);
+          Toast.makeText(
+                  MainActivity.this,
+                  localBatchMode[0] ? "☑ 已进入多选模式（勾选后批量删除）" : "已退出多选模式",
+                  Toast.LENGTH_SHORT)
+              .show();
+          return true;
+        });
   }
 
   // ================================================================
@@ -4607,14 +4760,34 @@ public class MainActivity extends Activity {
     // 搜索框
     final EditText searchInput = new EditText(this);
     searchInput.setHint("🔍 搜索物资名称...");
-    searchInput.setHintTextColor(Color.argb(80, 255, 255, 255));
+    searchInput.setHintTextColor(Color.argb(128, 191, 169, 255)); // ← 提高到55%透明度
     searchInput.setTextColor(textColor());
-    searchInput.setBackground(round(Color.argb(15, 255, 255, 255), dp(10), 0, 0));
+
+    // 给搜索框加一个半透明背景 + 边框，更明显
+    GradientDrawable searchBg = new GradientDrawable();
+    searchBg.setColor(Color.argb(250, 250, 250, 255)); // ← 背景12%透明度
+    searchBg.setCornerRadius(dp(10));
+    searchBg.setStroke(dp(1), Color.argb(48, 242, 107, 255)); // ← 加1px边框
+    searchInput.setBackground(searchBg);
+
     searchInput.setPadding(dp(12), dp(6), dp(12), dp(6));
     searchInput.setTextSize(13);
     searchInput.setSingleLine(true);
+
     actionRow.addView(searchInput, new LinearLayout.LayoutParams(0, dp(36), 1));
     ((LinearLayout.LayoutParams) searchInput.getLayoutParams()).leftMargin = dp(10);
+
+    // === 批量添加按钮（多选模式）===
+    final Button batchAddBtn = new Button(MainActivity.this);
+    batchAddBtn.setText("☑ 批量");
+    batchAddBtn.setTextSize(11);
+    batchAddBtn.setTypeface(null, Typeface.BOLD);
+    batchAddBtn.setTextColor(Color.WHITE);
+    batchAddBtn.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+    batchAddBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+    batchAddBtn.setAllCaps(false);
+    actionRow.addView(batchAddBtn, lp(-2, dp(30), dp(8), 0, 0, 0));
+    batchAddBtn.setVisibility(View.GONE); // 默认隐藏
 
     // === 加载本地已有的（用于判断哪些已添加）===
     final List<String> localItems = new ArrayList<>();
@@ -4659,20 +4832,50 @@ public class MainActivity extends Activity {
     final TextView cardTitle = text("云端物资", 15, textColor(), Typeface.BOLD);
     cardTitle.setPadding(dp(10), 0, 0, 0);
     titleRow.addView(cardTitle);
+    // === 一键全部添加按钮 ===
+    final Button addAllBtn = new Button(MainActivity.this);
+    addAllBtn.setText("＋全部添加");
+    addAllBtn.setTextSize(11);
+    addAllBtn.setTypeface(null, Typeface.BOLD);
+    addAllBtn.setTextColor(Color.WHITE);
+    addAllBtn.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+    addAllBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+    addAllBtn.setAllCaps(false);
+    // 用权重占位把按钮推到右边
+    titleRow.addView(new View(MainActivity.this), new LinearLayout.LayoutParams(0, 0, 1));
+    titleRow.addView(addAllBtn, lp(-2, dp(26), 0, 0, 0, 0));
+    addAllBtn.setVisibility(View.GONE); // 默认隐藏，有数据时再显示
+    // === 可滚动物资列表容器（固定高度）===
+    final ScrollView cloudScroll = new ScrollView(MainActivity.this);
+    cloudScroll.setVerticalScrollBarEnabled(false);
+    cloudScroll.setFillViewport(false);
+    int maxHeight = dp(380);
+    card.addView(cloudScroll, lp(-1, maxHeight, 0, 0, 0, 0));
 
-    // 存储所有云端数据（用于搜索过滤）
-    final List<String> allCloudItems = new ArrayList<>();
+    final LinearLayout cloudContainer = new LinearLayout(MainActivity.this);
+    cloudContainer.setOrientation(LinearLayout.VERTICAL);
+    cloudScroll.addView(cloudContainer, new ScrollView.LayoutParams(-1, -2));
 
+    // 存储所有云端数据（使用缓存，首次加载后持久保留）
+    final List<String> allCloudItems;
+    if (cachedCloudItems != null) {
+      allCloudItems = cachedCloudItems;
+      statusText.setText("☁️ (已缓存) 共 " + cachedCloudItems.size() + " 个物资");
+    } else {
+      allCloudItems = new ArrayList<>();
+    }
+
+    // 多选选中项的索引（在filtered中的位置）
+    // 多选选中项的索引（使用成员变量以在重建时保留状态）
+    final Set<Integer> selectedSet = cloudSelectedSet;
+    final boolean[] isBatchMode = cloudBatchMode;
+    final Runnable[] renderRef = new Runnable[1];
     // === 渲染卡片内容的函数（支持搜索过滤）===
     final Runnable renderCloudItems =
         new Runnable() {
           @Override
           public void run() {
-            // 清除 card 中 titleRow 之后的所有子视图
-            while (card.getChildCount() > 1) {
-              card.removeViewAt(card.getChildCount() - 1);
-            }
-
+            cloudContainer.removeAllViews();
             String keyword = searchInput.getText().toString().trim().toLowerCase();
 
             // 过滤
@@ -4690,27 +4893,180 @@ public class MainActivity extends Activity {
               }
             }
 
+            // === 已添加的排到最下面 ===
+            Collections.sort(
+                filtered,
+                (a, b) -> {
+                  String[] pA = parseItem(a);
+                  String[] pB = parseItem(b);
+                  boolean aAdded = localClassNames.contains(pA[0]);
+                  boolean bAdded = localClassNames.contains(pB[0]);
+                  if (aAdded && !bAdded) return 1; // a已添加 → 排后面
+                  if (!aAdded && bAdded) return -1; // b已添加 → 排后面
+                  return 0; // 同状态保持原顺序
+                });
+
             if (filtered.isEmpty()) {
               String msg = keyword.isEmpty() ? "📭 暂无云端数据" : "🔍 未找到匹配「" + keyword + "」的物资";
               TextView empty = text(msg, 13, subTextColor(), Typeface.NORMAL);
               empty.setGravity(Gravity.CENTER);
               empty.setPadding(0, dp(30), 0, dp(30));
-              card.addView(empty, lp(-1, -2, 0, 0, 0, 0));
+              cloudContainer.addView(empty, lp(-1, -2, 0, 0, 0, 0));
               return;
             }
 
-            cardTitle.setText("云端物资 (" + filtered.size() + "/" + allCloudItems.size() + ")");
+            // 统计所有云端数据中已添加的数量
+            int addedInCloud = 0;
+            for (String s : allCloudItems) {
+              String[] p = parseItem(s);
+              if (localClassNames.contains(p[0])) addedInCloud++;
+            }
+            cardTitle.setText("云端物资(" + addedInCloud + "/" + allCloudItems.size() + ")");
 
+            // === 更新「一键全部添加」按钮状态 ===
+            boolean hasUnadded = false;
+            for (String s : filtered) {
+              String[] p = parseItem(s);
+              if (!localClassNames.contains(p[0])) {
+                hasUnadded = true;
+                break;
+              }
+            }
+            if (hasUnadded && !filtered.isEmpty()) {
+              addAllBtn.setVisibility(View.VISIBLE);
+            } else {
+              addAllBtn.setVisibility(View.GONE);
+            }
+
+            addAllBtn.setOnClickListener(
+                v -> {
+                  int addedCount = 0;
+                  for (String s : filtered) {
+                    String[] p = parseItem(s);
+                    if (!localClassNames.contains(p[0])) {
+                      localItems.add(s);
+                      localClassNames.add(p[0]);
+                      addedCount++;
+                    }
+                  }
+                  if (addedCount > 0) {
+                    saveItemsToFile(localItems);
+                    Toast.makeText(
+                            MainActivity.this, "✅ 一键添加了 " + addedCount + " 个物资", Toast.LENGTH_SHORT)
+                        .show();
+                    renderRef[0].run(); // 重新渲染刷新按钮状态
+                  } else {
+                    Toast.makeText(MainActivity.this, "📭 已无未添加的物资", Toast.LENGTH_SHORT).show();
+                  }
+                });
+            // === 批量添加按钮点击事件 ===
+            batchAddBtn.setOnClickListener(
+                v -> {
+                  int addedCount = 0;
+                  List<Integer> addedIndices = new ArrayList<>();
+                  for (int idx : selectedSet) {
+                    if (idx < filtered.size()) {
+                      String s = filtered.get(idx);
+                      String[] p = parseItem(s);
+                      if (!localClassNames.contains(p[0])) {
+                        localItems.add(s);
+                        localClassNames.add(p[0]);
+                        addedCount++;
+                        addedIndices.add(idx);
+                      }
+                    }
+                  }
+                  selectedSet.removeAll(addedIndices);
+                  if (addedCount > 0) {
+                    saveItemsToFile(localItems);
+                    String msg = "✅ 批量添加了 " + addedCount + " 个物资";
+                    if (!selectedSet.isEmpty()) {
+                      msg += "（剩余 " + selectedSet.size() + " 个因重复跳过）";
+                    }
+                    Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                    renderRef[0].run();
+                  } else {
+                    Toast.makeText(MainActivity.this, "📭 选中的物资都已存在", Toast.LENGTH_SHORT).show();
+                  }
+                });
+
+            // === 进入/退出多选模式 ===
+            // 长按标题行进入多选模式
+            titleRow.setOnLongClickListener(
+                v -> {
+                  isBatchMode[0] = !isBatchMode[0];
+                  if (!isBatchMode[0]) {
+                    selectedSet.clear();
+                    batchAddBtn.setVisibility(View.GONE);
+                  }
+                  renderRef[0].run();
+                  Toast.makeText(
+                          MainActivity.this,
+                          isBatchMode[0] ? "☑ 已进入多选模式" : "已退出多选模式",
+                          Toast.LENGTH_SHORT)
+                      .show();
+                  return true;
+                });
             for (int i = 0; i < filtered.size(); i++) {
               final String itemStr = filtered.get(i);
               String[] parts = parseItem(itemStr);
               final boolean alreadyHas = localClassNames.contains(parts[0]);
+              final int itemIndex = i;
 
               LinearLayout itemRow = new LinearLayout(MainActivity.this);
               itemRow.setOrientation(LinearLayout.HORIZONTAL);
               itemRow.setGravity(Gravity.CENTER_VERTICAL);
               itemRow.setPadding(dp(4), dp(10), dp(4), dp(10));
-              card.addView(itemRow, lp(-1, -2, 0, 0, 0, 0));
+              cloudContainer.addView(itemRow, lp(-1, -2, 0, 0, 0, 0));
+
+              // === 多选 CheckBox（仅未添加的才显示）===
+              final CheckBox checkBox = new CheckBox(MainActivity.this);
+              checkBox.setVisibility(alreadyHas || !isBatchMode[0] ? View.GONE : View.VISIBLE);
+              checkBox.setChecked(selectedSet.contains(itemIndex));
+              // 自定义勾选框样式（去掉原生样式，用自定义）
+              checkBox.setButtonDrawable(null);
+              GradientDrawable cbBg = new GradientDrawable();
+              cbBg.setShape(GradientDrawable.RECTANGLE);
+              cbBg.setSize(dp(18), dp(18));
+              cbBg.setCornerRadius(dp(4));
+              cbBg.setStroke(dp(2), Color.argb(100, 255, 255, 255));
+              if (checkBox.isChecked()) {
+                cbBg.setColor(Color.argb(180, 81, 191, 101));
+                cbBg.setStroke(dp(2), Color.argb(200, 81, 191, 101));
+              }
+              checkBox.setBackground(cbBg);
+              checkBox.setPadding(dp(3), dp(3), dp(3), dp(3));
+              itemRow.addView(checkBox, lp(dp(22), dp(22), 0, 0, dp(8), 0));
+
+              checkBox.setOnCheckedChangeListener(
+                  (buttonView, isChecked) -> {
+                    if (isChecked) {
+                      selectedSet.add(itemIndex);
+                    } else {
+                      selectedSet.remove(itemIndex);
+                    }
+                    // 更新勾选背景色
+                    GradientDrawable bg = (GradientDrawable) checkBox.getBackground();
+                    if (isChecked) {
+                      bg.setColor(Color.argb(180, 81, 191, 101));
+                      bg.setStroke(dp(2), Color.argb(200, 81, 191, 101));
+                    } else {
+                      bg.setColor(Color.TRANSPARENT);
+                      bg.setStroke(dp(2), Color.argb(100, 255, 255, 255));
+                    }
+                    // 更新批量按钮文字
+                    int selCount = selectedSet.size();
+                    batchAddBtn.setText("☑ 添加 (" + selCount + ")");
+                    batchAddBtn.setVisibility(selCount > 0 ? View.VISIBLE : View.GONE);
+                  });
+
+              // 点击行切换勾选
+              itemRow.setOnClickListener(
+                  v -> {
+                    if (isBatchMode[0] && !alreadyHas) {
+                      checkBox.toggle();
+                    }
+                  });
 
               View dot = new View(MainActivity.this);
               int dotColor = parts[2] != null ? parseColor(parts[2]) : MAIN_GREEN;
@@ -4761,12 +5117,12 @@ public class MainActivity extends Activity {
               if (i < filtered.size() - 1) {
                 View divider = new View(MainActivity.this);
                 divider.setBackgroundColor(Color.argb(12, 255, 255, 255));
-                card.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
+                cloudContainer.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
               }
             }
           }
         };
-
+    renderRef[0] = renderCloudItems;
     // 搜索监听
     searchInput.addTextChangedListener(
         new android.text.TextWatcher() {
@@ -4799,6 +5155,7 @@ public class MainActivity extends Activity {
                         statusText.setText(success ? "☁️ (已缓存) 共 " + count + " 个物资" : "❌ 加载失败");
                         if (dataArr != null) {
                           allCloudItems.clear();
+                          cachedCloudItems = allCloudItems;
                           for (int i = 0; i < dataArr.length(); i++) {
                             String s = dataArr.optString(i, "");
                             if (!s.isEmpty()) allCloudItems.add(s);
@@ -4842,6 +5199,7 @@ public class MainActivity extends Activity {
                       statusText.setText(success ? "☁️ 共 " + count + " 个物资" : "❌ 加载失败");
                       if (dataArr != null) {
                         allCloudItems.clear();
+                        cachedCloudItems = allCloudItems;
                         for (int i = 0; i < dataArr.length(); i++) {
                           String s = dataArr.optString(i, "");
                           if (!s.isEmpty()) allCloudItems.add(s);
@@ -4877,7 +5235,7 @@ public class MainActivity extends Activity {
   // ================================================================
   // ➕ 添加物资对话框
   // ================================================================
-    private void showAddItemDialog(final LinearLayout contentArea, final View tabBar) {
+  private void showAddItemDialog(final LinearLayout contentArea, final View tabBar) {
     final Dialog dialog =
         new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
     dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -4985,8 +5343,10 @@ public class MainActivity extends Activity {
         new android.text.TextWatcher() {
           @Override
           public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
           @Override
           public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
           @Override
           public void afterTextChanged(android.text.Editable s) {
             try {
@@ -4998,7 +5358,8 @@ public class MainActivity extends Activity {
                 int a = parts.length >= 4 ? Integer.parseInt(parts[3].trim()) : 255;
                 colorPreview.setBackground(round(Color.argb(a, r, g, b), dp(8), borderColor(), 1));
               }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
           }
         });
     layout.addView(colorRow, lp(-1, -2, 0, 0, 0, dp(18)));
@@ -5047,9 +5408,10 @@ public class MainActivity extends Activity {
     confirmBtn.setTextSize(14);
     confirmBtn.setTypeface(null, Typeface.BOLD);
     confirmBtn.setTextColor(Color.WHITE);
-    GradientDrawable confirmBg = new GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        new int[]{MAIN_GREEN, Color.rgb(65, 175, 85)});
+    GradientDrawable confirmBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {MAIN_GREEN, Color.rgb(65, 175, 85)});
     confirmBg.setCornerRadius(dp(12));
     confirmBtn.setBackground(confirmBg);
     confirmBtn.setPadding(0, dp(14), 0, dp(14));
@@ -5148,7 +5510,7 @@ public class MainActivity extends Activity {
   }
 
   // ✏️ 编辑物资对话框
-    private void showEditItemDialog(
+  private void showEditItemDialog(
       final LinearLayout contentArea,
       final View tabBar,
       final List<String> items,
@@ -5273,8 +5635,10 @@ public class MainActivity extends Activity {
         new android.text.TextWatcher() {
           @Override
           public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
           @Override
           public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
           @Override
           public void afterTextChanged(android.text.Editable s) {
             try {
@@ -5286,7 +5650,8 @@ public class MainActivity extends Activity {
                 int a = parts.length >= 4 ? Integer.parseInt(parts[3].trim()) : 255;
                 colorPreview.setBackground(round(Color.argb(a, r, g, b), dp(8), borderColor(), 1));
               }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
           }
         });
     layout.addView(colorRow, lp(-1, -2, 0, 0, 0, dp(18)));
@@ -5336,9 +5701,10 @@ public class MainActivity extends Activity {
     confirmBtn.setTextSize(14);
     confirmBtn.setTypeface(null, Typeface.BOLD);
     confirmBtn.setTextColor(Color.WHITE);
-    GradientDrawable confirmBg = new GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        new int[]{MAIN_GREEN, Color.rgb(65, 175, 85)});
+    GradientDrawable confirmBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {MAIN_GREEN, Color.rgb(65, 175, 85)});
     confirmBg.setCornerRadius(dp(12));
     confirmBtn.setBackground(confirmBg);
     confirmBtn.setPadding(0, dp(14), 0, dp(14));
@@ -5381,11 +5747,12 @@ public class MainActivity extends Activity {
     dialog.show();
   }
 
-    // ================================================================
+  // ================================================================
   // 🎨 调色盘对话框 — 点击颜色预览圆点弹出
   // ================================================================
   private void showColorPickerDialog(final EditText colorInput, final View previewDot) {
-    final Dialog picker = new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+    final Dialog picker =
+        new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
     picker.requestWindowFeature(Window.FEATURE_NO_TITLE);
     picker.setCancelable(true);
 
@@ -5406,11 +5773,46 @@ public class MainActivity extends Activity {
 
     // 预设颜色数组 (R,G,B,A) 格式字符串
     final String[][] colorPalette = {
-        {"255,255,255,255", "200,200,200,255", "160,160,160,255", "120,120,120,255", "80,80,80,255", "40,40,40,255"},
-        {"255,80,80,255",   "255,150,50,255",  "255,210,50,255", "180,220,60,255", "80,200,100,255", "50,180,160,255"},
-        {"60,140,220,255",  "80,100,200,255",  "140,90,200,255", "200,80,180,255", "220,100,140,255", "180,120,80,255"},
-        {"0,255,38,255",    "0,200,200,255",   "255,200,0,255",  "255,100,0,255",  "255,0,100,255",  "200,0,200,255"},
-        {"100,200,255,255", "150,255,180,255", "255,255,150,255","255,200,150,255","255,150,200,255","200,180,255,255"},
+      {
+        "255,255,255,255",
+        "200,200,200,255",
+        "160,160,160,255",
+        "120,120,120,255",
+        "80,80,80,255",
+        "40,40,40,255"
+      },
+      {
+        "255,80,80,255",
+        "255,150,50,255",
+        "255,210,50,255",
+        "180,220,60,255",
+        "80,200,100,255",
+        "50,180,160,255"
+      },
+      {
+        "60,140,220,255",
+        "80,100,200,255",
+        "140,90,200,255",
+        "200,80,180,255",
+        "220,100,140,255",
+        "180,120,80,255"
+      },
+      {
+        "0,255,38,255",
+        "0,200,200,255",
+        "255,200,0,255",
+        "255,100,0,255",
+        "255,0,100,255",
+        "200,0,200,255"
+      },
+      {
+        "100,200,255,255",
+        "150,255,180,255",
+        "255,255,150,255",
+        "255,200,150,255",
+        "255,150,200,255",
+        "200,180,255,255"
+      },
     };
 
     for (int row = 0; row < colorPalette.length; row++) {
@@ -5432,12 +5834,13 @@ public class MainActivity extends Activity {
         colorDot.setClickable(true);
         colorDot.setFocusable(true);
 
-        colorDot.setOnClickListener(v -> {
-          colorInput.setText(colorStr);
-          colorInput.setSelection(colorStr.length());
-          previewDot.setBackground(round(parseColor(colorStr), dp(8), borderColor(), 1));
-          picker.dismiss();
-        });
+        colorDot.setOnClickListener(
+            v -> {
+              colorInput.setText(colorStr);
+              colorInput.setSelection(colorStr.length());
+              previewDot.setBackground(round(parseColor(colorStr), dp(8), borderColor(), 1));
+              picker.dismiss();
+            });
 
         rowLayout.addView(colorDot);
       }
@@ -5453,7 +5856,6 @@ public class MainActivity extends Activity {
     }
     picker.show();
   }
-
 
   private View createMinePage() {
     ScrollView scroll = new ScrollView(this);
@@ -7930,7 +8332,7 @@ public class MainActivity extends Activity {
     return findHorizontalScrollView(currentPageView, x, y);
   }
 
-    private boolean findHorizontalScrollView(View view, float x, float y) {
+  private boolean findHorizontalScrollView(View view, float x, float y) {
     // 🛑 如果触摸在物资页面的滑动区域，视为水平滑动区，阻止主页切换
     if (materialsSwipeZone != null && view == materialsSwipeZone) {
       int[] loc = new int[2];
@@ -7966,5 +8368,4 @@ public class MainActivity extends Activity {
     }
     return false;
   }
-
 }
