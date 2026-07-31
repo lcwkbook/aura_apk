@@ -150,6 +150,9 @@ public class MainActivity extends Activity {
   private FrameLayout root;
   private LinearLayout pageHost;
   private View materialsSwipeZone;
+
+  // 物资页右下角悬浮"添加物资"按钮（列表滚动时固定不动）
+  private Button materialsFabAdd = null;
   private LinearLayout navHome;
   private LinearLayout navMaterials;
   private LinearLayout navMine;
@@ -4594,7 +4597,8 @@ public class MainActivity extends Activity {
                 if (!isSwipingTab[0]) {
                   float dx = event.getX() - swipeStartX[0];
                   float dy = Math.abs(event.getY() - swipeStartY[0]);
-                  if (Math.abs(dx) > dp(30) && Math.abs(dx) > dy) {
+                  // ✅ 防误触：只有近似水平滑动才切换标签（纵向滚动/斜向上滑绝不触发）
+                  if (Math.abs(dx) > dp(30) && Math.abs(dx) > dy * 2 && dy < dp(60)) {
                     isSwipingTab[0] = true;
                   }
                 }
@@ -4622,7 +4626,36 @@ public class MainActivity extends Activity {
           }
         });
 
-    return scroll;
+    // 👆 物资页整体放入 FrameLayout：右下角悬浮"添加物资"按钮（列表滚动时按钮固定不动）
+    final FrameLayout materialsFrame = new FrameLayout(this);
+    materialsFrame.setBackgroundColor(bgColor());
+    materialsFrame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
+    final Button fabAdd = new Button(this);
+    fabAdd.setText("＋ 添加物资");
+    fabAdd.setTextSize(13);
+    fabAdd.setTypeface(null, Typeface.BOLD);
+    fabAdd.setTextColor(Color.WHITE);
+    fabAdd.setBackground(round(MAIN_GREEN, dp(24), 0, 0));
+    fabAdd.setPadding(dp(20), dp(0), dp(20), dp(0));
+    fabAdd.setAllCaps(false);
+    fabAdd.setElevation(dp(8));
+    fabAdd.setOnClickListener(v -> showAddItemDialog(contentArea, tabBar));
+    FrameLayout.LayoutParams fabLp =
+        new FrameLayout.LayoutParams(-2, dp(44), Gravity.BOTTOM | Gravity.END);
+    fabLp.setMargins(0, 0, dp(16), dp(16));
+    fabAdd.setLayoutParams(fabLp);
+    materialsFrame.addView(fabAdd);
+
+    // 供外部控制悬浮按钮显隐（仅"我的物资"tab 显示）
+    materialsFabAdd = fabAdd;
+    // 初次加载固定显示"我的物资"tab，悬浮按钮直接可见
+    materialsFabAdd.setVisibility(View.VISIBLE);
+
+    // 👆 保存引用供主页面滑动检测使用（改为外层 FrameLayout，覆盖全屏）
+    materialsSwipeZone = materialsFrame;
+
+    return materialsFrame;
   }
 
   // ================================================================
@@ -4630,6 +4663,10 @@ public class MainActivity extends Activity {
   // ================================================================
   private void refreshContent(
       final LinearLayout contentArea, final boolean isLocal, final View tabBar) {
+    // 悬浮添加按钮：仅"我的物资"tab 显示
+    if (materialsFabAdd != null) {
+      materialsFabAdd.setVisibility(isLocal ? View.VISIBLE : View.GONE);
+    }
     // 保留 tabBar（索引0），移除后面所有子视图
     while (contentArea.getChildCount() > 1) {
       View child = contentArea.getChildAt(contentArea.getChildCount() - 1);
@@ -4647,24 +4684,8 @@ public class MainActivity extends Activity {
   // 📋 本地物资视图 — 与云端统一风格
   // ================================================================
   private void buildLocalView(final LinearLayout contentArea, final View tabBar) {
-    // === 操作按钮行 ===
-    LinearLayout actionRow = new LinearLayout(this);
-    actionRow.setOrientation(LinearLayout.HORIZONTAL);
-    actionRow.setGravity(Gravity.CENTER_VERTICAL);
-    contentArea.addView(actionRow, lp(-1, -2, 0, 0, 0, dp(10)));
-
-    Button addBtn = new Button(this);
-    addBtn.setText("＋ 添加物资");
-    addBtn.setTextSize(13);
-    addBtn.setTypeface(null, Typeface.BOLD);
-    addBtn.setTextColor(Color.WHITE);
-    addBtn.setBackground(round(MAIN_GREEN, dp(10), 0, 0));
-    addBtn.setPadding(dp(18), dp(0), dp(18), dp(0));
-    addBtn.setAllCaps(false);
-    actionRow.addView(addBtn, lp(-2, dp(36), 0, 0, 0, 0));
-    addBtn.setOnClickListener(v -> showAddItemDialog(contentArea, tabBar));
-
-    Button refreshBtn = new Button(this);
+    // 刷新按钮（定义于此，稍后放入卡片标题行右侧，操作区更紧凑）
+    final Button refreshBtn = new Button(this);
     refreshBtn.setText("↻");
     refreshBtn.setTextSize(16);
     refreshBtn.setTypeface(null, Typeface.NORMAL);
@@ -4672,7 +4693,6 @@ public class MainActivity extends Activity {
     refreshBtn.setBackground(round(Color.argb(12, 255, 255, 255), dp(10), 0, 0));
     refreshBtn.setPadding(0, 0, 0, 0);
     refreshBtn.setAllCaps(false);
-    actionRow.addView(refreshBtn, lp(dp(36), dp(36), dp(8), 0, 0, 0));
     refreshBtn.setOnClickListener(v -> refreshContent(contentArea, true, tabBar));
 
     // === 读本地文件 ===
@@ -4750,6 +4770,9 @@ public class MainActivity extends Activity {
     titleRow.addView(batchDelBtn, lp(-2, dp(26), 0, 0, 0, 0));
     batchDelBtn.setVisibility(View.GONE);
 
+    // 刷新按钮（右侧，与删除按钮并列，操作区紧凑不空荡）
+    titleRow.addView(refreshBtn, lp(dp(28), dp(28), dp(8), 0, 0, 0));
+
     // === 物资列表容器（自适应高度，由外层页面统一滚动，小屏/分屏也能正常滑动）===
     final LinearLayout itemsContainer = new LinearLayout(MainActivity.this);
     itemsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -4771,7 +4794,7 @@ public class MainActivity extends Activity {
       emptyArea.addView(empty, lp(-1, -2, 0, 0, 0, dp(2)));
 
       TextView emptySub =
-          text("点击上方「＋ 添加物资」来创建", 11, Color.argb(80, 255, 255, 255), Typeface.NORMAL);
+          text("点击右下角「＋ 添加物资」来创建", 11, Color.argb(80, 255, 255, 255), Typeface.NORMAL);
       emptySub.setGravity(Gravity.CENTER);
       emptyArea.addView(emptySub, lp(-1, -2, 0, 0, 0, 0));
       return;
@@ -5372,7 +5395,11 @@ public class MainActivity extends Activity {
         });
 
     // === 异步加载云端数据（带缓存）===
-    new Thread(
+    // ✅ 已有内存缓存：直接渲染，不再启动线程（避免切换/滑动时重复加载导致列表闪断）
+    if (cachedCloudItems != null && !cachedCloudItems.isEmpty()) {
+      renderCloudItems.run();
+    } else {
+      new Thread(
             () -> {
               // 先检查缓存
               String cachedRaw = CacheManager.getCachedCloudItems();
@@ -5463,6 +5490,7 @@ public class MainActivity extends Activity {
               }
             })
         .start();
+    }
   }
 
   // ================================================================
