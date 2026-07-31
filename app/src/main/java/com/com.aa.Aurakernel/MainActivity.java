@@ -96,6 +96,7 @@ import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
@@ -107,6 +108,9 @@ public class MainActivity extends Activity {
   private final Set<Integer> cloudSelectedSet = new HashSet<>();
   private final boolean[] cloudBatchMode = new boolean[] {false};
   private List<String> cachedCloudItems = null;
+
+  // 物资页面缓存（避免每次切换到物资页都重新构建大量视图导致的卡顿）
+  private View cachedMaterialsPage = null;
 
   private String getScriptUrl() {
     return StringGuard.get(0);
@@ -184,8 +188,8 @@ public class MainActivity extends Activity {
   // ====================== 驱动模块 常量 & 全局控件 ======================
   // 应用私有files目录下 驱动根目录
   private File driverRootDir;
-  // 驱动ZIP临时文件
-  private File driverZipFile;
+  // 驱动ZIP临时目录（存放下载的多个驱动压缩包）
+  private File driverTmpDir;
 
   // 驱动下载任务
   private DownloadDriverTask downloadTask;
@@ -1082,9 +1086,12 @@ public class MainActivity extends Activity {
     extractCleanScriptsIfNeeded();
     // ========== 新增：初始化驱动私有目录（files目录） ==========
     driverRootDir = new File(getFilesDir(), "drivers");
-    driverZipFile = new File(getFilesDir(), "驱动.zip");
+    driverTmpDir = new File(getFilesDir(), "drivers_tmp");
     if (!driverRootDir.exists()) {
       driverRootDir.mkdirs();
+    }
+    if (!driverTmpDir.exists()) {
+      driverTmpDir.mkdirs();
     }
     // 初始化文件夹展开集合
     expandedDirs = new HashSet<>();
@@ -1569,6 +1576,8 @@ public class MainActivity extends Activity {
   }
 
   private void showMainShell() {
+    // 界面整体重建（启动/主题切换等），物资页缓存失效以按新配色/新数据重建
+    cachedMaterialsPage = null;
     root.removeAllViews();
     root.setBackgroundColor(bgColor());
 
@@ -2399,8 +2408,13 @@ public class MainActivity extends Activity {
     View next = null;
     if (page == 0) next = createHomePage();
     else if (page == 1) next = createDriverPage();
-    else if (page == 2) next = createMaterialsPage();
-    else next = createMinePage();
+    else if (page == 2) {
+      // 物资页缓存复用：避免物资多时每次切换都重新构建（卡顿）
+      if (cachedMaterialsPage == null) {
+        cachedMaterialsPage = createMaterialsPage();
+      }
+      next = cachedMaterialsPage;
+    } else next = createMinePage();
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
 
@@ -2427,8 +2441,13 @@ public class MainActivity extends Activity {
     View next;
     if (page == 0) next = createHomePage();
     else if (page == 1) next = createDriverPage();
-    else if (page == 2) next = createMaterialsPage();
-    else next = createMinePage();
+    else if (page == 2) {
+      // 物资页缓存复用
+      if (cachedMaterialsPage == null) {
+        cachedMaterialsPage = createMaterialsPage();
+      }
+      next = cachedMaterialsPage;
+    } else next = createMinePage();
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
 
@@ -2825,10 +2844,10 @@ public class MainActivity extends Activity {
     driverRow.addView(driverBtnDitpro, driverBtnLp);
     driverRow.addView(driverBtnParadise, driverBtnLp);
     driverRow.addView(driverBtnBackup, driverBtnLp);
-    driverBtnKpm.setOnClickListener(v -> selectDriverType(0));
-    driverBtnDitpro.setOnClickListener(v -> selectDriverType(1));
-    driverBtnParadise.setOnClickListener(v -> selectDriverType(2));
-    driverBtnBackup.setOnClickListener(v -> selectDriverType(3));
+    attachDriverButton(driverBtnKpm, 0);
+    attachDriverButton(driverBtnDitpro, 1);
+    attachDriverButton(driverBtnParadise, 2);
+    attachDriverButton(driverBtnBackup, 3);
     page.addView(glowDivider(), lp(dp(120), dp(3), 0, dp(4), 0, dp(4)));
     // ============================================================
     // 3. 内核配置（防录屏+无后台）
@@ -3025,6 +3044,44 @@ public class MainActivity extends Activity {
     return v;
   }
 
+  // ✅ 驱动按钮：滑动驱动列表时不误触发点击（防止滑动时误切换驱动/页面）
+  private void attachDriverButton(final TextView btn, final int type) {
+    final float[] downXY = new float[2];
+    final boolean[] sliding = new boolean[] {false};
+    final int touchSlop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
+
+    btn.setOnTouchListener(
+        (v, event) -> {
+          switch (event.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+              downXY[0] = event.getX();
+              downXY[1] = event.getY();
+              sliding[0] = false;
+              break;
+            case android.view.MotionEvent.ACTION_MOVE:
+              if (!sliding[0]
+                  && (Math.abs(event.getX() - downXY[0]) > touchSlop
+                      || Math.abs(event.getY() - downXY[1]) > touchSlop)) {
+                sliding[0] = true;
+              }
+              break;
+            case android.view.MotionEvent.ACTION_CANCEL:
+              sliding[0] = true; // 手势被父容器接管，禁止触发点击
+              break;
+          }
+          return false; // 不消费事件，保证 HorizontalScrollView 正常滑动
+        });
+
+    btn.setOnClickListener(
+        v -> {
+          if (sliding[0]) {
+            sliding[0] = false;
+            return; // 这是滑动产生的误触，直接忽略
+          }
+          selectDriverType(type);
+        });
+  }
+
   // 开关按钮（仿 iOS 风格简单文本按钮）
   private TextView switchButton(boolean on) {
     TextView v = new TextView(this);
@@ -3213,7 +3270,7 @@ public class MainActivity extends Activity {
     page.addView(downloadCard, lp(-1, -2, 0, 0, 0, dp(16)));
 
     // 下载状态文本
-    driverPageStatus = text("就绪，点击下方按钮下载驱动压缩包", 13, LIGHT_GREEN, Typeface.NORMAL);
+    driverPageStatus = text("就绪，点击下方按钮下载所有驱动", 13, LIGHT_GREEN, Typeface.NORMAL);
     driverPageStatus.setGravity(Gravity.CENTER);
     downloadCard.addView(driverPageStatus, lp(-1, -2, 0, 0, 0, dp(12)));
 
@@ -3249,7 +3306,7 @@ public class MainActivity extends Activity {
           // 重置UI状态
           progressTrack.setVisibility(View.VISIBLE);
           progressBar.setVisibility(View.VISIBLE);
-          downloadBtn.setText("加载文件脚本中...");
+          downloadBtn.setText("正在获取驱动...");
           downloadBtn.setEnabled(false);
           downloadBtn.setAlpha(0.6f);
           // 启动下载+解压任务
@@ -3275,8 +3332,8 @@ public class MainActivity extends Activity {
     driverFileListLayout.setPadding(dp(10), dp(8), dp(10), dp(8));
     page.addView(driverFileListLayout, new LinearLayout.LayoutParams(-1, 0, 1));
 
-    // 初始化：默认浏览驱动根目录下的「驱动」文件夹（跳过外层）
-    currentBrowseDir = new File(driverRootDir, "驱动");
+    // 初始化：默认浏览驱动根目录（每个 zip 解压出的驱动名称文件夹都在这里）
+    currentBrowseDir = driverRootDir;
     // 确保目录存在（防止解压失败时崩溃）
     if (!currentBrowseDir.exists()) {
       currentBrowseDir.mkdirs();
@@ -3288,7 +3345,13 @@ public class MainActivity extends Activity {
   }
 
   // ====================== 驱动下载 + 自动解压 异步任务 ======================
-  private static class DownloadDriverTask extends AsyncTask<Void, Integer, Boolean> {
+  private static class DownloadDriverTask extends AsyncTask<Void, Integer, Integer> {
+    // 结果码：0=失败, 1=全部成功, 2=部分失败, 3=服务器暂无驱动
+    private static final int RESULT_FAIL = 0;
+    private static final int RESULT_OK = 1;
+    private static final int RESULT_PARTIAL = 2;
+    private static final int RESULT_EMPTY = 3;
+
     private final WeakReference<MainActivity> activityRef;
     private final TextView statusText;
     private final View progressBar;
@@ -3308,95 +3371,184 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    protected Boolean doInBackground(Void... voids) {
+    protected Integer doInBackground(Void... voids) {
       MainActivity activity = activityRef.get();
-      if (activity == null) return false;
+      if (activity == null) return RESULT_FAIL;
 
       try {
-        // 1. 下载ZIP文件到应用files目录
-        URL url = new URL(StringGuard.get(1));
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(30000);
+        // ========== 第一步：请求服务器获取驱动列表 ==========
+        String sigHash = SignatureGuard.getApkSignatureHashBase64(activity);
+        URL authUrl = new URL(StringGuard.get(10));
+        HttpURLConnection authConn = (HttpURLConnection) authUrl.openConnection();
+        authConn.setRequestMethod("POST");
+        authConn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        authConn.setConnectTimeout(10000);
+        authConn.setReadTimeout(10000);
+        authConn.setDoOutput(true);
 
-        // 兼容HTTPS（沿用原有证书忽略逻辑）
-        if (conn instanceof HttpsURLConnection) {
-          HttpsURLConnection sconn = (HttpsURLConnection) conn;
-          TrustManager[] trustAll =
-              new TrustManager[] {
-                new X509TrustManager() {
-                  @Override
-                  public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                  }
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("signature", sigHash);
+        OutputStreamWriter writer = new OutputStreamWriter(authConn.getOutputStream());
+        writer.write(requestBody.toString());
+        writer.flush();
+        writer.close();
 
-                  @Override
-                  public void checkClientTrusted(X509Certificate[] c, String a) {}
-
-                  @Override
-                  public void checkServerTrusted(X509Certificate[] c, String a) {}
-                }
-              };
-          SSLContext sc = SSLContext.getInstance("TLS");
-          sc.init(null, trustAll, new SecureRandom());
-          sconn.setSSLSocketFactory(sc.getSocketFactory());
-          sconn.setHostnameVerifier((hostname, session) -> true);
+        int authCode = authConn.getResponseCode();
+        if (authCode != 200) {
+          authConn.disconnect();
+          return RESULT_FAIL;
         }
 
-        int totalLength = conn.getContentLength();
-        InputStream input = new BufferedInputStream(conn.getInputStream());
-        FileOutputStream output = new FileOutputStream(activity.driverZipFile);
+        BufferedReader authReader =
+            new BufferedReader(new InputStreamReader(authConn.getInputStream()));
+        StringBuilder authJson = new StringBuilder();
+        String line;
+        while ((line = authReader.readLine()) != null) authJson.append(line);
+        authReader.close();
+        authConn.disconnect();
 
-        byte[] buffer = new byte[8192];
-        long downloadSize = 0;
-        int len;
-        while ((len = input.read(buffer)) != -1) {
-          downloadSize += len;
-          int progress = (int) (downloadSize * 100.0 / totalLength);
-          publishProgress(progress);
-          output.write(buffer, 0, len);
+        JSONObject authResult = new JSONObject(authJson.toString());
+        JSONArray drivers = authResult.optJSONArray("drivers");
+        if (drivers == null || drivers.length() == 0) {
+          return RESULT_EMPTY;
         }
 
-        output.flush();
-        output.close();
-        input.close();
-        conn.disconnect();
+        // 收集驱动 URL
+        List<String> driverUrls = new ArrayList<>();
+        for (int i = 0; i < drivers.length(); i++) {
+          String u = drivers.optString(i, "");
+          if (!u.isEmpty()) driverUrls.add(u);
+        }
+        if (driverUrls.isEmpty()) return RESULT_EMPTY;
 
-        // 2. 下载完成 → 自动解压到 files/drivers 目录
-        publishProgress(-1);
-        boolean unzipResult = activity.unZipFile(activity.driverZipFile, activity.driverRootDir);
+        // ========== 第二步：逐个下载所有驱动压缩包到临时目录 ==========
+        if (!activity.driverTmpDir.exists()) activity.driverTmpDir.mkdirs();
+        File[] oldTmp = activity.driverTmpDir.listFiles();
+        if (oldTmp != null) {
+          for (File f : oldTmp) f.delete();
+        }
 
-        // 可选：解压后删除临时ZIP包（释放空间）
-        activity.driverZipFile.delete();
+        int total = driverUrls.size();
+        int failCount = 0;
+        List<File> downloaded = new ArrayList<>();
 
-        return unzipResult;
+        for (int i = 0; i < total; i++) {
+          String urlStr = driverUrls.get(i);
+          String fileName = urlStr.substring(urlStr.lastIndexOf('/') + 1);
+          if (fileName.isEmpty()) fileName = "driver_" + (i + 1) + ".zip";
+
+          File tmpZip = new File(activity.driverTmpDir, fileName);
+          try {
+            URL url = new URL(urlStr);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+
+            // 兼容HTTPS（沿用原有证书忽略逻辑）
+            if (conn instanceof HttpsURLConnection) {
+              HttpsURLConnection sconn = (HttpsURLConnection) conn;
+              TrustManager[] trustAll =
+                  new TrustManager[] {
+                    new X509TrustManager() {
+                      @Override
+                      public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                      }
+
+                      @Override
+                      public void checkClientTrusted(X509Certificate[] c, String a) {}
+
+                      @Override
+                      public void checkServerTrusted(X509Certificate[] c, String a) {}
+                    }
+                  };
+              SSLContext sc = SSLContext.getInstance("TLS");
+              sc.init(null, trustAll, new SecureRandom());
+              sconn.setSSLSocketFactory(sc.getSocketFactory());
+              sconn.setHostnameVerifier((hostname, session) -> true);
+            }
+
+            int totalLength = conn.getContentLength();
+            InputStream input = new BufferedInputStream(conn.getInputStream());
+            FileOutputStream output = new FileOutputStream(tmpZip);
+
+            byte[] buffer = new byte[8192];
+            long downloadSize = 0;
+            int len;
+            while ((len = input.read(buffer)) != -1) {
+              downloadSize += len;
+              if (totalLength > 0) {
+                int cur = (int) (downloadSize * 100.0 / totalLength);
+                int overall = (int) ((i + cur / 100.0) * 100.0 / total);
+                publishProgress(overall, i + 1, total, 0);
+              }
+              output.write(buffer, 0, len);
+            }
+
+            output.flush();
+            output.close();
+            input.close();
+            conn.disconnect();
+            downloaded.add(tmpZip);
+          } catch (Exception e) {
+            e.printStackTrace();
+            failCount++;
+            if (tmpZip.exists()) tmpZip.delete();
+          }
+        }
+
+        if (downloaded.isEmpty()) return RESULT_FAIL;
+
+        // ========== 第三步：清空旧驱动目录，逐个解压 ==========
+        publishProgress(100, downloaded.size(), total, 1);
+        activity.deleteDir(activity.driverRootDir);
+        activity.driverRootDir.mkdirs();
+
+        boolean allOk = true;
+        for (File zip : downloaded) {
+          boolean ok = activity.unZipFile(zip, activity.driverRootDir);
+          if (!ok) allOk = false;
+        }
+
+        // 清理临时压缩包
+        File[] tmpFiles = activity.driverTmpDir.listFiles();
+        if (tmpFiles != null) {
+          for (File f : tmpFiles) f.delete();
+        }
+
+        if (!allOk) return RESULT_PARTIAL;
+        return failCount > 0 ? RESULT_PARTIAL : RESULT_OK;
 
       } catch (Exception e) {
         e.printStackTrace();
-        return false;
+        return RESULT_FAIL;
       }
     }
 
     @Override
     protected void onProgressUpdate(Integer... values) {
       super.onProgressUpdate(values);
-      int progress = values[0];
       MainActivity activity = activityRef.get();
       if (activity == null) return;
 
-      if (progress == -1) {
-        // 下载完成，进入解压阶段
+      int overall = values[0];
+      int current = values[1];
+      int total = values[2];
+      int phase = values[3];
+
+      if (phase == 1) {
+        // 解压阶段
         statusText.setText("下载完成，正在自动解压驱动...");
       } else {
-        // 下载进度
-        progressBar.setScaleX(progress / 100f);
-        statusText.setText("下载进度：" + progress + "%");
+        // 下载阶段
+        progressBar.setScaleX(overall / 100f);
+        statusText.setText("正在下载驱动 (" + current + "/" + total + ")：" + overall + "%");
       }
     }
 
     @Override
-    protected void onPostExecute(Boolean success) {
-      super.onPostExecute(success);
+    protected void onPostExecute(Integer result) {
+      super.onPostExecute(result);
       MainActivity activity = activityRef.get();
       if (activity == null) return;
 
@@ -3405,12 +3557,21 @@ public class MainActivity extends Activity {
       downloadBtn.setAlpha(1f);
       progressBar.setVisibility(View.GONE);
 
-      if (success) {
+      if (result == RESULT_OK) {
         statusText.setText("驱动下载并解压完成！请选择对应文件");
         downloadBtn.setText("重新下载");
         Toast.makeText(activity, "驱动解压成功，请选择驱动文件", Toast.LENGTH_LONG).show();
-        // ✅ 修复：调用新版刷新方法
+        // ✅ 调用刷新方法，展示各驱动文件夹
         activity.refreshDriverFileList();
+      } else if (result == RESULT_PARTIAL) {
+        statusText.setText("部分驱动下载/解压失败，可重试");
+        downloadBtn.setText("重新下载");
+        Toast.makeText(activity, "部分驱动下载或解压失败", Toast.LENGTH_SHORT).show();
+        activity.refreshDriverFileList();
+      } else if (result == RESULT_EMPTY) {
+        statusText.setText("服务器暂无驱动，请稍后再试");
+        downloadBtn.setText("重新下载");
+        Toast.makeText(activity, "服务器暂无驱动", Toast.LENGTH_SHORT).show();
       } else {
         statusText.setText("下载/解压失败，请检查网络后重试");
         downloadBtn.setText("重新下载");
@@ -3426,20 +3587,53 @@ public class MainActivity extends Activity {
     if (!zipFile.exists() || !zipFile.getName().endsWith(".zip")) {
       return false;
     }
-    // 清空旧目录
-    deleteDir(targetDir);
-    targetDir.mkdirs();
+    // 注意：多个驱动包依次解压到同一目录，清空逻辑由调用方统一执行
+    if (!targetDir.exists()) {
+      targetDir.mkdirs();
+    }
 
     java.util.zip.ZipFile zip = null;
     try {
       // 解决Android ZIP中文乱码
       zip = new java.util.zip.ZipFile(zipFile, java.nio.charset.Charset.forName("GBK"));
-      java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
 
+      // ===== 检测：zip 顶层是否直接散落文件 =====
+      // 若顶层存在文件（非文件夹），则整体包一层，自动创建以压缩包名命名的文件夹
+      boolean hasTopLevelFile = false;
+      java.util.Enumeration<? extends java.util.zip.ZipEntry> scan = zip.entries();
+      while (scan.hasMoreElements()) {
+        java.util.zip.ZipEntry entry = scan.nextElement();
+        String name = entry.getName().replace('\\', '/');
+        if (name.endsWith("/")) {
+          name = name.substring(0, name.length() - 1);
+        }
+        if (!name.contains("/") && !entry.isDirectory()) {
+          hasTopLevelFile = true;
+          break;
+        }
+      }
+
+      // 计算解压目标：默认直接解压到 targetDir
+      File extractBase = targetDir;
+      if (hasTopLevelFile) {
+        // 自动创建压缩包名文件夹（去掉 .zip 后缀）
+        String zipName = zipFile.getName();
+        if (zipName.toLowerCase().endsWith(".zip")) {
+          zipName = zipName.substring(0, zipName.length() - 4);
+        }
+        // 过滤文件名中的非法字符，防止路径问题
+        zipName = zipName.replaceAll("[\\\\/:*?\"<>|]", "_");
+        extractBase = new File(targetDir, zipName);
+        if (!extractBase.exists()) {
+          extractBase.mkdirs();
+        }
+      }
+
+      java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
       while (entries.hasMoreElements()) {
         java.util.zip.ZipEntry entry = entries.nextElement();
         String entryName = entry.getName();
-        File outFile = new File(targetDir, entryName);
+        File outFile = new File(extractBase, entryName);
 
         // 创建父目录
         if (!outFile.getParentFile().exists()) {
@@ -3576,20 +3770,15 @@ public class MainActivity extends Activity {
               collapseFolder(targetFile, iconArrow);
               currentExpandedFolder = null;
             } else {
-              // 手风琴：先收起上一个（完成后）→ 展开新的
+              // 手风琴：旧文件夹收起 与 新文件夹展开 并行进行（更跟手、无空窗）
               if (currentExpandedFolder != null) {
                 View prevRow = findRowByFile(currentExpandedFolder);
                 TextView prevIcon = findIconInRow(prevRow);
-
-                collapseAllChildren(
-                    currentExpandedFolder,
-                    () -> {
-                      animateArrow(prevIcon, false);
-                      // 立即展开新文件夹
-                      currentExpandedFolder = targetFile;
-                      animateArrow(iconArrow, true);
-                      expandFolder(targetFile, row, iconArrow);
-                    });
+                animateArrow(prevIcon, false);
+                collapseAllChildren(currentExpandedFolder, null);
+                currentExpandedFolder = targetFile;
+                animateArrow(iconArrow, true);
+                expandFolder(targetFile, row, iconArrow);
               } else {
                 // 直接展开：零延迟
                 currentExpandedFolder = targetFile;
@@ -3618,9 +3807,16 @@ public class MainActivity extends Activity {
     return row;
   }
 
+  // 展开：子项以「高度 0 → 实际高度」平滑撑开（无跳变、无占位闪烁）
   private void expandFolder(final File folder, final View parentRow, final TextView icon) {
+    expandFolder(folder, parentRow, icon, null);
+  }
+
+  private void expandFolder(
+      final File folder, final View parentRow, final TextView icon, final Runnable onDone) {
     if (!folder.exists() || folder.listFiles() == null) {
       isAnimating = false;
+      if (onDone != null) onDone.run();
       return;
     }
 
@@ -3629,51 +3825,81 @@ public class MainActivity extends Activity {
     int insertIndex = parentIndex + 1;
     final String tag = "child_" + folder.getAbsolutePath();
 
-    LinearLayout.LayoutParams itemParams =
-        new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-    LinearLayout.LayoutParams dividerParams =
-        new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
-
-    // 先静默添加全部子项（不可见）
+    // ① 先以高度 0 静默插入（不占位 → 布局不跳变）
     List<View> addedItems = new ArrayList<>();
     for (int i = 0; i < childFiles.length; i++) {
       View childItem = createFileItem(childFiles[i], true);
       childItem.setTag(tag);
-      childItem.setLayoutParams(itemParams);
-      childItem.setAlpha(0f); // 初始透明
+      childItem.setLayoutParams(new LinearLayout.LayoutParams(-1, 0));
+      childItem.setAlpha(0f);
 
       View divider = new View(this);
       divider.setBackgroundColor(borderColor());
       divider.setTag(tag);
-      divider.setLayoutParams(dividerParams);
+      divider.setLayoutParams(new LinearLayout.LayoutParams(-1, 0));
       divider.setAlpha(0f);
 
       driverFileListLayout.addView(childItem, insertIndex++);
       driverFileListLayout.addView(divider, insertIndex++);
-
       addedItems.add(childItem);
       addedItems.add(divider);
     }
 
-    // 等布局完成后，再统一播放滑入动画（零帧延迟）
+    // ② 布局完成后：测量真实高度 → 高度动画 0→目标（轻微级联，整体丝滑）
     driverFileListLayout.post(
         () -> {
-          for (int i = 0; i < addedItems.size(); i++) {
-            View v = addedItems.get(i);
-            v.setTranslationY(-dp(12)); // 初始位移
-            v.setAlpha(1f);
-            v.animate()
-                .translationY(0)
-                .setDuration(260)
-                .setStartDelay(i * 18) // 连续流水
-                .setInterpolator(new DecelerateInterpolator(1.5f))
-                .start();
+          if (addedItems.isEmpty()) {
+            isAnimating = false;
+            if (onDone != null) onDone.run();
+            return;
           }
-          // 全部动画结束再解锁
-          long totalDuration = 260 + (addedItems.size() - 1) * 18;
-          handler.postDelayed(() -> isAnimating = false, totalDuration);
+          int total = addedItems.size();
+          for (int i = 0; i < total; i++) {
+            final View v = addedItems.get(i);
+            final int targetH = (i % 2 == 1) ? dp(1) : measureWrapHeight(v);
+            final boolean isLast = (i == total - 1);
+            final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofInt(0, targetH);
+            anim.setDuration(220);
+            anim.setStartDelay(i * 10); // 极短错开，依旧连续
+            anim.setInterpolator(new DecelerateInterpolator(1.1f));
+            anim.addUpdateListener(
+                a -> {
+                  int val = (int) a.getAnimatedValue();
+                  LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) v.getLayoutParams();
+                  lp.height = val;
+                  v.setLayoutParams(lp);
+                  // 透明度跟随高度比例，避免生硬
+                  float frac = targetH == 0 ? 1f : val / (float) targetH;
+                  v.setAlpha(0.25f + 0.75f * Math.min(1f, frac));
+                });
+            if (isLast) {
+              anim.addListener(
+                  new android.animation.AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(android.animation.Animator animation) {
+                      v.setAlpha(1f);
+                      isAnimating = false;
+                      if (onDone != null) onDone.run();
+                    }
+                  });
+            }
+            anim.start();
+          }
         });
+  }
+
+  // 测量子项的 wrap 内容高度（宽度与父容器一致，不受高度 0 影响）
+  private int measureWrapHeight(View v) {
+    int wSpec =
+        View.MeasureSpec.makeMeasureSpec(
+            driverFileListLayout.getWidth()
+                - driverFileListLayout.getPaddingLeft()
+                - driverFileListLayout.getPaddingRight(),
+            View.MeasureSpec.EXACTLY);
+    v.measure(wSpec, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+    int h = v.getMeasuredHeight();
+    return h > 0 ? h : dp(48);
   }
 
   // 新建：从根目录逐层展开到指定文件夹
@@ -3708,12 +3934,9 @@ public class MainActivity extends Activity {
       return;
     }
 
-    // 展开当前文件夹
+    // 展开当前文件夹（上一层动画完成后无缝展开下一层）
     currentExpandedFolder = null;
-    expandFolder(step, row, icon);
-
-    // 修复：使用Handler延迟50ms展开下一层，避免UI阻塞
-    handler.postDelayed(() -> expandPathRecursive(path, index + 1), 50);
+    expandFolder(step, row, icon, () -> expandPathRecursive(path, index + 1));
   }
 
   // 🛠️ 在 driverFileListLayout 中按文件路径查找行
@@ -3763,45 +3986,13 @@ public class MainActivity extends Activity {
     return null;
   }
 
-  // ====================== 终极流式滑动动画（零延迟、依次联动） ======================
-  // 展开：从上到下 依次滑出（无延迟，点击即动）
-  private void animateItemIn(View view, int index) {
-    // 先确保 View 不可见，防止闪烁
-    view.setAlpha(0f);
-    view.post(
-        () -> {
-          // 此时 layout 已完成，拿到真正的 top/left
-          view.setTranslationY(-dp(12));
-          view.setAlpha(1f);
-          view.animate()
-              .translationY(0)
-              .setDuration(260)
-              .setStartDelay(index * 18) // 极短错开，依旧连续
-              .setInterpolator(new DecelerateInterpolator(1.5f))
-              .start();
-        });
-  }
-
-  // 收起：从下到上 依次滑回（逐个消失，不瞬间清空）
-  private void animateItemOut(View view, int index, Runnable onFinish) {
-    view.animate()
-        .translationY(-dp(12))
-        .alpha(0.4f) // 淡出一点更柔和
-        .setDuration(260)
-        .setStartDelay(index * 18)
-        .setInterpolator(new DecelerateInterpolator(1.5f))
-        .withEndAction(
-            () -> {
-              if (onFinish != null) onFinish.run();
-            })
-        .start();
-  }
-
+  // ====================== 丝滑展开/收起动画（高度渐变，无跳变） ======================
   // 文件夹箭头 旋转动画（同步联动，零卡顿）
   private void animateArrow(TextView arrow, boolean expand) {
     arrow.animate().rotation(expand ? 180 : 0).setDuration(200).start();
   }
 
+  // 收起：高度 → 0 平滑合拢（无跳变），动画结束才移除
   private void collapseFolder(final File folder, final TextView icon) {
     final String tag = "child_" + folder.getAbsolutePath();
     List<View> removeList = new ArrayList<>();
@@ -3817,28 +4008,45 @@ public class MainActivity extends Activity {
       return;
     }
 
-    // ✅ 核心：倒序依次收起，逐个消失，不瞬间清空
+    // 倒序：从下到上依次合拢（与展开方向呼应）
     int total = removeList.size();
     for (int i = total - 1; i >= 0; i--) {
-      View view = removeList.get(i);
-      int index = total - 1 - i;
-
-      // 最后一个动画完成后解锁
-      if (i == 0) {
-        animateItemOut(
-            view,
-            index,
-            () -> {
-              driverFileListLayout.removeView(view);
-              isAnimating = false;
-            });
-      } else {
-        animateItemOut(view, index, () -> driverFileListLayout.removeView(view));
+      final View view = removeList.get(i);
+      final int index = total - 1 - i;
+      int startH = view.getHeight();
+      if (startH <= 0) {
+        driverFileListLayout.removeView(view);
+        if (index == total - 1) isAnimating = false;
+        continue;
       }
+      final android.animation.ValueAnimator anim =
+          android.animation.ValueAnimator.ofInt(startH, 0);
+      anim.setDuration(200);
+      anim.setStartDelay(index * 10);
+      anim.setInterpolator(new DecelerateInterpolator(1.1f));
+      anim.addUpdateListener(
+          a -> {
+            int val = (int) a.getAnimatedValue();
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) view.getLayoutParams();
+            lp.height = val;
+            view.setLayoutParams(lp);
+            view.setAlpha(1f - 0.5f * a.getAnimatedFraction());
+          });
+      anim.addListener(
+          new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+              if (view.getParent() == driverFileListLayout) {
+                driverFileListLayout.removeView(view);
+              }
+              if (index == total - 1) isAnimating = false;
+            }
+          });
+      anim.start();
     }
   }
 
-  // 带完成回调的收起（手风琴专用，丝滑无跳动）
+  // 手风琴收起（带完成回调，可空）：高度 → 0 平滑合拢
   private void collapseAllChildren(File folder, Runnable onCollapseComplete) {
     final String tag = "child_" + folder.getAbsolutePath();
     List<View> removeList = new ArrayList<>();
@@ -3850,7 +4058,7 @@ public class MainActivity extends Activity {
     }
 
     if (removeList.isEmpty()) {
-      onCollapseComplete.run();
+      if (onCollapseComplete != null) onCollapseComplete.run();
       return;
     }
 
@@ -3858,15 +4066,38 @@ public class MainActivity extends Activity {
     for (int i = total - 1; i >= 0; i--) {
       final View view = removeList.get(i);
       final int index = total - 1 - i; // 动画序号，最后一个动画 index = total-1
-      // 用 final 变量捕获
-      Runnable onEnd =
-          () -> {
-            driverFileListLayout.removeView(view);
-            if (index == total - 1) { // 最后一个元素动画结束才回调
-              onCollapseComplete.run();
+      int startH = view.getHeight();
+      if (startH <= 0) {
+        driverFileListLayout.removeView(view);
+        if (index == total - 1 && onCollapseComplete != null) onCollapseComplete.run();
+        continue;
+      }
+      final android.animation.ValueAnimator anim =
+          android.animation.ValueAnimator.ofInt(startH, 0);
+      anim.setDuration(200);
+      anim.setStartDelay(index * 10);
+      anim.setInterpolator(new DecelerateInterpolator(1.1f));
+      anim.addUpdateListener(
+          a -> {
+            int val = (int) a.getAnimatedValue();
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) view.getLayoutParams();
+            lp.height = val;
+            view.setLayoutParams(lp);
+            view.setAlpha(1f - 0.5f * a.getAnimatedFraction());
+          });
+      anim.addListener(
+          new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+              if (view.getParent() == driverFileListLayout) {
+                driverFileListLayout.removeView(view);
+              }
+              if (index == total - 1 && onCollapseComplete != null) {
+                onCollapseComplete.run(); // 最后一个元素动画结束才回调
+              }
             }
-          };
-      animateItemOut(view, index, onEnd);
+          });
+      anim.start();
     }
   }
 
@@ -4519,17 +4750,10 @@ public class MainActivity extends Activity {
     titleRow.addView(batchDelBtn, lp(-2, dp(26), 0, 0, 0, 0));
     batchDelBtn.setVisibility(View.GONE);
 
-    // === 可滚动物资列表容器（固定高度）===
-    final ScrollView itemsScroll = new ScrollView(MainActivity.this);
-    itemsScroll.setVerticalScrollBarEnabled(false);
-    itemsScroll.setFillViewport(false);
-    // 固定高度为屏幕高度的一半左右
-    int maxHeight = dp(380);
-    card.addView(itemsScroll, lp(-1, maxHeight, 0, 0, 0, 0));
-
+    // === 物资列表容器（自适应高度，由外层页面统一滚动，小屏/分屏也能正常滑动）===
     final LinearLayout itemsContainer = new LinearLayout(MainActivity.this);
     itemsContainer.setOrientation(LinearLayout.VERTICAL);
-    itemsScroll.addView(itemsContainer, new ScrollView.LayoutParams(-1, -2));
+    card.addView(itemsContainer, lp(-1, -2, 0, 0, 0, 0));
     // 空状态
     if (items.isEmpty()) {
       LinearLayout emptyArea = new LinearLayout(this);
@@ -4554,13 +4778,21 @@ public class MainActivity extends Activity {
     }
 
     // === 列表项（与云端统一风格：左边色块+名称/类名+右侧RGBA） ===
-    for (int i = 0; i < items.size(); i++) {
-      final int index = i;
-      final String item = items.get(i);
-      String[] parts = parseItem(item);
+    // 分帧渲染：每帧渲染一批，物资很多时页面先显示、列表渐进出现（避免一次性构建大量视图卡顿）
+    final int BATCH_SIZE = 15;
+    final int[] renderIndex = new int[] {0};
+    final Runnable renderBatch =
+        new Runnable() {
+          @Override
+          public void run() {
+            int end = Math.min(renderIndex[0] + BATCH_SIZE, items.size());
+            while (renderIndex[0] < end) {
+              final int index = renderIndex[0];
+              final String item = items.get(index);
+              String[] parts = parseItem(item);
 
       // 整行
-      LinearLayout itemRow = new LinearLayout(this);
+      LinearLayout itemRow = new LinearLayout(MainActivity.this);
       itemRow.setOrientation(LinearLayout.HORIZONTAL);
       itemRow.setGravity(Gravity.CENTER_VERTICAL);
       itemRow.setPadding(dp(4), dp(10), dp(4), dp(10));
@@ -4616,13 +4848,13 @@ public class MainActivity extends Activity {
 
       // 左侧颜色预览圆块
       int dotColor = parts[2] != null ? parseColor(parts[2]) : MAIN_GREEN;
-      View colorDot = new View(this);
+      View colorDot = new View(MainActivity.this);
       colorDot.setBackground(round(dotColor, dp(12), 0, 0));
       colorDot.setLayoutParams(new LinearLayout.LayoutParams(dp(16), dp(16)));
       itemRow.addView(colorDot);
 
       // 中间：名称 + 类名
-      LinearLayout infoCol = new LinearLayout(this);
+      LinearLayout infoCol = new LinearLayout(MainActivity.this);
       infoCol.setOrientation(LinearLayout.VERTICAL);
       infoCol.setPadding(dp(12), 0, 0, 0);
       itemRow.addView(infoCol, new LinearLayout.LayoutParams(0, -2, 1));
@@ -4636,7 +4868,7 @@ public class MainActivity extends Activity {
 
       // 右侧：RGBA颜色值显示
       if (parts[2] != null && !parts[2].isEmpty()) {
-        TextView rgbaLabel = new TextView(this);
+        TextView rgbaLabel = new TextView(MainActivity.this);
         rgbaLabel.setText(parts[2]);
         rgbaLabel.setTextSize(9);
         rgbaLabel.setTypeface(null, Typeface.NORMAL);
@@ -4648,7 +4880,7 @@ public class MainActivity extends Activity {
       }
 
       // 删除按钮（多选模式下隐藏）
-      Button delBtn = new Button(this);
+      Button delBtn = new Button(MainActivity.this);
       delBtn.setText("删除");
       delBtn.setTextSize(11);
       delBtn.setTypeface(null, Typeface.BOLD);
@@ -4674,13 +4906,20 @@ public class MainActivity extends Activity {
             refreshContent(contentArea, true, tabBar);
           });
 
-      // 分割线（极淡）
-      if (i < items.size() - 1) {
-        View divider = new View(this);
-        divider.setBackgroundColor(Color.argb(4, 255, 255, 255));
-        itemsContainer.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
-      }
-    }
+              // 分割线（极淡）
+              if (index < items.size() - 1) {
+                View divider = new View(MainActivity.this);
+                divider.setBackgroundColor(Color.argb(4, 255, 255, 255));
+                itemsContainer.addView(divider, lp(-1, dp(1), dp(4), 0, dp(4), 0));
+              }
+              renderIndex[0]++;
+            }
+            if (renderIndex[0] < items.size()) {
+              handler.postDelayed(this, 16); // 下一帧继续渲染下一批
+            }
+          }
+        };
+    handler.post(renderBatch);
     // === 全部删除按钮 ===
     delAllBtn.setOnClickListener(
         v -> {
@@ -4845,16 +5084,10 @@ public class MainActivity extends Activity {
     titleRow.addView(new View(MainActivity.this), new LinearLayout.LayoutParams(0, 0, 1));
     titleRow.addView(addAllBtn, lp(-2, dp(26), 0, 0, 0, 0));
     addAllBtn.setVisibility(View.GONE); // 默认隐藏，有数据时再显示
-    // === 可滚动物资列表容器（固定高度）===
-    final ScrollView cloudScroll = new ScrollView(MainActivity.this);
-    cloudScroll.setVerticalScrollBarEnabled(false);
-    cloudScroll.setFillViewport(false);
-    int maxHeight = dp(380);
-    card.addView(cloudScroll, lp(-1, maxHeight, 0, 0, 0, 0));
-
+    // === 云端列表容器（自适应高度，由外层页面统一滚动，小屏/分屏也能正常滑动）===
     final LinearLayout cloudContainer = new LinearLayout(MainActivity.this);
     cloudContainer.setOrientation(LinearLayout.VERTICAL);
-    cloudScroll.addView(cloudContainer, new ScrollView.LayoutParams(-1, -2));
+    card.addView(cloudContainer, lp(-1, -2, 0, 0, 0, 0));
 
     // 存储所有云端数据（使用缓存，首次加载后持久保留）
     final List<String> allCloudItems;
@@ -5496,6 +5729,8 @@ public class MainActivity extends Activity {
 
   // 保存物资列表到文件（覆盖写入）
   private void saveItemsToFile(List<String> items) {
+    // 物资数据已变化：让物资页缓存失效，下次切换时重建（保证云端/本地已添加状态一致）
+    cachedMaterialsPage = null;
     try {
       File dir = new File("/storage/emulated/0/AuraKernel");
       if (!dir.exists()) dir.mkdirs();
@@ -8257,6 +8492,9 @@ public class MainActivity extends Activity {
   // ====================== 👆 左右滑动手势 ======================
   private float swipeStartX, swipeStartY;
   private boolean isSwipingPage = false;
+  // ✅ 手势起点是否落在底部导航栏 / 横向滚动列表上（起点命中则整个手势不触发页面切换）
+  private boolean swipeStartOnNav = false;
+  private boolean swipeStartOnHScroll = false;
   private int SWIPE_THRESHOLD = 0;
 
   @Override
@@ -8268,23 +8506,21 @@ public class MainActivity extends Activity {
     try {
       switch (ev.getAction()) {
         case android.view.MotionEvent.ACTION_DOWN:
-          swipeStartX = ev.getX();
-          swipeStartY = ev.getY();
+          // ✅ 统一使用屏幕绝对坐标（getRawX/Y），与 getLocationOnScreen 保持一致
+          swipeStartX = ev.getRawX();
+          swipeStartY = ev.getRawY();
           isSwipingPage = false;
+          // ✅ 起点锁定：起点在导航栏或横向滚动列表上时，本次手势永不切换页面
+          swipeStartOnNav = isTouchOnNavBar(swipeStartX, swipeStartY);
+          swipeStartOnHScroll = isTouchOnHorizontalScrollView(swipeStartX, swipeStartY);
           break;
 
         case android.view.MotionEvent.ACTION_MOVE:
-          if (!isSwipingPage) {
-            float dx = Math.abs(ev.getX() - swipeStartX);
-            float dy = Math.abs(ev.getY() - swipeStartY);
+          if (!isSwipingPage && !swipeStartOnNav && !swipeStartOnHScroll) {
+            float dx = Math.abs(ev.getRawX() - swipeStartX);
+            float dy = Math.abs(ev.getRawY() - swipeStartY);
             if (dx > dy && dx > dp(24)) {
-              // 🛑 检查是否在底部导航栏上（长按拖拽胶囊不触发页面滑动）
-              if (!isTouchOnNavBar(ev.getX(), ev.getY())) {
-                // 🛑 检查触摸位置下方是否有 HorizontalScrollView
-                if (!isTouchOnHorizontalScrollView(ev.getX(), ev.getY())) {
-                  isSwipingPage = true;
-                }
-              }
+              isSwipingPage = true;
             }
           }
           break;
@@ -8292,12 +8528,7 @@ public class MainActivity extends Activity {
         case android.view.MotionEvent.ACTION_UP:
         case android.view.MotionEvent.ACTION_CANCEL:
           if (isSwipingPage) {
-            // 🛑 如果在导航栏上，不拦截事件（留给长按拖拽）
-            if (isTouchOnNavBar(ev.getX(), ev.getY())) {
-              isSwipingPage = false;
-              break;
-            }
-            float diffX = ev.getX() - swipeStartX;
+            float diffX = ev.getRawX() - swipeStartX;
             if (Math.abs(diffX) > SWIPE_THRESHOLD) {
               if (diffX > 0 && currentPage > 0) {
                 switchPage(currentPage - 1);
