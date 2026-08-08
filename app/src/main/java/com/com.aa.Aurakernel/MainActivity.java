@@ -23,6 +23,7 @@ import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
@@ -31,14 +32,20 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.style.LeadingMarginSpan;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -47,6 +54,8 @@ import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.AnimationSet;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.animation.TranslateAnimation;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -111,6 +120,9 @@ public class MainActivity extends Activity {
 
   // 物资页面缓存（避免每次切换到物资页都重新构建大量视图导致的卡顿）
   private View cachedMaterialsPage = null;
+
+  // 📢 公告弹窗：本次进程只弹一次（进程重启后重新弹）
+  private boolean noticeShownThisLaunch = false;
 
   private String getScriptUrl() {
     return StringGuard.get(0);
@@ -1615,6 +1627,20 @@ public class MainActivity extends Activity {
         },
         1500); // 延迟1.5秒等页面完全加载后再检查
     // ======================================================
+
+    // ============ 📢 公告弹窗（每次启动进入主页只弹一次） ============
+    if (!noticeShownThisLaunch) {
+      noticeShownThisLaunch = true;
+      handler.postDelayed(
+          new Runnable() {
+            @Override
+            public void run() {
+              fetchAndShowNotice();
+            }
+          },
+          500);
+    }
+    // ============================================================
     // ===== 🌈 每日一言（精美卡片式，导航栏上方，5秒后消失） =====
     // ── 外层卡片容器 ──
     final FrameLayout quoteCard = new FrameLayout(this);
@@ -7989,6 +8015,568 @@ public class MainActivity extends Activity {
     }
     updateTask = new UpdateTask(this);
     updateTask.execute();
+  }
+
+  // ====================== 📢 公告弹窗（远程公告，图文混排 + 按钮） ======================
+  private void fetchAndShowNotice() {
+    if (!isNetworkAvailable()) return; // 无网络静默跳过
+
+    new Thread(
+            () -> {
+              try {
+                URL url = new URL(StringGuard.get(12));
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+                conn.setRequestMethod("GET");
+
+                BufferedReader br =
+                    new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                conn.disconnect();
+
+                JSONObject json = new JSONObject(sb.toString());
+                if (!json.optBoolean("enabled", false)) return; // 未启用不弹
+                JSONObject data = json.optJSONObject("data");
+                if (data == null) return;
+                String title = data.optString("title", "").trim();
+                if (title.isEmpty()) return; // 无标题视为无效公告
+
+                JSONArray contentArr = data.optJSONArray("content");
+                JSONArray buttonsArr = data.optJSONArray("buttons");
+                int waitSeconds = data.optInt("waitSeconds", 5);
+                if (waitSeconds < 1 || waitSeconds > 60) waitSeconds = 5;
+
+                final String fTitle = title;
+                final JSONArray fContent = contentArr;
+                final JSONArray fButtons = buttonsArr;
+                final int fWait = waitSeconds;
+
+                runOnUiThread(
+                    () -> {
+                      if (isFinishing() || isDestroyed()) return;
+                      showNoticeDialog(fTitle, fContent, fButtons, fWait);
+                    });
+              } catch (Exception ignored) {
+                // 网络失败/JSON解析失败：静默不弹
+              }
+            })
+        .start();
+  }
+
+  private void showNoticeDialog(
+      String title, JSONArray contentArr, JSONArray buttonsArr, int waitSeconds) {
+    final boolean[] canDismiss = {false};
+    final boolean[] closing = {false};
+    final Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(Color.TRANSPARENT);
+    root.setGravity(Gravity.CENTER);
+    root.setPadding(dp(20), dp(20), dp(20), dp(20));
+
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    // 卡片背景：微渐变 + 细描边 + 阴影（质感升级）
+    GradientDrawable cardBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            nightMode
+                ? new int[] {Color.rgb(31, 36, 50), Color.rgb(24, 28, 40)}
+                : new int[] {Color.rgb(255, 255, 255), Color.rgb(246, 248, 252)});
+    cardBg.setCornerRadius(dp(20));
+    cardBg.setStroke(dp(1), nightMode ? Color.rgb(48, 54, 70) : Color.rgb(228, 233, 242));
+    card.setBackground(cardBg);
+    card.setPadding(dp(24), dp(26), dp(24), dp(20));
+    card.setGravity(Gravity.CENTER_HORIZONTAL);
+
+    // 顶部绿色高光边（像 App 公告卡的顶光效果）
+    View topGlow = new View(this);
+    GradientDrawable glowShape =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {
+              Color.argb(0, 88, 199, 140), Color.rgb(88, 199, 140), Color.rgb(88, 199, 140),
+              Color.argb(0, 88, 199, 140)
+            });
+    glowShape.setCornerRadii(new float[] {dp(20), dp(20), dp(20), dp(20), 0, 0, 0, 0});
+    topGlow.setBackground(glowShape);
+    card.addView(topGlow, lp(-1, dp(3), 0, 0, 0, dp(14)));
+
+    // ===== 标题区（圆形徽章 + 标题 + 对称渐变线） =====
+    LinearLayout titleRow = new LinearLayout(this);
+    titleRow.setOrientation(LinearLayout.HORIZONTAL);
+    titleRow.setGravity(Gravity.CENTER);
+
+    TextView badge = new TextView(this);
+    badge.setText("📢");
+    badge.setTextSize(20);
+    badge.setGravity(Gravity.CENTER);
+    GradientDrawable badgeBg = new GradientDrawable();
+    badgeBg.setShape(GradientDrawable.OVAL);
+    badgeBg.setColor(nightMode ? Color.rgb(16, 74, 49) : Color.rgb(225, 247, 235));
+    badgeBg.setStroke(dp(1), nightMode ? Color.rgb(34, 110, 74) : Color.rgb(170, 225, 198));
+    badge.setBackground(badgeBg);
+    titleRow.addView(badge, lp(dp(42), dp(42), 0, 0, dp(10), 0));
+
+    TextView titleView = new TextView(this);
+    titleView.setText(title);
+    titleView.setTextSize(20);
+    titleView.setTypeface(Typeface.DEFAULT_BOLD);
+    titleView.setTextColor(nightMode ? Color.rgb(225, 228, 235) : Color.rgb(30, 32, 42));
+    titleView.setGravity(Gravity.CENTER);
+    titleRow.addView(titleView, lp(-2, -2, 0, 0, 0, 0));
+
+    card.addView(titleRow, lp(-1, -2, 0, 0, 0, dp(14)));
+
+    // 对称装饰线：中间绿色段 + 两侧渐隐
+    View titleLine = new View(this);
+    GradientDrawable lineShape =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {
+              Color.argb(0, 88, 199, 140),
+              Color.argb(40, 88, 199, 140),
+              Color.rgb(88, 199, 140),
+              Color.rgb(88, 199, 140),
+              Color.argb(40, 88, 199, 140),
+              Color.argb(0, 88, 199, 140)
+            });
+    lineShape.setCornerRadius(dp(1));
+    titleLine.setBackground(lineShape);
+    card.addView(titleLine, lp(-1, dp(2), 0, 0, 0, dp(14)));
+
+    // ===== 正文区（浅色容器 + 可滚动，图文混排） =====
+    LinearLayout contentCard = new LinearLayout(this);
+    contentCard.setOrientation(LinearLayout.VERTICAL);
+    contentCard.setBackground(
+        round(nightMode ? Color.rgb(24, 28, 40) : Color.rgb(246, 248, 253), dp(14), 0, 0));
+    contentCard.setPadding(dp(14), dp(12), dp(14), dp(12));
+
+    ScrollView scroll = new ScrollView(this);
+    scroll.setVerticalScrollBarEnabled(false);
+    LinearLayout contentBox = new LinearLayout(this);
+    contentBox.setOrientation(LinearLayout.VERTICAL);
+
+    if (contentArr != null && contentArr.length() > 0) {
+      for (int i = 0; i < contentArr.length(); i++) {
+        JSONObject seg = contentArr.optJSONObject(i);
+        if (seg == null) continue;
+        String type = seg.optString("type", "text");
+        if ("image".equals(type)) {
+          final String imgUrl = seg.optString("url", "");
+          if (!imgUrl.isEmpty()) {
+            ImageView iv = new ImageView(this);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            GradientDrawable imgBg = new GradientDrawable();
+            imgBg.setCornerRadius(dp(12));
+            imgBg.setColor(nightMode ? Color.rgb(38, 43, 58) : Color.rgb(240, 243, 249));
+            imgBg.setStroke(dp(1), nightMode ? Color.rgb(48, 54, 70) : Color.rgb(230, 234, 243));
+            iv.setBackground(imgBg);
+            iv.setPadding(dp(8), dp(8), dp(8), dp(8));
+            contentBox.addView(iv, lp(-1, dp(160), 0, 0, 0, dp(10)));
+            // 加载中骨架屏微光动画
+            final ValueAnimator skeleton = ValueAnimator.ofFloat(0.45f, 0.9f);
+            skeleton.setDuration(650);
+            skeleton.setRepeatCount(ValueAnimator.INFINITE);
+            skeleton.setRepeatMode(ValueAnimator.REVERSE);
+            skeleton.addUpdateListener(a -> iv.setAlpha((float) a.getAnimatedValue()));
+            skeleton.start();
+            loadNoticeImage(imgUrl, iv, scroll, contentBox, skeleton);
+          }
+        } else {
+          String val = seg.optString("value", "");
+          if (!val.isEmpty()) {
+            TextView tv = new TextView(this);
+            SpannableString ss = new SpannableString(val);
+            ss.setSpan(
+                new LeadingMarginSpan.Standard(dp(14), 0),
+                0,
+                val.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            tv.setText(ss);
+            tv.setTextSize(15);
+            tv.setLineSpacing(dp(3), 1.3f);
+            tv.setTextColor(nightMode ? Color.rgb(192, 200, 214) : Color.rgb(56, 62, 78));
+            tv.setPadding(dp(2), 0, dp(2), 0);
+            contentBox.addView(tv, lp(-1, -2, 0, 0, 0, dp(6)));
+          }
+        }
+      }
+    } else {
+      TextView empty = new TextView(this);
+      empty.setText("暂无内容");
+      empty.setTextSize(15);
+      empty.setTextColor(subTextColor());
+      empty.setGravity(Gravity.CENTER);
+      empty.setPadding(0, dp(24), 0, dp(24));
+      contentBox.addView(empty, lp(-1, -2, 0, 0, 0, 0));
+    }
+
+    scroll.addView(contentBox, lp(-1, -2, 0, 0, 0, 0));
+    contentCard.addView(scroll, lp(-1, dp(320), 0, 0, 0, 0));
+    card.addView(contentCard, lp(-1, -2, 0, 0, 0, dp(10)));
+
+    // 内容少时收缩弹窗高度；内容多时保持上限可滚动（含最小高度，避免弹窗过矮）
+    adjustNoticeScrollHeight(scroll, contentBox);
+
+    // ===== 按钮区（横排，每行最多 3 个，小号柔和样式） =====
+    if (buttonsArr != null && buttonsArr.length() > 0) {
+      LinearLayout btnRow = null;
+      int col = 0;
+      for (int i = 0; i < buttonsArr.length(); i++) {
+        JSONObject btn = buttonsArr.optJSONObject(i);
+        if (btn == null) continue;
+        final String bText = btn.optString("text", "打开链接");
+        final String bUrl = btn.optString("url", "");
+        if (bUrl.isEmpty()) continue;
+
+        if (col % 3 == 0) {
+          btnRow = new LinearLayout(this);
+          btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        }
+
+        Button b = new Button(this);
+        b.setText(noticeButtonIcon(bUrl) + " " + bText);
+        b.setTextSize(13);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setTextColor(successColor());
+        b.setBackground(noticeButtonBg());
+        b.setPadding(dp(4), 0, dp(4), 0);
+        b.setAllCaps(false);
+        // 按压缩放反馈（按下缩小，松手回弹）
+        b.setOnTouchListener(
+            (v, ev) -> {
+              if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+                v.animate().scaleX(0.93f).scaleY(0.93f).setDuration(90).start();
+              } else if (ev.getAction() == MotionEvent.ACTION_UP
+                  || ev.getAction() == MotionEvent.ACTION_CANCEL) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(140).start();
+              }
+              return false;
+            });
+        b.setOnClickListener(
+            v -> {
+              try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(bUrl)));
+              } catch (Exception e) {
+                Toast.makeText(this, "无法打开链接", Toast.LENGTH_SHORT).show();
+              }
+            });
+
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, dp(40), 1);
+        blp.setMargins(0, 0, dp(8), dp(6));
+        if (col % 3 == 2) blp.rightMargin = 0; // 行末按钮去掉右边距
+        btnRow.addView(b, blp);
+        col++;
+
+        if (col % 3 == 0 || i == buttonsArr.length() - 1) {
+          card.addView(btnRow, lp(-1, -2, 0, 0, 0, 0));
+        }
+      }
+    }
+
+    // ===== 倒计时提示条（进度条 + 文字） =====
+    LinearLayout tipBox = new LinearLayout(this);
+    tipBox.setOrientation(LinearLayout.VERTICAL);
+    tipBox.setPadding(0, 0, 0, 0);
+
+    // 大号数字 + 提示文字（等待感）
+    LinearLayout tipRow = new LinearLayout(this);
+    tipRow.setOrientation(LinearLayout.HORIZONTAL);
+    tipRow.setGravity(Gravity.CENTER);
+
+    final TextView bigNum = new TextView(this);
+    bigNum.setText(String.valueOf(waitSeconds));
+    bigNum.setTextSize(26);
+    bigNum.setTypeface(Typeface.DEFAULT_BOLD);
+    bigNum.setTextColor(successColor());
+    bigNum.setGravity(Gravity.CENTER);
+    tipRow.addView(bigNum, lp(-2, -2, 0, 0, dp(6), 0));
+
+    final TextView tip = new TextView(this);
+    tip.setText("秒后可点击空白处关闭");
+    tip.setTextSize(12);
+    tip.setTextColor(nightMode ? Color.rgb(180, 188, 200) : Color.rgb(74, 80, 96));
+    tip.setGravity(Gravity.CENTER);
+    tipRow.addView(tip, lp(-2, -2, 0, 0, 0, 0));
+
+    tipBox.addView(tipRow, lp(-1, -2, 0, 0, 0, dp(6)));
+
+    final ProgressBar countPb =
+        new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+    countPb.setMax(waitSeconds * 1000);
+    countPb.setProgress(waitSeconds * 1000);
+    // 圆角胶囊进度条（绿色，贴合项目配色）
+    GradientDrawable pbTrack = new GradientDrawable();
+    pbTrack.setCornerRadius(dp(3));
+    pbTrack.setColor(nightMode ? Color.rgb(45, 51, 66) : Color.rgb(226, 231, 240));
+    GradientDrawable pbFill = new GradientDrawable();
+    pbFill.setCornerRadius(dp(3));
+    pbFill.setColor(successColor());
+    ClipDrawable pbClip = new ClipDrawable(pbFill, Gravity.LEFT, ClipDrawable.HORIZONTAL);
+    LayerDrawable pbLayer = new LayerDrawable(new Drawable[] {pbTrack, pbClip});
+    pbLayer.setId(1, 1);
+    countPb.setProgressDrawable(pbLayer);
+    tipBox.addView(countPb, lp(-1, dp(6), 0, 0, 0, 0));
+
+    // 平滑进度动画（线性递减，丝滑不跳动）
+    final ValueAnimator pbAnim = ValueAnimator.ofInt(waitSeconds * 1000, 0);
+    pbAnim.setDuration(waitSeconds * 1000L);
+    pbAnim.setInterpolator(new LinearInterpolator());
+    pbAnim.addUpdateListener(a -> countPb.setProgress((int) a.getAnimatedValue()));
+    pbAnim.start();
+
+    card.addView(tipBox, lp(-1, -2, 0, dp(12), 0, 0));
+
+    root.addView(card, lp(-1, -2, 0, 0, 0, 0));
+
+    // 点击弹窗外部（card 边界之外任意空白）关闭：倒计时结束后播放关闭动画
+    root.setOnTouchListener(
+        (v, ev) -> {
+          if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            if (canDismiss[0] && !closing[0]) {
+              int[] loc = new int[2];
+              card.getLocationOnScreen(loc);
+              int x = (int) ev.getRawX();
+              int y = (int) ev.getRawY();
+              boolean inside =
+                  x >= loc[0]
+                      && x <= loc[0] + card.getWidth()
+                      && y >= loc[1]
+                      && y <= loc[1] + card.getHeight();
+              if (!inside) {
+                closing[0] = true;
+                playNoticeCloseAnimation(dialog);
+              }
+            }
+          }
+          return false;
+        });
+    // 返回键：倒计时结束后播放关闭动画再关闭
+    dialog.setOnKeyListener(
+        (d, keyCode, event) -> {
+          if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
+            if (canDismiss[0] && !closing[0]) {
+              closing[0] = true;
+              playNoticeCloseAnimation(dialog);
+            }
+            return true;
+          }
+          return false;
+        });
+    dialog.setContentView(root);
+    dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+    // 全屏窗口：让点击弹窗外的任意空白都落在窗口内，被 root 的 OnTouchListener 捕获
+    dialog
+        .getWindow()
+        .setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
+
+    // 无关闭按钮；倒计时结束前禁止关闭（返回键/点击外部均无效）
+    dialog.setCancelable(false);
+    dialog.setCanceledOnTouchOutside(false);
+
+    new CountDownTimer(waitSeconds * 1000L, 1000L) {
+      @Override
+      public void onTick(long millisUntilFinished) {
+        int s = (int) Math.ceil(millisUntilFinished / 1000.0);
+        bigNum.setText(String.valueOf(s));
+        tip.setText("秒后可点击空白处关闭");
+      }
+
+      @Override
+      public void onFinish() {
+        bigNum.setText("✓");
+        tip.setText(" 点击空白处关闭");
+        pbAnim.cancel();
+        countPb.setProgress(0);
+        canDismiss[0] = true;
+      }
+    }.start();
+
+    dialog.show();
+
+    // ===== 弹出动效：淡入 + 弹性缩放 + 轻微上移 =====
+    final View decor = dialog.getWindow().getDecorView();
+    decor.setAlpha(0f);
+    decor.setScaleX(0.92f);
+    decor.setScaleY(0.92f);
+    decor.setTranslationY(dp(30));
+    decor.animate().alpha(1f).setDuration(200).setInterpolator(new DecelerateInterpolator(1.5f)).start();
+    decor
+        .animate()
+        .scaleX(1f)
+        .scaleY(1f)
+        .translationY(0)
+        .setDuration(300)
+        .setInterpolator(new OvershootInterpolator(0.8f))
+        .start();
+  }
+
+  // 公告图片异步加载（按弹窗内容区宽度等比缩放，防 OOM）
+  private void loadNoticeImage(
+      final String url,
+      final ImageView iv,
+      final ScrollView scroll,
+      final LinearLayout contentBox,
+      final ValueAnimator skeleton) {
+    new Thread(
+            () -> {
+              try {
+                // 第一次请求：只读尺寸
+                URL u1 = new URL(url);
+                HttpURLConnection c1 = (HttpURLConnection) u1.openConnection();
+                c1.setConnectTimeout(10000);
+                c1.setReadTimeout(10000);
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeStream(c1.getInputStream(), null, bounds);
+                c1.disconnect();
+
+                int imgW = bounds.outWidth;
+                int imgH = bounds.outHeight;
+                if (imgW <= 0 || imgH <= 0) return;
+
+                // 采样率：最大边不超过 1600px
+                int sample = 1;
+                int maxDim = 1600;
+                while (Math.max(imgW, imgH) / sample > maxDim) sample *= 2;
+
+                // 第二次请求：真实解码
+                URL u2 = new URL(url);
+                HttpURLConnection c2 = (HttpURLConnection) u2.openConnection();
+                c2.setConnectTimeout(10000);
+                c2.setReadTimeout(10000);
+                BitmapFactory.Options opts = new BitmapFactory.Options();
+                opts.inSampleSize = sample;
+                final Bitmap bmp = BitmapFactory.decodeStream(c2.getInputStream(), null, opts);
+                c2.disconnect();
+                if (bmp == null) return;
+
+                // 按内容区宽度等比算高度（内容区 ≈ 屏宽 - 88dp），最高 300dp
+                int availW = getResources().getDisplayMetrics().widthPixels - dp(88);
+                int imgHeight = (int) ((float) bmp.getHeight() / bmp.getWidth() * availW);
+                if (imgHeight > dp(300)) imgHeight = dp(300);
+                if (imgHeight < dp(60)) imgHeight = dp(60);
+                final int fH = imgHeight;
+
+                runOnUiThread(
+                    () -> {
+                      if (iv.getTag() != null && !url.equals(iv.getTag())) return;
+                      iv.setImageBitmap(bmp);
+                      iv.setBackground(null);
+                      if (skeleton != null) {
+                        skeleton.cancel();
+                        iv.setAlpha(1f);
+                      }
+                      LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) iv.getLayoutParams();
+                      if (p != null) {
+                        p.height = fH;
+                        iv.setLayoutParams(p);
+                      }
+                      adjustNoticeScrollHeight(scroll, contentBox);
+                    });
+              } catch (Exception ignored) {
+                // 图片加载失败：保留占位背景，不中断弹窗
+                if (skeleton != null) {
+                  skeleton.cancel();
+                  iv.setAlpha(1f);
+                }
+                adjustNoticeScrollHeight(scroll, contentBox);
+              }
+            })
+        .start();
+  }
+
+  // 公告弹窗：内容区自适应高度（内容少则收缩但有最小高度，内容多则滚动）
+  private void adjustNoticeScrollHeight(final ScrollView scroll, final LinearLayout contentBox) {
+    scroll.post(
+        () -> {
+          int contentH = contentBox.getHeight();
+          if (contentH <= 0) return;
+          int minH = dp(140);
+          int maxH = dp(320);
+          int target = Math.max(Math.min(contentH + dp(4), maxH), minH);
+          LinearLayout.LayoutParams sp = (LinearLayout.LayoutParams) scroll.getLayoutParams();
+          if (sp != null && sp.height != target) {
+            sp.height = target;
+            scroll.setLayoutParams(sp);
+          }
+        });
+  }
+
+  // 公告按钮背景：浅色底 + 主色描边 + 按压反馈（柔和不抢眼）
+  private Drawable noticeButtonBg() {
+    StateListDrawable sld = new StateListDrawable();
+    sld.addState(new int[] {android.R.attr.state_pressed}, noticeButtonLayer(true));
+    sld.addState(new int[] {}, noticeButtonLayer(false));
+    return sld;
+  }
+
+  private Drawable noticeButtonLayer(boolean pressed) {
+    int bg =
+        pressed
+            ? (nightMode ? Color.rgb(24, 70, 48) : Color.rgb(213, 241, 225))
+            : successBgColor();
+    int stroke =
+        pressed
+            ? (nightMode ? Color.rgb(50, 140, 95) : Color.rgb(110, 200, 155))
+            : (nightMode ? Color.rgb(38, 102, 70) : Color.rgb(168, 219, 190));
+    GradientDrawable g = new GradientDrawable();
+    g.setColor(bg);
+    g.setCornerRadius(dp(10));
+    g.setStroke(dp(1), stroke);
+    return g;
+  }
+
+  // 公告按钮自动图标（按链接类型识别）
+  private String noticeButtonIcon(String url) {
+    String low = url.toLowerCase();
+    if (low.contains("qm.qq.com") || low.contains("jq.qq.com") || low.contains("qq.com")) {
+      return "🐧";
+    }
+    if (low.contains("weixin") || low.contains("wechat") || low.contains("wx.qq")) {
+      return "💬";
+    }
+    if (low.contains("bilibili") || low.contains("b23.tv")) {
+      return "📺";
+    }
+    if (low.contains("github")) {
+      return "🐙";
+    }
+    if (low.contains("lanzou")
+        || low.contains("pan.")
+        || low.contains("download")
+        || low.contains("drive")) {
+      return "⬇️";
+    }
+    if (low.contains("taobao") || low.contains("jd.com") || low.contains("tmall")) {
+      return "🛒";
+    }
+    return "🌐";
+  }
+
+  // 公告弹窗关闭动效：淡出 + 弹性缩小，动画结束后真正关闭
+  private void playNoticeCloseAnimation(final Dialog dlg) {
+    if (dlg == null || dlg.getWindow() == null) {
+      if (dlg != null) dlg.dismiss();
+      return;
+    }
+    final View dv = dlg.getWindow().getDecorView();
+    dv.animate()
+        .alpha(0f)
+        .scaleX(0.88f)
+        .scaleY(0.88f)
+        .setDuration(220)
+        .setInterpolator(new OvershootInterpolator(0.6f))
+        .withEndAction(dlg::dismiss)
+        .start();
   }
 
   // ====================== 【美化版】显示更新弹窗 ======================
