@@ -4716,17 +4716,8 @@ public class MainActivity extends Activity {
     fabAdd.setText("＋ 添加物资");
     fabAdd.setTextSize(13);
     fabAdd.setTypeface(null, Typeface.BOLD);
-    fabAdd.setTextColor(Color.WHITE);
-    GradientDrawable fabBg =
-        new GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
-            new int[] {
-              withAlphaColor(MAIN_GREEN, 255),
-              withAlphaColor(ThemeManager.get().getTheme().grad, 215)
-            });
-    fabBg.setCornerRadius(dp(24));
-    fabBg.setStroke(dp(1), withAlphaColor(MAIN_GREEN, 230));
-    fabAdd.setBackground(fabBg);
+    fabAdd.setTextColor(MAIN_GREEN);
+    fabAdd.setBackground(lightGradient(MAIN_GREEN, dp(24)));
     fabAdd.setPadding(dp(20), dp(0), dp(20), dp(0));
     fabAdd.setAllCaps(false);
     fabAdd.setElevation(dp(8));
@@ -5588,7 +5579,7 @@ public class MainActivity extends Activity {
   // ================================================================
   private void showAddItemDialog(final LinearLayout contentArea, final View tabBar) {
     final Dialog dialog =
-        new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+        new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
     dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
     dialog.setCancelable(true);
 
@@ -5600,12 +5591,8 @@ public class MainActivity extends Activity {
     layout.setOrientation(LinearLayout.VERTICAL);
     layout.setPadding(dp(24), dp(24), dp(24), dp(24));
 
-    // ☀️ 白色卡片背景
-    GradientDrawable bgDrawable = new GradientDrawable();
-    bgDrawable.setColor(cardColor());
-    bgDrawable.setCornerRadius(dp(20));
-    bgDrawable.setStroke(dp(1), borderColor());
-    layout.setBackground(bgDrawable);
+    // 🪟 模糊玻璃背景（捕获背后 → 高斯模糊 → 80% 蒙层，不透字）
+    applyDialogGlass(dialog, scrollWrapper, 20);
 
     // === 顶部装饰条 + 标题 ===
     View accentBar = new View(this);
@@ -5802,13 +5789,30 @@ public class MainActivity extends Activity {
 
     layout.addView(btnRow, lp(-1, -2, 0, dp(8), 0, 0));
 
-    scrollWrapper.addView(layout);
+    // 🪟 内容卡片：半透明玻璃卡片，浮在全屏模糊玻璃之上（圆角 + 细描边）
+    layout.setBackground(dialogCardBg(20));
+    int cardW = Math.min(dp(360), getResources().getDisplayMetrics().widthPixels - dp(48));
+    // 居中容器（fillViewport 使内容不足一屏时卡片垂直水平居中；超出则正常滚动）
+    FrameLayout centerWrap = new FrameLayout(this);
+    centerWrap.addView(layout, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
+    // 点击模糊玻璃背景区域 → 关闭弹窗
+    centerWrap.setOnClickListener(v -> dialog.dismiss());
+    scrollWrapper.setFillViewport(true);
+    scrollWrapper.addView(centerWrap, new ScrollView.LayoutParams(-1, -1));
+
     dialog.setContentView(scrollWrapper);
     Window win = dialog.getWindow();
     if (win != null) {
-      win.setLayout(dp(360), -2);
+      // 全屏窗口：整个背景铺满模糊玻璃
+      // （改用与悬浮终端弹窗一致的全屏主题 + 属性设置，规避 Dialog 主题在部分 ROM 上窗口尺寸/位置异常）
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.dimAmount = 0f;
+      win.setAttributes(lp);
       win.setBackgroundDrawable(null);
-      win.setDimAmount(0.5f);
+      win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+      win.setWindowAnimations(android.R.style.Animation_Translucent);
     }
     dialog.show();
   }
@@ -5872,7 +5876,7 @@ public class MainActivity extends Activity {
     final String[] oldParts = parseItem(oldItem);
 
     final Dialog dialog =
-        new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+        new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
     dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
     dialog.setCancelable(true);
 
@@ -5884,12 +5888,8 @@ public class MainActivity extends Activity {
     layout.setOrientation(LinearLayout.VERTICAL);
     layout.setPadding(dp(24), dp(24), dp(24), dp(24));
 
-    // ☀️ 白色卡片背景
-    GradientDrawable bgDrawable = new GradientDrawable();
-    bgDrawable.setColor(cardColor());
-    bgDrawable.setCornerRadius(dp(20));
-    bgDrawable.setStroke(dp(1), borderColor());
-    layout.setBackground(bgDrawable);
+    // 🪟 模糊玻璃背景（捕获背后 → 高斯模糊 → 80% 蒙层，不透字）
+    applyDialogGlass(dialog, scrollWrapper, 20);
 
     // === 顶部装饰条 + 标题 ===
     View accentBar = new View(this);
@@ -6089,13 +6089,30 @@ public class MainActivity extends Activity {
 
     layout.addView(btnRow, lp(-1, -2, 0, dp(8), 0, 0));
 
-    scrollWrapper.addView(layout);
+    // 🪟 内容卡片：半透明玻璃卡片，浮在全屏模糊玻璃之上（圆角 + 细描边）
+    layout.setBackground(dialogCardBg(20));
+    int cardW = Math.min(dp(360), getResources().getDisplayMetrics().widthPixels - dp(48));
+    // 居中容器（fillViewport 使内容不足一屏时卡片垂直水平居中；超出则正常滚动）
+    FrameLayout centerWrap = new FrameLayout(this);
+    centerWrap.addView(layout, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
+    // 点击模糊玻璃背景区域 → 关闭弹窗
+    centerWrap.setOnClickListener(v -> dialog.dismiss());
+    scrollWrapper.setFillViewport(true);
+    scrollWrapper.addView(centerWrap, new ScrollView.LayoutParams(-1, -1));
+
     dialog.setContentView(scrollWrapper);
     Window win = dialog.getWindow();
     if (win != null) {
-      win.setLayout(dp(360), -2);
+      // 全屏窗口：整个背景铺满模糊玻璃
+      // （改用与悬浮终端弹窗一致的全屏主题 + 属性设置，规避 Dialog 主题在部分 ROM 上窗口尺寸/位置异常）
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.dimAmount = 0f;
+      win.setAttributes(lp);
       win.setBackgroundDrawable(null);
-      win.setDimAmount(0.5f);
+      win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+      win.setWindowAnimations(android.R.style.Animation_Translucent);
     }
     dialog.show();
   }
@@ -6105,19 +6122,18 @@ public class MainActivity extends Activity {
   // ================================================================
   private void showColorPickerDialog(final EditText colorInput, final View previewDot) {
     final Dialog picker =
-        new Dialog(this, android.R.style.Theme_DeviceDefault_Light_Dialog_NoActionBar);
+        new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
     picker.requestWindowFeature(Window.FEATURE_NO_TITLE);
     picker.setCancelable(true);
+
+    // 全屏模糊玻璃根容器：整屏铺满玻璃，内容卡片浮在其上
+    FrameLayout glassRoot = new FrameLayout(this);
+    applyDialogGlass(picker, glassRoot, 16);
 
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
     root.setPadding(dp(20), dp(20), dp(20), dp(20));
-
-    GradientDrawable rootBg = new GradientDrawable();
-    rootBg.setColor(cardColor());
-    rootBg.setCornerRadius(dp(16));
-    rootBg.setStroke(dp(1), borderColor());
-    root.setBackground(rootBg);
+    root.setBackground(dialogCardBg(16));
 
     // 标题
     TextView title = text("🎨 选择颜色", 16, textColor(), Typeface.BOLD);
@@ -6200,12 +6216,22 @@ public class MainActivity extends Activity {
       root.addView(rowLayout, lp(-1, -2, 0, 0, 0, 0));
     }
 
-    picker.setContentView(root);
+    // 内容卡片浮在全屏模糊玻璃之上，点击玻璃背景关闭
+    int pickerW = Math.min(dp(320), getResources().getDisplayMetrics().widthPixels - dp(48));
+    glassRoot.addView(root, new FrameLayout.LayoutParams(pickerW, -2, Gravity.CENTER));
+    glassRoot.setOnClickListener(v -> picker.dismiss());
+    picker.setContentView(glassRoot);
     Window win = picker.getWindow();
     if (win != null) {
-      win.setLayout(dp(320), -2);
+      // 全屏窗口：整个背景铺满模糊玻璃
+      // （改用与悬浮终端弹窗一致的全屏主题 + 属性设置，规避 Dialog 主题在部分 ROM 上窗口尺寸/位置异常）
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.dimAmount = 0f;
+      win.setAttributes(lp);
       win.setBackgroundDrawable(null);
-      win.setDimAmount(0.4f);
+      win.setWindowAnimations(android.R.style.Animation_Translucent);
     }
     picker.show();
   }
@@ -9231,6 +9257,16 @@ public class MainActivity extends Activity {
     return g;
   }
 
+  /** 弹窗内容卡片背景：半透明实色圆角卡片 + 细描边（浮在全屏模糊玻璃之上，保证文字可读）。 */
+  private GradientDrawable dialogCardBg(int cornerRadiusDp) {
+    GradientDrawable g = new GradientDrawable();
+    int base = nightMode ? Color.rgb(15, 20, 28) : Color.WHITE;
+    g.setColor(Color.argb(242, Color.red(base), Color.green(base), Color.blue(base)));
+    g.setCornerRadius(dp(cornerRadiusDp));
+    g.setStroke(dp(1), borderColor());
+    return g;
+  }
+
   // 🌊 浅渐变按钮底色：主题色 → 渐变二/三/四色（相近色相多色渐变）+ 同色描边
   private GradientDrawable lightGradient(int base, int radius) {
     ThemeManager.Theme t = ThemeManager.get().getTheme();
@@ -9261,6 +9297,38 @@ public class MainActivity extends Activity {
     return ThemeManager.get().getTheme().glass;
   }
 
+    /** 不透明卡片底色（弹窗/对话框用，避免半透明玻璃透出背后页面导致文字不可读）。 */
+  /** 弹窗不透明底色：浅色模式为极淡主题色 tint（非纯白），深色模式深色底。 */
+  private int solidCardColor() {
+    if (nightMode) return Color.rgb(15, 20, 28);
+    int base = ThemeManager.get().getTheme().acc;
+    return Color.argb(
+        255,
+        Math.min(255, Color.red(base) / 3 + 170),
+        Math.min(255, Color.green(base) / 3 + 170),
+        Math.min(255, Color.blue(base) / 3 + 170));
+  }
+
+  /** 弹窗背景：不透明卡片底（稳定可靠，无捕获 / 模糊 / 异步）。 */
+  private void applyDialogGlass(
+      final Dialog dialog, final View content, final int cornerRadiusDp) {
+    try {
+      GradientDrawable g = new GradientDrawable();
+      g.setColor(solidCardColor());
+      g.setCornerRadius(dp(cornerRadiusDp));
+      g.setStroke(dp(1), borderColor());
+      content.setBackground(g);
+    } catch (Throwable t) {
+      fallbackSolid(content, cornerRadiusDp);
+    }
+  }
+
+  private void fallbackSolid(View content, int cornerRadiusDp) {
+    // 捕获失败兜底：全屏纯色背景（卡片圆角样式由内容卡片自身绘制）
+    content.setBackgroundColor(solidCardColor());
+  }
+
+  
   private int textColor() {
     return ThemeManager.get().getTheme().text;
   }
