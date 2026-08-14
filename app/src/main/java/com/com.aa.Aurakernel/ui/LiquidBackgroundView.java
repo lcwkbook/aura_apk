@@ -77,6 +77,7 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
 
   // 光斑（径向渐变 Shader 缓存）
   private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private Shader glowShader1, glowShader2;
   private float glow1X, glow1Y, glow2X, glow2Y;
 
   // 壁纸层（可选）
@@ -107,6 +108,14 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
   public LiquidBackgroundView(Context context) {
     super(context);
     density = getResources().getDisplayMetrics().density;
+    glowShader1 = new RadialGradient(
+        0, 0, 150f * density,
+        new int[] {Color.argb(26, 255, 255, 255), Color.TRANSPARENT},
+        new float[] {0f, 1f}, Shader.TileMode.CLAMP);
+    glowShader2 = new RadialGradient(
+        0, 0, 110f * density,
+        new int[] {Color.argb(18, 255, 255, 255), Color.TRANSPARENT},
+        new float[] {0f, 1f}, Shader.TileMode.CLAMP);
     for (int i = 0; i < MAX_LAYERS; i++) {
       waves[i] = new FluidPhysics.Wave(
           WAVE_DEFS[i][0] * density,
@@ -214,8 +223,11 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
 
   // ==================== 壁纸 ====================
 
-  /** 设置壁纸层（CENTER_CROP 铺满，绘制在波浪之下）。传 null 清除。 */
+  /** 设置壁纸层（CENTER_CROP 铺满，绘制在波浪之下）。传 null 清除。旧位图自动回收。 */
   public void setWallpaper(Bitmap bitmap) {
+    if (wallpaper != null && wallpaper != bitmap) {
+      wallpaper.recycle();
+    }
     wallpaper = bitmap;
     invalidate();
   }
@@ -318,8 +330,8 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
     float gx2 = w * (0.74f + 0.14f * (float) Math.sin(t * 0.09f + 2.4f));
     float gy2 = h * (0.60f + 0.08f * (float) Math.sin(t * 0.13f + 3.1f));
 
-    drawGlowAt(c, gx1, gy1, 150f * density, 0.10f);
-    drawGlowAt(c, gx2, gy2, 110f * density, 0.07f);
+    drawGlowAt(c, gx1, gy1, 150f * density, 0.10f, glowShader1);
+    drawGlowAt(c, gx2, gy2, 110f * density, 0.07f, glowShader2);
     glow1X = gx1; glow1Y = gy1; glow2X = gx2; glow2Y = gy2;
 
     // 气泡
@@ -333,12 +345,9 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
     }
   }
 
-  private void drawGlowAt(Canvas c, float x, float y, float radius, float alpha) {
-    // 缓存 Shader，避免每帧创建（RadialGradient 以原点为中心，通过 translate 定位）
-    glowPaint.setShader(new RadialGradient(
-        0, 0, radius,
-        new int[] {Color.argb((int) (255 * alpha), 255, 255, 255), Color.TRANSPARENT},
-        new float[] {0f, 1f}, Shader.TileMode.CLAMP));
+  private void drawGlowAt(Canvas c, float x, float y, float radius, float alpha, Shader cached) {
+    // 复用缓存的 RadialGradient（半径固定），通过 translate 定位，避免每帧创建 Shader
+    glowPaint.setShader(cached);
     c.save();
     c.translate(x, y);
     c.drawCircle(0, 0, radius, glowPaint);

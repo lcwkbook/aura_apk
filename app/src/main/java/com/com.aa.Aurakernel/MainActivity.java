@@ -1631,9 +1631,9 @@ public class MainActivity extends Activity {
     // 🌊 液态背景（Activity 级复用：主题切换重建 shell 时背景不重建，保证流动不断）
     if (liquidBackground == null) {
       liquidBackground = new LiquidBackgroundView(this);
+      // 🖼️ 仅创建时应用当前壁纸（内置渐变或相册自定义）
+      liquidBackground.setWallpaper(WallpaperStore.loadCurrent(this));
     }
-    // 🖼️ 应用当前壁纸（内置渐变或相册自定义，随主题明暗自适应）
-    liquidBackground.setWallpaper(WallpaperStore.loadCurrent(this));
     root.addView(liquidBackground, 0, new FrameLayout.LayoutParams(-1, -1));
 
     LinearLayout shell = new LinearLayout(this);
@@ -6508,11 +6508,12 @@ public class MainActivity extends Activity {
     wpPicker.setPadding(dp(6), dp(4), dp(6), dp(4));
     for (int i = 0; i < 3; i++) {
       final int idx = i;
-      Bitmap bmp = WallpaperStore.builtin(this, i);
-      final ImageView thumb = new ImageView(this);
-      thumb.setImageBitmap(bmp);
-      thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-      thumb.setBackground(round(cardColor(), 12, borderColor(), 1));
+      // 渐变缩略图（GradientDrawable，零位图内存）
+      GradientDrawable thumbBg = new GradientDrawable(
+          GradientDrawable.Orientation.TL_BR, paletteColors(ThemeManager.Palette.values()[i]));
+      thumbBg.setCornerRadius(dp(12));
+      final View thumb = new View(this);
+      thumb.setBackground(thumbBg);
       LinearLayout.LayoutParams thumbLp = new LinearLayout.LayoutParams(dp(72), dp(48));
       thumbLp.setMargins(dp(6), dp(4), dp(6), dp(4));
       thumb.setLayoutParams(thumbLp);
