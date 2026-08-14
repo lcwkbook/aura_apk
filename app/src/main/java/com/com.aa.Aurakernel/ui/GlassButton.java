@@ -29,6 +29,8 @@ public class GlassButton extends Button implements ThemeManager.Listener {
   private float scale = 1f;
   private ValueAnimator pressAnim;
   private boolean pressed = false;
+  private boolean customAcc = false;
+  private int customAccColor;
 
   public GlassButton(Context context) {
     super(context);
@@ -51,6 +53,14 @@ public class GlassButton extends Button implements ThemeManager.Listener {
     invalidate();
   }
 
+  /** 自定义强调色（如业务按钮的红色/蓝色），设置后不受主题色系影响。 */
+  public void setCustomColors(int solid) {
+    customAcc = true;
+    customAccColor = solid;
+    rebuildShader();
+    invalidate();
+  }
+
   @Override
   public void onThemeChanged(ThemeManager.Theme theme, boolean dark) {
     applyTheme(theme);
@@ -58,11 +68,15 @@ public class GlassButton extends Button implements ThemeManager.Listener {
   }
 
   private void applyTheme(ThemeManager.Theme t) {
+    rebuildShader();
+    setTextColor(Color.WHITE);
+  }
+
+  private void rebuildShader() {
+    int base = customAcc ? customAccColor : ThemeManager.get().getTheme().acc;
     bgPaint.setShader(new LinearGradient(
         0, 0, 0, 120 * density,
-        t.acc, lighten(t.acc, 0.18f), Shader.TileMode.CLAMP));
-    // 渐变底上白色文字保证对比度（acc 色在深浅主题下都足够深）
-    setTextColor(Color.WHITE);
+        base, lighten(base, 0.18f), Shader.TileMode.CLAMP));
   }
 
   private static int lighten(int color, float f) {

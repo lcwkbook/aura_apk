@@ -36,8 +36,11 @@ import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
 import com.aa.Aurakernel.ui.FluidProgressView;
+import com.aa.Aurakernel.ui.GlassButton;
+import com.aa.Aurakernel.ui.GlassCard;
 import com.aa.Aurakernel.ui.LiquidBackgroundView;
 import com.aa.Aurakernel.ui.LiquidTabBar;
+import com.aa.Aurakernel.ui.core.ThemeManager;
 import com.aa.Aurakernel.ui.core.WallpaperStore;
 import android.os.Looper;
 import android.provider.Settings;
@@ -150,7 +153,7 @@ public class MainActivity extends Activity {
   // 纯白启动页背景
   final int SPLASH_WHITE_BG = Color.WHITE;
   // 主淡绿色（进度条、圆环主弧线、核心元素）
-  final int MAIN_GREEN = Color.rgb(81, 191, 101);
+  int MAIN_GREEN = Color.rgb(81, 191, 101); // 动态主色：主题切换时同步为当前主题 acc
   // 浅绿（副标题、辅助文字）
   final int LIGHT_GREEN = Color.rgb(129, 199, 132);
   // 深灰主文字（白底标题专用）
@@ -1129,7 +1132,21 @@ public class MainActivity extends Activity {
     }
 
     SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
-    nightMode = sp.getBoolean("night_mode", false);
+    // 🌊 液态主题初始化：有旧版手动偏好则作为覆盖值，否则跟随系统深色
+    ThemeManager.init(this);
+    boolean systemDark =
+        (getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+            == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    ThemeManager.SystemUiMode.currentDark = systemDark;
+    if (sp.contains("night_mode")) {
+      ThemeManager.get().setFollowSystem(false);
+      ThemeManager.get().setDarkOverride(sp.getBoolean("night_mode", false));
+    } else {
+      ThemeManager.get().setFollowSystem(true);
+    }
+    nightMode = ThemeManager.get().isDark();
+    MAIN_GREEN = ThemeManager.get().getTheme().acc;
     driverType = sp.getInt("driver_type", 0); // 新增
     antiRecord = sp.getBoolean("anti_record", false); // 新增
     noBackground = sp.getBoolean("no_background", false); // 新增
@@ -2496,10 +2513,25 @@ public class MainActivity extends Activity {
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
 
-    // 🎬 页面淡入
-    AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
-    fadeIn.setDuration(300);
-    next.startAnimation(fadeIn);
+    // 🎬 液态过渡：淡入 + 上移回弹
+    AnimationSet liquidIn = new AnimationSet(true);
+    TranslateAnimation up =
+        new TranslateAnimation(
+            Animation.ABSOLUTE,
+            0f,
+            Animation.ABSOLUTE,
+            0f,
+            Animation.ABSOLUTE,
+            dp(10),
+            Animation.ABSOLUTE,
+            0f);
+    up.setDuration(380);
+    up.setInterpolator(new DecelerateInterpolator(1.6f));
+    AlphaAnimation fadeIn = new AlphaAnimation(0.25f, 1f);
+    fadeIn.setDuration(380);
+    liquidIn.addAnimation(up);
+    liquidIn.addAnimation(fadeIn);
+    next.startAnimation(liquidIn);
 
     // 🔄 液态球滑动（只在有旧页时动画，首次不滑）
     if (from != page) {
@@ -2528,9 +2560,25 @@ public class MainActivity extends Activity {
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
 
-    AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
-    fadeIn.setDuration(200);
-    next.startAnimation(fadeIn);
+    // 🎬 液态过渡（拖拽实时切页，更快）
+    AnimationSet liquidIn = new AnimationSet(true);
+    TranslateAnimation up =
+        new TranslateAnimation(
+            Animation.ABSOLUTE,
+            0f,
+            Animation.ABSOLUTE,
+            0f,
+            Animation.ABSOLUTE,
+            dp(8),
+            Animation.ABSOLUTE,
+            0f);
+    up.setDuration(260);
+    up.setInterpolator(new DecelerateInterpolator(1.5f));
+    AlphaAnimation fadeIn = new AlphaAnimation(0.25f, 1f);
+    fadeIn.setDuration(260);
+    liquidIn.addAnimation(up);
+    liquidIn.addAnimation(fadeIn);
+    next.startAnimation(liquidIn);
   }
 
   // 🔄 拖拽时实时预览tab颜色变化
@@ -4485,19 +4533,14 @@ public class MainActivity extends Activity {
 
   // ===================== 新增：现代化按钮创建工具方法 =====================
   private Button createModernButton(String text, int bgColor) {
-    Button btn = new Button(this);
+    GlassButton btn = new GlassButton(this);
     btn.setText(text);
     btn.setTextSize(14);
     btn.setTextColor(Color.WHITE);
     btn.setTypeface(Typeface.DEFAULT_BOLD);
     btn.setAllCaps(false);
-    // 圆角背景
-    btn.setBackground(round(bgColor, 100, 0, 0));
-    // 移除默认按压阴影
-    if (Build.VERSION.SDK_INT >= 21) {
-      btn.setStateListAnimator(null);
-      btn.setElevation(0f);
-    }
+    btn.setCornerRadius(100);
+    btn.setCustomColors(bgColor);
     return btn;
   }
 
@@ -6600,13 +6643,10 @@ public class MainActivity extends Activity {
    * @return 卡片 LinearLayout（VERTICAL 方向）
    */
   private LinearLayout createGlassCard(String title) {
-    LinearLayout card = new LinearLayout(this);
+    GlassCard card = new GlassCard(this);
     card.setOrientation(LinearLayout.VERTICAL);
     card.setPadding(dp(18), dp(16), dp(18), dp(12));
-    // ✅ 使用带阴影的新背景
-    card.setBackground(createCardBackground());
-    card.setElevation(dp(3));
-    card.setOutlineProvider(null);
+    card.setElevation(dp(2));
 
     // 卡片标题（左侧加一条彩色装饰条）
     LinearLayout titleContainer = new LinearLayout(this);
@@ -6631,10 +6671,14 @@ public class MainActivity extends Activity {
 
   // 卡片背景（带阴影和浅色渐变）
   private GradientDrawable createCardBackground() {
+    int glass = ThemeManager.get().getTheme().glass;
     GradientDrawable g =
         new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[] {cardColor(), nightMode ? Color.rgb(18, 22, 34) : Color.rgb(252, 253, 255)});
+            new int[] {
+              glass,
+              Color.argb(200, Color.red(glass), Color.green(glass), Color.blue(glass))
+            });
     g.setCornerRadius(dp(22));
     g.setStroke(dp(1), borderColor());
     return g;
@@ -7930,9 +7974,34 @@ public class MainActivity extends Activity {
     nightMode = !nightMode;
     SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
     sp.edit().putBoolean("night_mode", nightMode).apply();
+    // 🌊 手动切换即覆盖跟随系统
+    ThemeManager.get().setFollowSystem(false);
+    ThemeManager.get().setDarkOverride(nightMode);
+    MAIN_GREEN = ThemeManager.get().getTheme().acc;
     setupWindow();
     showMainShell();
     switchPage(1);
+  }
+
+  // 🌊 系统深色模式变化（需 Manifest android:configChanges="uiMode"）
+  @Override
+  public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+    super.onConfigurationChanged(newConfig);
+    boolean systemDark =
+        (newConfig.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+            == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    ThemeManager.SystemUiMode.currentDark = systemDark;
+    ThemeManager.get().onSystemDarkChanged(systemDark);
+    boolean newNight = ThemeManager.get().isDark();
+    if (newNight != nightMode) {
+      nightMode = newNight;
+      SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+      sp.edit().putBoolean("night_mode", nightMode).apply();
+      MAIN_GREEN = ThemeManager.get().getTheme().acc;
+      setupWindow();
+      showMainShell();
+      switchPage(currentPage);
+    }
   }
 
   // ====================== 检测更新（内部类） ======================
@@ -9024,21 +9093,14 @@ public class MainActivity extends Activity {
   }
 
   private Button button(String text, boolean primary) {
-    Button b = new Button(this);
+    GlassButton b = new GlassButton(this);
     b.setAllCaps(false);
     b.setText(text);
     b.setTextSize(13);
     b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
     b.setGravity(Gravity.CENTER);
     b.setPadding(0, 0, 0, 0);
-    b.setMinHeight(0);
-    b.setMinimumHeight(0);
-    b.setBackground(round(primary ? primaryColor() : disabledColor(), 14, 0, 0));
-    b.setTextColor(primary ? Color.WHITE : subTextColor());
-    if (Build.VERSION.SDK_INT >= 21) {
-      b.setStateListAnimator(null);
-      b.setElevation(0f);
-    }
+    b.setCornerRadius(14);
     return b;
   }
 
@@ -9077,27 +9139,27 @@ public class MainActivity extends Activity {
   }
 
   private int cardColor() {
-    return nightMode ? Color.rgb(20, 24, 36) : Color.rgb(255, 255, 255);
+    return ThemeManager.get().getTheme().glass;
   }
 
   private int textColor() {
-    return nightMode ? Color.rgb(238, 242, 248) : Color.rgb(17, 23, 34);
+    return ThemeManager.get().getTheme().text;
   }
 
   private int subTextColor() {
-    return nightMode ? Color.rgb(144, 153, 169) : Color.rgb(124, 133, 150);
+    return ThemeManager.get().getTheme().sub;
   }
 
   private int borderColor() {
-    return nightMode ? Color.rgb(40, 46, 62) : Color.rgb(230, 236, 246);
+    return ThemeManager.get().getTheme().border;
   }
 
   private int primaryColor() {
-    return MAIN_GREEN; // 保持原有绿色主色调
+    return ThemeManager.get().getTheme().acc;
   }
 
   private int tagColor() {
-    return nightMode ? Color.rgb(24, 45, 60) : Color.rgb(235, 245, 250);
+    return ThemeManager.get().getTheme().chipBg;
   }
 
   private int terminalBgColor() {

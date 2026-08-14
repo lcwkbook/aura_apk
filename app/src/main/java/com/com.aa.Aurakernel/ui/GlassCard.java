@@ -11,16 +11,16 @@ import android.graphics.Shader;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
-import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 
 import com.aa.Aurakernel.ui.core.ThemeManager;
 
 /**
  * 液态玻璃卡片容器：半透明玻璃底 + 1px 高光描边 + 顶部内高光线 + 底部内侧阴影。
- * - 主题变化自动刷新（页面整体重建场景下旧实例即弃，无需插值）。
- * - 可选按压弹性（setPressable(true)）：按下 scale 0.97，松手回弹。
+ * - 继承 LinearLayout（VERTICAL），可直接替代现有卡片容器，调用方无需改类型。
+ * - 主题变化自动刷新；可选按压弹性（setPressable(true)）。
  */
-public class GlassCard extends FrameLayout implements ThemeManager.Listener {
+public class GlassCard extends LinearLayout implements ThemeManager.Listener {
 
   private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -39,6 +39,7 @@ public class GlassCard extends FrameLayout implements ThemeManager.Listener {
     super(context);
     density = getResources().getDisplayMetrics().density;
     setWillNotDraw(false);
+    setOrientation(LinearLayout.VERTICAL);
     ThemeManager.Theme t = ThemeManager.get().getTheme();
     applyTheme(t);
     ThemeManager.get().addListener(this);
