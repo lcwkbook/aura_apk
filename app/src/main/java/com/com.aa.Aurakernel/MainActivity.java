@@ -35,6 +35,7 @@ import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
+import com.aa.Aurakernel.ui.FluidProgressView;
 import com.aa.Aurakernel.ui.LiquidBackgroundView;
 import com.aa.Aurakernel.ui.LiquidTabBar;
 import android.os.Looper;
@@ -3338,19 +3339,11 @@ public class MainActivity extends Activity {
     driverPageStatus.setGravity(Gravity.CENTER);
     downloadCard.addView(driverPageStatus, lp(-1, -2, 0, 0, 0, dp(12)));
 
-    // 进度条轨道
-    final View progressTrack = new View(this);
-    progressTrack.setBackground(round(TRACK_BG, 3, 0, 0));
-    progressTrack.setVisibility(View.GONE);
-    downloadCard.addView(progressTrack, lp(-1, dp(5), 0, 0, 0, dp(8)));
-
-    // 进度条动画
-    final View progressBar = new View(this);
-    progressBar.setBackground(round(MAIN_GREEN, 3, 0, 0));
+    // 🌊 流体进度条（玻璃凹槽 + 波浪填充）
+    final FluidProgressView progressBar = new FluidProgressView(this);
     progressBar.setVisibility(View.GONE);
-    progressBar.setScaleX(0f);
-    progressBar.setPivotX(0f);
-    downloadCard.addView(progressBar, lp(-1, dp(5), 0, 0, 0, dp(12)));
+    progressBar.setDraggable(false); // 下载中禁拖
+    downloadCard.addView(progressBar, lp(-1, dp(12), 0, 0, 0, dp(12)));
 
     // 下载按钮
     final Button downloadBtn = button("获取最新驱动", true);
@@ -3368,8 +3361,8 @@ public class MainActivity extends Activity {
             return;
           }
           // 重置UI状态
-          progressTrack.setVisibility(View.VISIBLE);
           progressBar.setVisibility(View.VISIBLE);
+          progressBar.setProgress(0f);
           downloadBtn.setText("正在获取驱动...");
           downloadBtn.setEnabled(false);
           downloadBtn.setAlpha(0.6f);
@@ -3418,10 +3411,11 @@ public class MainActivity extends Activity {
 
     private final WeakReference<MainActivity> activityRef;
     private final TextView statusText;
-    private final View progressBar;
+    private final FluidProgressView progressBar;
     private final Button downloadBtn;
 
-    public DownloadDriverTask(MainActivity activity, TextView status, View bar, Button btn) {
+    public DownloadDriverTask(
+        MainActivity activity, TextView status, FluidProgressView bar, Button btn) {
       activityRef = new WeakReference<>(activity);
       statusText = status;
       progressBar = bar;
@@ -3605,7 +3599,7 @@ public class MainActivity extends Activity {
         statusText.setText("下载完成，正在自动解压驱动...");
       } else {
         // 下载阶段
-        progressBar.setScaleX(overall / 100f);
+        progressBar.setProgress(overall);
         statusText.setText("正在下载驱动 (" + current + "/" + total + ")：" + overall + "%");
       }
     }
@@ -8343,28 +8337,16 @@ public class MainActivity extends Activity {
 
     tipBox.addView(tipRow, lp(-1, -2, 0, 0, 0, dp(6)));
 
-    final ProgressBar countPb =
-        new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-    countPb.setMax(waitSeconds * 1000);
-    countPb.setProgress(waitSeconds * 1000);
-    // 圆角胶囊进度条（绿色，贴合项目配色）
-    GradientDrawable pbTrack = new GradientDrawable();
-    pbTrack.setCornerRadius(dp(3));
-    pbTrack.setColor(nightMode ? Color.rgb(45, 51, 66) : Color.rgb(226, 231, 240));
-    GradientDrawable pbFill = new GradientDrawable();
-    pbFill.setCornerRadius(dp(3));
-    pbFill.setColor(successColor());
-    ClipDrawable pbClip = new ClipDrawable(pbFill, Gravity.LEFT, ClipDrawable.HORIZONTAL);
-    LayerDrawable pbLayer = new LayerDrawable(new Drawable[] {pbTrack, pbClip});
-    pbLayer.setId(1, 1);
-    countPb.setProgressDrawable(pbLayer);
-    tipBox.addView(countPb, lp(-1, dp(6), 0, 0, 0, 0));
+    final FluidProgressView countPb = new FluidProgressView(this);
+    countPb.setDraggable(false);
+    countPb.setProgress(100f);
+    tipBox.addView(countPb, lp(-1, dp(8), 0, 0, 0, 0));
 
-    // 平滑进度动画（线性递减，丝滑不跳动）
-    final ValueAnimator pbAnim = ValueAnimator.ofInt(waitSeconds * 1000, 0);
+    // 平滑进度动画（线性递减，波浪持续流动不涌起）
+    final ValueAnimator pbAnim = ValueAnimator.ofFloat(100f, 0f);
     pbAnim.setDuration(waitSeconds * 1000L);
     pbAnim.setInterpolator(new LinearInterpolator());
-    pbAnim.addUpdateListener(a -> countPb.setProgress((int) a.getAnimatedValue()));
+    pbAnim.addUpdateListener(a -> countPb.setProgressSilent((float) a.getAnimatedValue()));
     pbAnim.start();
 
     card.addView(tipBox, lp(-1, -2, 0, dp(12), 0, 0));
@@ -8777,16 +8759,12 @@ public class MainActivity extends Activity {
     titleView.setGravity(Gravity.CENTER);
     card.addView(titleView, lp(-1, -2, 0, 0, 0, dp(16)));
 
-    // 进度条
-    ProgressBar progressBar =
-        new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-    progressBar.setMax(100);
-    progressBar.setProgress(0);
-    progressBar
-        .getProgressDrawable()
-        .setColorFilter(Color.rgb(22, 119, 255), android.graphics.PorterDuff.Mode.SRC_IN);
+    // 🌊 流体进度条（更新包下载）
+    FluidProgressView progressBar = new FluidProgressView(this);
+    progressBar.setDraggable(false);
+    progressBar.setProgress(0f);
     LinearLayout.LayoutParams pblp =
-        new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(22));
+        new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(14));
     pblp.setMargins(0, 0, 0, dp(10));
     card.addView(progressBar, pblp);
 
