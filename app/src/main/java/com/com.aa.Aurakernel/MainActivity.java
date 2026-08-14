@@ -1394,12 +1394,19 @@ public class MainActivity extends Activity {
     }
   }
 
-  // ====================== 重写启动动画（白色背景 + 淡绿色元素） ======================
+  // ====================== 重写启动动画（液态背景 + 流体加载条） ======================
   private void showSplashThenMain() {
     root.removeAllViews();
 
-    // === 改为 纯白色背景（替换原来深色渐变） ===
+    // === 兜底底色 ===
     root.setBackgroundColor(SPLASH_WHITE_BG);
+
+    // 🌊 液态背景（与主界面共用同一实例：splash → 主界面过渡无缝，波浪不断）
+    if (liquidBackground == null) {
+      liquidBackground = new LiquidBackgroundView(this);
+      liquidBackground.setWallpaper(WallpaperStore.loadCurrent(this));
+    }
+    root.addView(liquidBackground, 0, new FrameLayout.LayoutParams(-1, -1));
 
     FrameLayout splashRoot = new FrameLayout(this);
     splashRoot.setPadding(dp(30), dp(30), dp(30), dp(30));
@@ -1435,34 +1442,23 @@ public class MainActivity extends Activity {
     subLp.topMargin = dp(112);
     splashRoot.addView(subView, subLp);
 
-    // ===== 4. 加载指示条（浅灰轨道 + 淡绿色进度条） =====
-    final View track = new View(this);
-    track.setBackground(round(TRACK_BG, 3, 0, 0));
-    FrameLayout.LayoutParams trackLp = new FrameLayout.LayoutParams(dp(200), dp(5));
-    trackLp.gravity = Gravity.CENTER;
-    trackLp.topMargin = dp(180);
-    splashRoot.addView(track, trackLp);
-
-    final View bar = new View(this);
-    bar.setBackground(round(MAIN_GREEN, 3, 0, 0)); // 淡绿色进度条
-    FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(dp(200), dp(5));
+    // ===== 4. 加载指示条（🌊 流体波浪进度条） =====
+    final FluidProgressView bar = new FluidProgressView(this);
+    bar.setDraggable(false);
+    FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(dp(200), dp(10));
     barLp.gravity = Gravity.CENTER;
     barLp.topMargin = dp(180);
     splashRoot.addView(bar, barLp);
-    // 缩放支点：从左向右展开
-    bar.setScaleX(0f);
-    bar.setPivotX(0f);
 
-    // ===== 加载条动画 =====
-    final ValueAnimator barAnim = ValueAnimator.ofFloat(0f, 1f);
+    // ===== 加载条动画（进度 0→100，波浪涌动） =====
+    final ValueAnimator barAnim = ValueAnimator.ofFloat(0f, 100f);
     barAnim.setDuration(800);
     barAnim.setStartDelay(500);
     barAnim.setInterpolator(new DecelerateInterpolator(2.0f));
     barAnim.addUpdateListener(
         new ValueAnimator.AnimatorUpdateListener() {
           public void onAnimationUpdate(ValueAnimator animation) {
-            float value = (Float) animation.getAnimatedValue();
-            bar.setScaleX(value);
+            bar.setProgress(((Float) animation.getAnimatedValue()).floatValue());
           }
         });
 
@@ -2770,17 +2766,9 @@ public class MainActivity extends Activity {
 
     // ====================== 模块卡片开始 ======================
 
-    // ★ 0. 公告模块 — 彩色渐变卡片
-    LinearLayout cardAnnounce = new LinearLayout(this);
-    cardAnnounce.setOrientation(LinearLayout.VERTICAL);
+    // ★ 0. 公告模块 — 液态玻璃卡片（与全局卡片风格统一）
+    GlassCard cardAnnounce = new GlassCard(this);
     cardAnnounce.setPadding(dp(16), dp(16), dp(16), dp(16));
-    GradientDrawable announceBg =
-        new GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[] {Color.argb(20, 81, 191, 101), Color.argb(5, 81, 191, 101)});
-    announceBg.setCornerRadius(dp(24));
-    announceBg.setStroke(dp(1), Color.argb(40, 81, 191, 101));
-    cardAnnounce.setBackground(announceBg);
     page.addView(cardAnnounce, lp(-1, -2, 0, 0, 0, dp(18)));
 
     LinearLayout announceTitleRow = new LinearLayout(this);

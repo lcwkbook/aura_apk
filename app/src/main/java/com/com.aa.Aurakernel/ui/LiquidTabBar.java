@@ -302,6 +302,17 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
 
   // ==================== 几何 ====================
 
+  /** 首次布局（宽度可用）时校正球位置：构造时宽度为 0，按 0 宽计算的球位是错的。 */
+  @Override
+  protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+    super.onSizeChanged(w, h, oldw, oldh);
+    if (w > 0 && (oldw == 0 || spring.x < dp(4))) {
+      float center = tabCenter(activeTab);
+      spring.snap(center);
+      targetX = center;
+    }
+  }
+
   private float tabWidth() {
     int w = getWidth();
     if (w <= 0) return 1f;

@@ -21,6 +21,7 @@ import com.aa.Aurakernel.ui.core.ThemeManager;
 public class GlassButton extends Button implements ThemeManager.Listener {
 
   private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final RectF rect = new RectF();
   private final float density;
@@ -69,14 +70,25 @@ public class GlassButton extends Button implements ThemeManager.Listener {
 
   private void applyTheme(ThemeManager.Theme t) {
     rebuildShader();
-    setTextColor(Color.WHITE);
   }
 
   private void rebuildShader() {
     int base = customAcc ? customAccColor : ThemeManager.get().getTheme().acc;
+    boolean dark = ThemeManager.get().isDark();
+    // 浅渐变玻璃：高透明度渐变 + 同色描边，浅色模式文字用主题色、深色模式白字
     bgPaint.setShader(new LinearGradient(
         0, 0, 0, 120 * density,
-        base, lighten(base, 0.18f), Shader.TileMode.CLAMP));
+        withAlpha(base, dark ? 118 : 84),
+        withAlpha(base, dark ? 42 : 16),
+        Shader.TileMode.CLAMP));
+    borderPaint.setStyle(Paint.Style.STROKE);
+    borderPaint.setStrokeWidth(Math.max(1f, density));
+    borderPaint.setColor(withAlpha(base, dark ? 230 : 160));
+    setTextColor(dark ? Color.WHITE : base);
+  }
+
+  private static int withAlpha(int color, int alpha) {
+    return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
   }
 
   private static int lighten(int color, float f) {
@@ -142,6 +154,9 @@ public class GlassButton extends Button implements ThemeManager.Listener {
     // 渐变玻璃底
     bgPaint.setStyle(Paint.Style.FILL);
     c.drawRoundRect(rect, radius, radius, bgPaint);
+
+    // 同色描边
+    c.drawRoundRect(rect, radius, radius, borderPaint);
 
     // 顶部高光
     glowPaint.setStyle(Paint.Style.FILL);
