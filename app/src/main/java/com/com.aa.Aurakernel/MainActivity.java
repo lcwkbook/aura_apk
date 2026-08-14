@@ -35,6 +35,7 @@ import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
+import com.aa.Aurakernel.ui.LiquidBackgroundView;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
@@ -186,6 +187,7 @@ public class MainActivity extends Activity {
   private String selectedName = "";
   private boolean running = false;
   private boolean nightMode = false;
+  private LiquidBackgroundView liquidBackground; // 🌊 液态背景（Activity 级复用，主题切换不重建）
   private int currentPage = 0;
 
   private Process runningProcess;
@@ -1596,9 +1598,15 @@ public class MainActivity extends Activity {
     root.removeAllViews();
     root.setBackgroundColor(bgColor());
 
+    // 🌊 液态背景（Activity 级复用：主题切换重建 shell 时背景不重建，保证流动不断）
+    if (liquidBackground == null) {
+      liquidBackground = new LiquidBackgroundView(this);
+    }
+    root.addView(liquidBackground, 0, new FrameLayout.LayoutParams(-1, -1));
+
     LinearLayout shell = new LinearLayout(this);
     shell.setOrientation(LinearLayout.VERTICAL);
-    shell.setBackgroundColor(bgColor());
+    shell.setBackgroundColor(Color.TRANSPARENT);
     root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
 
     pageHost = new LinearLayout(this);
@@ -2432,7 +2440,7 @@ public class MainActivity extends Activity {
     int from = currentPage;
     currentPage = page;
     pageHost.removeAllViews();
-    pageHost.setBackgroundColor(bgColor());
+    pageHost.setBackgroundColor(Color.TRANSPARENT);
 
     View next = null;
     if (page == 0) next = createHomePage();
@@ -2465,7 +2473,7 @@ public class MainActivity extends Activity {
     if (page == currentPage) return;
     currentPage = page;
     pageHost.removeAllViews();
-    pageHost.setBackgroundColor(bgColor());
+    pageHost.setBackgroundColor(Color.TRANSPARENT);
 
     View next;
     if (page == 0) next = createHomePage();
@@ -2587,12 +2595,12 @@ public class MainActivity extends Activity {
     ScrollView rootScroll = new ScrollView(this);
     rootScroll.setVerticalScrollBarEnabled(false);
     rootScroll.setFillViewport(false);
-    rootScroll.setBackgroundColor(bgColor());
+    rootScroll.setBackgroundColor(Color.TRANSPARENT);
 
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(18), dp(18) + getStatusBarHeight(), dp(18), dp(8));
-    page.setBackgroundColor(bgColor());
+    page.setBackgroundColor(Color.TRANSPARENT);
     rootScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
     // ===== 全新头部（毛玻璃+头像光环） =====
@@ -3279,7 +3287,7 @@ public class MainActivity extends Activity {
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(20), dp(22) + getStatusBarHeight(), dp(20), dp(20));
-    page.setBackgroundColor(bgColor());
+    page.setBackgroundColor(Color.TRANSPARENT);
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
     // 1. 页面标题
@@ -4493,7 +4501,7 @@ public class MainActivity extends Activity {
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(20), dp(22) + getStatusBarHeight(), dp(20), dp(20));
-    page.setBackgroundColor(bgColor());
+    page.setBackgroundColor(Color.TRANSPARENT);
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
     // === 顶部标题 ===
@@ -4654,7 +4662,7 @@ public class MainActivity extends Activity {
 
     // 👆 物资页整体放入 FrameLayout：右下角悬浮"添加物资"按钮（列表滚动时按钮固定不动）
     final FrameLayout materialsFrame = new FrameLayout(this);
-    materialsFrame.setBackgroundColor(bgColor());
+    materialsFrame.setBackgroundColor(Color.TRANSPARENT);
     materialsFrame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
     final Button fabAdd = new Button(this);
@@ -6153,7 +6161,7 @@ public class MainActivity extends Activity {
     LinearLayout page = new LinearLayout(this);
     page.setOrientation(LinearLayout.VERTICAL);
     page.setPadding(dp(20), dp(22) + getStatusBarHeight(), dp(20), dp(20));
-    page.setBackgroundColor(bgColor());
+    page.setBackgroundColor(Color.TRANSPARENT);
     scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
     // ===== 顶部标题区（带头像） =====
