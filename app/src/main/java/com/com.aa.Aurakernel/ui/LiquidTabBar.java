@@ -15,6 +15,7 @@ import android.os.Vibrator;
 import android.view.Choreographer;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -23,9 +24,11 @@ import com.aa.Aurakernel.ui.core.FluidPhysics;
 import com.aa.Aurakernel.ui.core.ThemeManager;
 
 /**
- * 液态 Tab 栏：玻璃底 + 液体指示球（弹簧甩动、速度方向拉伸、连点搅动、涟漪）。
- * - 点击：球以初速 v += Δx*6 甩向目标，欠阻尼自然回弹；连点叠加能量抖动。
- * - 长按 200ms 进入拖拽：球跟随手指，悬停实时切页；松手弹簧吸附。
+ * 液态 Tab 栏：玻璃底 + 液体指示球（弹簧甩动、冲刺拉长、回弹压扁、连点搅动、涟漪）。
+ * - 点击：球以初速 v += Δx*4.2 甩向目标，欠阻尼自然回弹（Q弹）；图标弹性缩放反馈。
+ * - 形变：冲向目标时柔和拉长（上限1.22），越过目标回弹时轻微压扁，面积守恒近似。
+ * - 长按 200ms 进入拖拽：球跟随手指，悬停实时切页；松手弹簧自然弹回（Q弹收尾）。
+ * - 图标/文字颜色逐帧渐变插值，切换丝滑不硬切。
  */
 public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
 
@@ -39,9 +42,9 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
     void onDragEnd();
   }
 
-  private static final float SPRING_K = 320f;
-  private static final float SPRING_C = 26f;
-  private static final float ENERGY_DECAY_PER_SEC = 1.08f; // 0.018/帧 @60fps
+  private static final float SPRING_K = 340f;
+  private static final float SPRING_C = 30f;
+  private static final float ENERGY_DECAY_PER_SEC = 0.9f; // 0.015/帧 @60fps
   private static final float ENERGY_CAP = 1.6f;
   private static final long LONG_PRESS_MS = 200L;
 
@@ -80,8 +83,18 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
   private float rippleR = 0f;
   private static final float RIPPLE_MAX = 46f;
 
+  // 形变平滑：stretch 目标值每帧低通滤波逼近，避免生硬突变
+  private float smoothStretch = 1f;
+
   private int glassColor, borderColor, acc1, acc2, acc3, acc4, iconNormal, iconActive;
   private boolean dark;
+
+  // 图标/标签颜色逐帧渐变插值（丝滑过渡）
+  private final float[] iconR = new float[4];
+  private final float[] iconG = new float[4];
+  private final float[] iconB = new float[4];
+  private final int[] lastIconColor = new int[4];
+  private boolean colorInit = false;
 
   private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
     @Override
@@ -103,6 +116,8 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
         rippleR += dt * 160f * density;
         if (rippleR > RIPPLE_MAX * density) rippleX = -1f;
       }
+
+      lerpTabColors(dt);
 
       invalidate();
       Choreographer.getInstance().postFrameCallback(frameCallback);
@@ -181,7 +196,7 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
     if (animate) {
       targetX = center;
       float dx = center - spring.x;
-      spring.impulse(dx * 6f); // 甩动注入
+      spring.impulse(dx * 3.6f); // 甩动注入（柔和，避免拉太长）
       energy.add(0.35f);
       rippleX = center;
       rippleR = 0f;
@@ -221,11 +236,46 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
 
   private void refreshTabColors() {
     if (tabIcons == null) return;
+    // 颜色交由 lerpTabColors 逐帧渐变插值；这里只负责加粗切换
     for (int i = 0; i < 4; i++) {
       boolean active = (i == activeTab) || (draggingActive && i == hoverTab);
-      tabIcons[i].setTextColor(active ? iconActive : iconNormal);
-      tabLabels[i].setTextColor(active ? iconActive : iconNormal);
       tabLabels[i].setTypeface(Typeface.DEFAULT, active ? Typeface.BOLD : Typeface.NORMAL);
+    }
+    if (!colorInit) {
+      // 首次：直接落位，避免从黑渐变
+      colorInit = true;
+      for (int i = 0; i < 4; i++) {
+        boolean active = (i == activeTab) || (draggingActive && i == hoverTab);
+        int target = active ? iconActive : iconNormal;
+        iconR[i] = Color.red(target);
+        iconG[i] = Color.green(target);
+        iconB[i] = Color.blue(target);
+        lastIconColor[i] = target;
+        tabIcons[i].setTextColor(target);
+        tabLabels[i].setTextColor(target);
+      }
+    }
+  }
+
+  /** 图标/标签颜色逐帧向目标色渐变（丝滑过渡，避免硬切）。 */
+  private void lerpTabColors(float dt) {
+    if (tabIcons == null || !colorInit) return;
+    float f = Math.min(1f, dt * 12f); // 快速但平滑的趋近
+    for (int i = 0; i < 4; i++) {
+      boolean active = (i == activeTab) || (draggingActive && i == hoverTab);
+      int target = active ? iconActive : iconNormal;
+      float tr = Color.red(target);
+      float tg = Color.green(target);
+      float tb = Color.blue(target);
+      iconR[i] += (tr - iconR[i]) * f;
+      iconG[i] += (tg - iconG[i]) * f;
+      iconB[i] += (tb - iconB[i]) * f;
+      int cur = Color.rgb((int) iconR[i], (int) iconG[i], (int) iconB[i]);
+      if (cur != lastIconColor[i]) {
+        lastIconColor[i] = cur;
+        tabIcons[i].setTextColor(cur);
+        tabLabels[i].setTextColor(cur);
+      }
     }
   }
 
@@ -282,7 +332,9 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
           if (hoverTab >= 0) {
             activeTab = hoverTab;
             targetX = tabCenter(hoverTab);
-            spring.snap(targetX); // 拖拽结束直接吸附（页面已实时切换）
+            // 不硬吸附：弹簧从当前跟随位置自然弹回目标（Q弹收尾）
+            float dx = targetX - spring.x;
+            spring.impulse(dx * 1.8f);
           }
           hoverTab = -1;
           if (listener != null) listener.onDragEnd();
@@ -293,6 +345,7 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
           energy.add(0.35f); // 连点搅动（同 tab 连点也生效）
           rippleX = cx;
           rippleR = 0f;
+          bounceIcon(tab); // Q弹：图标弹性缩放反馈
           if (listener != null) listener.onSelect(tab);
         }
         dragging = false;
@@ -300,6 +353,33 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
         return true;
     }
     return true;
+  }
+
+  /** Q弹反馈：点击 tab 时图标/文字弹性缩放（Overshoot 过冲回弹）。 */
+  private void bounceIcon(int tab) {
+    if (tab < 0 || tab >= 4) return;
+    tabIcons[tab].animate().cancel();
+    tabIcons[tab].setScaleX(0.8f);
+    tabIcons[tab].setScaleY(0.8f);
+    tabIcons[tab]
+        .animate()
+        .scaleX(1f)
+        .scaleY(1f)
+        .setDuration(300)
+        .setInterpolator(new OvershootInterpolator(1.5f))
+        .start();
+    if (tabLabels[tab] != null) {
+      tabLabels[tab].animate().cancel();
+      tabLabels[tab].setScaleX(0.9f);
+      tabLabels[tab].setScaleY(0.9f);
+      tabLabels[tab]
+          .animate()
+          .scaleX(1f)
+          .scaleY(1f)
+          .setDuration(300)
+          .setInterpolator(new OvershootInterpolator(1.5f))
+          .start();
+    }
   }
 
   // ==================== 几何 ====================
@@ -391,17 +471,28 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
     borderPaint.setColor(borderColor);
     c.drawRoundRect(rect, radius, radius, borderPaint);
 
-    // 液体球
+    // 液体球：冲刺柔和拉长（上限1.22）+ 回弹轻微压扁（Q弹），面积守恒近似
     float ballW = tabWidth() - dp(12);
     float ballH = h - dp(14);
     if (ballW > 0 && ballH > 0) {
       float vx = spring.v;
-      float stretch = Math.min(1.6f, 1f + Math.abs(vx) / 900f + energy.value() * 0.55f);
-      int dir = vx > 30f ? 1 : (vx < -30f ? -1 : 0);
-      float jitter = (float) Math.sin(time * 30f) * energy.value() * 3.2f * density;
+      float dx = targetX - spring.x;
+      boolean approaching = (vx * dx) > 0f; // 正在接近目标（同向）
+      float targetStretch;
+      if (approaching) {
+        // 冲向目标：柔和拉长
+        targetStretch = Math.min(1.22f, 1f + Math.abs(vx) / 1600f + energy.value() * 0.3f);
+      } else {
+        // 越过目标回弹：轻微压扁（Q弹手感）
+        targetStretch = Math.max(0.93f, 1f - Math.abs(vx) / 3500f - energy.value() * 0.15f);
+      }
+      // 低通滤波：形变平滑过渡，不突变（更柔顺）
+      smoothStretch += (targetStretch - smoothStretch) * 0.16f;
+      float stretch = smoothStretch;
+      float jitter = (float) Math.sin(time * 30f) * energy.value() * 1.6f * density;
       float cx = spring.x + jitter;
-      float bw = ballW * (dir == 0 ? 1f : stretch);
-      float bh = ballH / (dir == 0 ? 1f : (0.55f + 0.45f * stretch));
+      float bw = ballW * stretch;
+      float bh = ballH / (0.75f + 0.25f * stretch);
 
       blobPath.reset();
       float left = cx - bw / 2f, right = cx + bw / 2f;

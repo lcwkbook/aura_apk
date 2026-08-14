@@ -50,7 +50,6 @@ import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.style.LeadingMarginSpan;
 import android.util.Log;
-import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -1420,7 +1419,7 @@ public class MainActivity extends Activity {
     }
   }
 
-  // ====================== 启动动画（液态背景 + 粒子星尘 + 涟漪光环 + 逐字母品牌名 + 打字机副标题 + 流体进度条） ======================
+  // ====================== 重写启动动画（液态背景 + 流体加载条） ======================
   private void showSplashThenMain() {
     root.removeAllViews();
 
@@ -1434,15 +1433,11 @@ public class MainActivity extends Activity {
     }
     root.addView(liquidBackground, 0, new FrameLayout.LayoutParams(-1, -1));
 
-    // ✨ 粒子星尘（漂浮能量粒子，贯穿启动全程）
-    final ParticleFieldView particles = new ParticleFieldView(this);
-    root.addView(particles, 1, new FrameLayout.LayoutParams(-1, -1));
-
     FrameLayout splashRoot = new FrameLayout(this);
     splashRoot.setPadding(dp(30), dp(30), dp(30), dp(30));
     root.addView(splashRoot, new FrameLayout.LayoutParams(-1, -1));
 
-    // ===== 1. 光环 Logo（淡绿色主题，外圈声呐涟漪） =====
+    // ===== 1. 光环 Logo（淡绿色主题） =====
     RingView ringView = new RingView(this);
     ringView.setAlpha(0f);
     FrameLayout.LayoutParams ringLp = new FrameLayout.LayoutParams(dp(110), dp(110));
@@ -1450,57 +1445,29 @@ public class MainActivity extends Activity {
     ringLp.topMargin = -dp(50);
     splashRoot.addView(ringView, ringLp);
 
-    // ===== 2. 品牌名（逐字母弹性弹入） =====
-    LinearLayout nameRow = new LinearLayout(this);
-    nameRow.setOrientation(LinearLayout.HORIZONTAL);
-    nameRow.setGravity(Gravity.CENTER);
-    String brand = "AuraKernel";
-    for (int i = 0; i < brand.length(); i++) {
-      TextView letter = text(String.valueOf(brand.charAt(i)), 34, DARK_TEXT, Typeface.BOLD);
-      letter.setAlpha(0f);
-      letter.setTranslationY(dp(24));
-      letter.setScaleX(0.3f);
-      letter.setScaleY(0.3f);
-      nameRow.addView(letter, lp(-2, -2, 0, 0, 0, 0));
-      final View lv = letter;
-      lv.animate()
-          .alpha(1f)
-          .translationY(0f)
-          .scaleX(1f)
-          .scaleY(1f)
-          .setDuration(380)
-          .setStartDelay(150 + i * 45L)
-          .setInterpolator(new OvershootInterpolator(1.6f))
-          .start();
-    }
+    // ===== 2. 品牌名（深灰色文字，白底清晰） =====
+    TextView nameView = text("AuraKernel", 34, DARK_TEXT, Typeface.BOLD);
+    nameView.setAlpha(0f);
+    nameView.setTranslationY(dp(24));
+    nameView.setGravity(Gravity.CENTER);
+    // 文字阴影（白底弱化阴影）
+    nameView.setShadowLayer(dp(4), 0, dp(2), Color.argb(40, 0, 0, 0));
     FrameLayout.LayoutParams nameLp = new FrameLayout.LayoutParams(-1, -2);
     nameLp.gravity = Gravity.CENTER;
     nameLp.topMargin = dp(76);
-    splashRoot.addView(nameRow, nameLp);
+    splashRoot.addView(nameView, nameLp);
 
-    // ===== 3. 副标题（打字机逐字打出） =====
-    final String subFull = "Binary Runner · Driver Mode · Live Terminal";
-    final TextView subView = text("", 12, LIGHT_GREEN, Typeface.NORMAL);
+    // ===== 3. 副标题（淡绿色文字） =====
+    TextView subView =
+        text("Binary Runner · Driver Mode · Live Terminal", 12, LIGHT_GREEN, Typeface.NORMAL);
+    subView.setAlpha(0f);
     subView.setGravity(Gravity.CENTER);
     FrameLayout.LayoutParams subLp = new FrameLayout.LayoutParams(-1, -2);
     subLp.gravity = Gravity.CENTER;
     subLp.topMargin = dp(112);
     splashRoot.addView(subView, subLp);
-    final int[] typeIdx = {0};
-    final Runnable typeRunnable =
-        new Runnable() {
-          @Override
-          public void run() {
-            if (typeIdx[0] < subFull.length()) {
-              typeIdx[0]++;
-              subView.setText(subFull.substring(0, typeIdx[0]));
-              handler.postDelayed(this, 26);
-            }
-          }
-        };
-    handler.postDelayed(typeRunnable, 520);
 
-    // ===== 4. 流体进度条 + 百分比 + 状态轮换文案 =====
+    // ===== 4. 加载指示条（🌊 流体波浪进度条） =====
     final FluidProgressView bar = new FluidProgressView(this);
     bar.setDraggable(false);
     FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(dp(200), dp(10));
@@ -1508,96 +1475,20 @@ public class MainActivity extends Activity {
     barLp.topMargin = dp(180);
     splashRoot.addView(bar, barLp);
 
-    final TextView pctView = text("0%", 12, MAIN_GREEN, Typeface.BOLD);
-    pctView.setAlpha(0f);
-    pctView.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams pctLp = new FrameLayout.LayoutParams(-1, -2);
-    pctLp.gravity = Gravity.CENTER;
-    pctLp.topMargin = dp(202);
-    splashRoot.addView(pctView, pctLp);
-
-    final TextView statusView = text("正在初始化内核模块…", 11, DARK_TEXT, Typeface.NORMAL);
-    statusView.setAlpha(0f);
-    statusView.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams stLp = new FrameLayout.LayoutParams(-1, -2);
-    stLp.gravity = Gravity.CENTER;
-    stLp.topMargin = dp(224);
-    splashRoot.addView(statusView, stLp);
-
-    // ===== 5. 底部版本号 + 首次启动引导文案 =====
-    String versionName = "v" + getVersionName();
-    final TextView versionView = text(versionName, 11, Color.argb(150, 90, 90, 90), Typeface.NORMAL);
-    versionView.setAlpha(0f);
-    versionView.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams verLp = new FrameLayout.LayoutParams(-1, -2);
-    verLp.gravity = Gravity.BOTTOM;
-    verLp.bottomMargin = dp(28);
-    splashRoot.addView(versionView, verLp);
-
-    final SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
-    final boolean firstLaunch = sp.getBoolean("first_launch", true);
-    if (firstLaunch) {
-      sp.edit().putBoolean("first_launch", false).apply();
-    }
-    if (firstLaunch) {
-      // 首次启动引导：底部一行提示
-      final TextView guideView =
-          text("首次启动 · 长按底部 Tab 可拖拽切换页面", 11, Color.argb(160, 81, 191, 101), Typeface.NORMAL);
-      guideView.setAlpha(0f);
-      guideView.setGravity(Gravity.CENTER);
-      FrameLayout.LayoutParams guideLp = new FrameLayout.LayoutParams(-1, -2);
-      guideLp.gravity = Gravity.BOTTOM;
-      guideLp.bottomMargin = dp(50);
-      splashRoot.addView(guideView, guideLp);
-      guideView
-          .animate()
-          .alpha(1f)
-          .setDuration(500)
-          .setStartDelay(1400)
-          .setInterpolator(new DecelerateInterpolator())
-          .start();
-    }
-
-    // ===== 6. 完成对勾徽章（进度满时弹入光环中心） =====
-    final TextView checkView = text("✓", 30, Color.WHITE, Typeface.BOLD);
-    checkView.setGravity(Gravity.CENTER);
-    checkView.setBackground(round(MAIN_GREEN, dp(30), 0, 0));
-    checkView.setAlpha(0f);
-    checkView.setScaleX(0.2f);
-    checkView.setScaleY(0.2f);
-    FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(dp(56), dp(56));
-    checkLp.gravity = Gravity.CENTER;
-    checkLp.topMargin = -dp(50);
-    splashRoot.addView(checkView, checkLp);
-
-    // ===== 加载条动画（进度 0→100，波浪涌动 + 百分比 + 状态轮换） =====
+    // ===== 加载条动画（进度 0→100，波浪涌动） =====
     final ValueAnimator barAnim = ValueAnimator.ofFloat(0f, 100f);
-    barAnim.setDuration(1200);
-    barAnim.setStartDelay(700);
+    barAnim.setDuration(800);
+    barAnim.setStartDelay(500);
     barAnim.setInterpolator(new DecelerateInterpolator(2.0f));
     barAnim.addUpdateListener(
         new ValueAnimator.AnimatorUpdateListener() {
           public void onAnimationUpdate(ValueAnimator animation) {
-            float v = ((Float) animation.getAnimatedValue()).floatValue();
-            bar.setProgress(v);
-            pctView.setText((int) v + "%");
-            if (v < 30f) {
-              statusView.setText("正在初始化内核模块…");
-            } else if (v < 70f) {
-              statusView.setText("正在校准驱动参数…");
-            } else if (v < 99.5f) {
-              statusView.setText("正在建立安全连接…");
-            } else {
-              statusView.setText("启动完成 ✓");
-              statusView.setTextColor(MAIN_GREEN);
-              statusView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-              bar.surgeBoost(); // 进度满：加载条波浪涌动加速
-            }
+            bar.setProgress(((Float) animation.getAnimatedValue()).floatValue());
           }
         });
 
-    // ===== 动画序列 =====
-    // 1. 光环淡入 + 旋转 + 声呐涟漪
+    // ===== 动画序列（完全保留原有动画逻辑） =====
+    // 1. 光环淡入 + 旋转
     ringView
         .animate()
         .alpha(1f)
@@ -1618,59 +1509,39 @@ public class MainActivity extends Activity {
     rotateAnim.setStartDelay(200);
     rotateAnim.start();
 
-    // 2. 百分比 + 状态文案淡入
-    pctView
+    // 2. 品牌名弹性弹入
+    nameView
+        .animate()
+        .alpha(1f)
+        .translationY(0f)
+        .setDuration(400)
+        .setStartDelay(200)
+        .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
+        .start();
+
+    // 3. 副标题淡入
+    subView
         .animate()
         .alpha(1f)
         .setDuration(350)
-        .setStartDelay(720)
-        .setInterpolator(new DecelerateInterpolator())
-        .start();
-    statusView
-        .animate()
-        .alpha(1f)
-        .setDuration(350)
-        .setStartDelay(720)
-        .setInterpolator(new DecelerateInterpolator())
-        .start();
-    versionView
-        .animate()
-        .alpha(1f)
-        .setDuration(500)
-        .setStartDelay(900)
+        .setStartDelay(500)
         .setInterpolator(new DecelerateInterpolator())
         .start();
 
-    // 3. 加载条结束：粒子汇聚 + 中心脉冲 + 对勾弹入 → 整体淡出 → 主界面
+    // 4. 加载条结束，跳转主界面
     barAnim.addListener(
         new android.animation.AnimatorListenerAdapter() {
           @Override
           public void onAnimationEnd(android.animation.Animator animation) {
-            particles.attractToRing(); // 粒子向光环汇聚，形成 Logo
-            ringView.pulse();
-            checkView
-                .animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(320)
-                .setInterpolator(new OvershootInterpolator(2.0f))
-                .start();
             handler.postDelayed(
                 new Runnable() {
                   public void run() {
                     rotateAnim.cancel();
-                    // 整体淡出（含粒子层）
-                    particles
-                        .animate()
-                        .alpha(0f)
-                        .setDuration(400)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
+                    // 整体淡出
                     splashRoot
                         .animate()
                         .alpha(0f)
-                        .setDuration(400)
+                        .setDuration(300)
                         .setInterpolator(new DecelerateInterpolator())
                         .withEndAction(
                             new Runnable() {
@@ -1682,27 +1553,20 @@ public class MainActivity extends Activity {
                         .start();
                   }
                 },
-                600);
+                200);
           }
         });
     barAnim.start();
   }
 
-
+  // ====================== RingView 内部类（纯白背景 + 淡绿色元素） ======================
   private class RingView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF arcRect = new RectF(); // 修复：添加 () 括号
-    private long pulseStart = -1L; // 完成脉冲时间戳（-1 表示未触发）
 
     public RingView(Context context) {
       super(context);
       setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-    }
-
-    /** 触发完成脉冲：中心扩散一圈光波。 */
-    public void pulse() {
-      pulseStart = System.currentTimeMillis();
-      invalidate();
     }
 
     @Override
@@ -1712,36 +1576,6 @@ public class MainActivity extends Activity {
       float cx = w / 2f;
       float cy = h / 2f;
       float radius = Math.min(w, h) / 2f - dp(6);
-      long now = System.currentTimeMillis();
-
-      // === 声呐涟漪（外扩圆环，两圈错开相位） ===
-      float ripplePhase = (now % 1700) / 1700f;
-      paint.setStyle(Paint.Style.STROKE);
-      for (int k = 0; k < 2; k++) {
-        float ph = (ripplePhase + k * 0.5f) % 1f;
-        float rr = radius * (0.25f + ph * 1.15f);
-        float ra = (1f - ph) * 110;
-        if (ra > 2f) {
-          paint.setStrokeWidth(dp(2));
-          paint.setColor(Color.argb((int) ra, 81, 191, 101));
-          canvas.drawCircle(cx, cy, rr, paint);
-        }
-      }
-
-      // === 完成脉冲（进度满时中心扩散的光波） ===
-      if (pulseStart >= 0L) {
-        float t = (now - pulseStart) / 800f;
-        if (t < 1f) {
-          float pr = radius * (0.1f + t * 1.6f);
-          float pa = (1f - t) * 160;
-          paint.setStyle(Paint.Style.STROKE);
-          paint.setStrokeWidth(dp(3) * (1f - t * 0.5f));
-          paint.setColor(Color.argb((int) pa, 81, 191, 101));
-          canvas.drawCircle(cx, cy, pr, paint);
-        } else {
-          pulseStart = -1L;
-        }
-      }
 
       // === 外环（半透明白色轮廓，适配白底） ===
       paint.setStyle(Paint.Style.STROKE);
@@ -1754,7 +1588,7 @@ public class MainActivity extends Activity {
       // === 主弧线：淡绿色（替换原蓝色） ===
       paint.setStrokeWidth(dp(4));
       paint.setColor(MAIN_GREEN);
-      float startAngle = -90 + (now % 2500) / 2500f * 360f;
+      float startAngle = -90 + (System.currentTimeMillis() % 2500) / 2500f * 360f;
       float sweepAngle = 150f;
       arcRect.set(cx - radius, cy - radius, cx + radius, cy + radius);
       canvas.drawArc(arcRect, startAngle, sweepAngle, false, paint);
@@ -1794,135 +1628,6 @@ public class MainActivity extends Activity {
       canvas.drawCircle(cx, cy, dp(5), paint);
       paint.setColor(Color.argb(120, 255, 255, 255));
       canvas.drawCircle(cx, cy, dp(2), paint);
-    }
-  }
-
-  // ====================== ParticleFieldView 内部类（启动页能量粒子星尘） ======================
-  private class ParticleFieldView extends View {
-    private static final int COUNT = 34;
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final float[] px = new float[COUNT];
-    private final float[] py = new float[COUNT];
-    private final float[] pvx = new float[COUNT];
-    private final float[] pvy = new float[COUNT];
-    private final float[] pr = new float[COUNT];
-    private final float[] ph = new float[COUNT];
-    private long lastFrameNanos = 0;
-    private float time = 0f;
-    private boolean running = false;
-    // 聚集模式：进度满时粒子向光环中心汇聚成环（形成 Logo）
-    private boolean attract = false;
-    private float attractT = 0f;
-    private final float[] attrAngle = new float[COUNT];
-
-    public ParticleFieldView(Context context) {
-      super(context);
-      Random rnd = new Random();
-      for (int i = 0; i < COUNT; i++) {
-        px[i] = rnd.nextFloat();
-        py[i] = rnd.nextFloat();
-        pvx[i] = (rnd.nextFloat() - 0.5f) * 0.03f; // 横向缓慢漂移
-        pvy[i] = -(0.008f + rnd.nextFloat() * 0.022f); // 上浮速度（归一化/帧）
-        pr[i] = dp(1) + rnd.nextFloat() * dp(2);
-        ph[i] = rnd.nextFloat() * 6.283f; // 呼吸相位
-        attrAngle[i] = rnd.nextFloat() * 6.283f; // 目标环上角度
-      }
-    }
-
-    /** 触发聚集：所有粒子向光环中心汇聚成环（形成 Logo）。 */
-    public void attractToRing() {
-      attract = true;
-      attractT = 0f;
-    }
-
-    private final Choreographer.FrameCallback frameCallback =
-        new Choreographer.FrameCallback() {
-          @Override
-          public void doFrame(long frameTimeNanos) {
-            if (!running) return;
-            long now = System.nanoTime();
-            float dt = (now - lastFrameNanos) / 1e9f;
-            lastFrameNanos = now;
-            if (dt <= 0f) dt = 1f / 60f;
-            if (dt > 0.05f) dt = 0.05f;
-            time += dt;
-
-            int w = getWidth();
-            int h = getHeight();
-            if (attract && w > 0 && h > 0) {
-              // 聚集：向光环中心（屏幕中心偏上）的圆环汇聚
-              attractT += dt;
-              float t = Math.min(1f, attractT / 1.2f);
-              float ease = 1f - (float) Math.pow(1f - t, 3f); // easeOutCubic
-              // 光环中心：ringView 为 110dp 居中 + topMargin -50dp → 屏幕中心上方 50dp
-              float cx = 0.5f;
-              float cy = ((h / 2f - dp(50)) / (float) h);
-              float rx = dp(55) / (float) w;
-              float ry = dp(55) / (float) h;
-              for (int i = 0; i < COUNT; i++) {
-                float tx = cx + (float) Math.cos(attrAngle[i]) * rx;
-                float ty = cy + (float) Math.sin(attrAngle[i]) * ry;
-                px[i] += (tx - px[i]) * ease;
-                py[i] += (ty - py[i]) * ease;
-              }
-            } else {
-              for (int i = 0; i < COUNT; i++) {
-                px[i] += pvx[i] * dt;
-                py[i] += pvy[i] * dt;
-                if (py[i] < -0.04f) { // 回到底部
-                  py[i] = 1.04f;
-                  px[i] = new Random().nextFloat();
-                }
-                if (px[i] < -0.04f) px[i] = 1.04f;
-                if (px[i] > 1.04f) px[i] = -0.04f;
-              }
-            }
-            invalidate();
-            Choreographer.getInstance().postFrameCallback(frameCallback);
-          }
-        };
-
-    @Override
-    protected void onAttachedToWindow() {
-      super.onAttachedToWindow();
-      start();
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-      stop();
-      super.onDetachedFromWindow();
-    }
-
-    private void start() {
-      if (running) return;
-      running = true;
-      lastFrameNanos = System.nanoTime();
-      Choreographer.getInstance().postFrameCallback(frameCallback);
-    }
-
-    private void stop() {
-      running = false;
-      Choreographer.getInstance().removeFrameCallback(frameCallback);
-    }
-
-    @Override
-    protected void onDraw(Canvas c) {
-      int w = getWidth();
-      int h = getHeight();
-      if (w <= 0 || h <= 0) return;
-      for (int i = 0; i < COUNT; i++) {
-        // 呼吸闪烁：alpha 在 30~120 间随相位波动
-        float tw = 0.5f + 0.5f * (float) Math.sin(time * 2.2f + ph[i]);
-        int alpha = (int) (30 + 90 * tw);
-        // 粒子颜色：主体绿色调，部分偏白提亮
-        if (i % 3 == 0) {
-          paint.setColor(Color.argb(alpha, 220, 240, 225));
-        } else {
-          paint.setColor(Color.argb(alpha, 81, 191, 101));
-        }
-        c.drawCircle(px[i] * w, py[i] * h, pr[i], paint);
-      }
     }
   }
 

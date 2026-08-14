@@ -18,7 +18,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 
 /**
- * 壁纸存储：内置 3 张程序化渐变壁纸 + 相册选择（ACTION_OPEN_DOCUMENT，免权限）。
+ * 壁纸存储：内置 8 张程序化渐变壁纸 + 相册选择（ACTION_OPEN_DOCUMENT，免权限）。
  * - 相册图：降采样 → 高斯模糊（stack blur）→ 缓存到 cacheDir → 供 LiquidBackgroundView 使用。
  * - 选择失败自动回退内置壁纸（调用方 Toast）。
  */
@@ -31,7 +31,7 @@ public final class WallpaperStore {
   }
 
   private static final String PREFS = "wallpaper";
-  private static final String KEY_TYPE = "type"; // builtin_0/1/2 | custom
+  private static final String KEY_TYPE = "type"; // builtin_0~7 | custom
   private static final String CUSTOM_FILE = "wallpaper_custom.jpg";
   private static final int TARGET_SIZE = 1080;
   private static final int BLUR_RADIUS = 24;
@@ -40,7 +40,7 @@ public final class WallpaperStore {
 
   // ==================== 内置壁纸（程序化渐变，无资源依赖） ====================
 
-  /** 生成内置渐变壁纸：0=绿意 1=青蓝 2=紫粉。 */
+  /** 生成内置渐变壁纸：0=绿意 1=青蓝 2=紫粉 3=橙霞 4=绯红 5=湛蓝 6=紫罗兰 7=鎏金。 */
   public static Bitmap builtin(Context ctx, int index) {
     int w = 720, h = 1280;
     Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
@@ -48,12 +48,27 @@ public final class WallpaperStore {
     Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     int[] colors;
-    switch (index % 3) {
+    switch (index) {
       case 1:
         colors = new int[] {0xFF062E44, 0xFF0B7FA3, 0xFF3FB9D8, 0xFFB8F0E8};
         break;
       case 2:
         colors = new int[] {0xFF241040, 0xFF7B2FB8, 0xFFC05AE0, 0xFFF2B8F0};
+        break;
+      case 3:
+        colors = new int[] {0xFF3A1A08, 0xFFB35A1E, 0xFFF08A3E, 0xFFF7D4A0};
+        break;
+      case 4:
+        colors = new int[] {0xFF3A0E0E, 0xFFB33434, 0xFFF06060, 0xFFF7C0C0};
+        break;
+      case 5:
+        colors = new int[] {0xFF0E1E3A, 0xFF2F5FB3, 0xFF5A90F0, 0xFFB8CCF7};
+        break;
+      case 6:
+        colors = new int[] {0xFF1E0E3A, 0xFF7A3FB3, 0xFFAA70F0, 0xFFDCC0F7};
+        break;
+      case 7:
+        colors = new int[] {0xFF3A2E0A, 0xFFB08A1E, 0xFFE8BC44, 0xFFF7E8B8};
         break;
       default:
         colors = new int[] {0xFF0C3A24, 0xFF1E8A4F, 0xFF4FC97E, 0xFFC8F5D8};

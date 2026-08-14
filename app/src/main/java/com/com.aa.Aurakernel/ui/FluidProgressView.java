@@ -77,6 +77,11 @@ public class FluidProgressView extends View implements ThemeManager.Listener {
     if (p != target) target = p;
   }
 
+  /** 触发一次更强的涌起（启动完成时使用：波浪加速涌动）。 */
+  public void surgeBoost() {
+    surgeT = SURGE_DURATION * 2.2f; // 涌动持续更久、流速 ×6+、波幅更大
+  }
+
   public float getProgress() {
     return target;
   }

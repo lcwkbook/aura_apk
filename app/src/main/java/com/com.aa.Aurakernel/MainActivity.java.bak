@@ -50,7 +50,6 @@ import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.style.LeadingMarginSpan;
 import android.util.Log;
-import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -79,8 +78,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import com.verify.sdk.api.CommonVariableEntity;
 import com.verify.sdk.api.SingleInfoEntity;
-
-import java.util.Random;
 import com.verify.sdk.config.ApiBaseEntity;
 import com.verify.sdk.config.VerifyConfig;
 import com.verify.sdk.framework.FrameworkTool;
@@ -175,12 +172,6 @@ public class MainActivity extends Activity {
 
   // 物资页右下角悬浮"添加物资"按钮（列表滚动时固定不动）
   private Button materialsFabAdd = null;
-  // 物资页浮层宿主（添加/编辑物资在页面内弹出，不离开物资页）
-  private FrameLayout materialsOverlayHost = null;
-  // 物资页浮层是否打开（打开时禁止主页面左右滑动切换）
-  private boolean materialsOverlayOpen = false;
-  // 设置页浮层（主题色系/液态壁纸选择器）是否打开
-  private boolean settingsOverlayOpen = false;
   private LinearLayout navHome;
   private LinearLayout navMaterials;
   private LinearLayout navMine;
@@ -1278,23 +1269,6 @@ public class MainActivity extends Activity {
 
   @Override
   public void onBackPressed() {
-    // 设置页浮层（主题色系/液态壁纸）打开时，返回键优先关闭浮层
-    if (settingsOverlayOpen && root != null && root.getChildCount() > 0) {
-      View top = root.getChildAt(root.getChildCount() - 1);
-      if (top instanceof FrameLayout && "settingsOverlay".equals(top.getTag())) {
-        closeSettingsOverlay((FrameLayout) top);
-        return;
-      }
-    }
-    // 物资页浮层打开时，返回键优先关闭浮层（而不是退出页面）
-    if (materialsOverlayOpen && materialsOverlayHost != null
-        && materialsOverlayHost.getChildCount() > 0) {
-      View top = materialsOverlayHost.getChildAt(materialsOverlayHost.getChildCount() - 1);
-      if (top instanceof FrameLayout && "materialsOverlay".equals(top.getTag())) {
-        closeItemOverlay((FrameLayout) top);
-        return;
-      }
-    }
     if (rootDenied) {
       finish(); // 允许退出
     } else {
@@ -1420,7 +1394,7 @@ public class MainActivity extends Activity {
     }
   }
 
-  // ====================== 启动动画（液态背景 + 粒子星尘 + 涟漪光环 + 逐字母品牌名 + 打字机副标题 + 流体进度条） ======================
+  // ====================== 重写启动动画（液态背景 + 流体加载条） ======================
   private void showSplashThenMain() {
     root.removeAllViews();
 
@@ -1434,15 +1408,11 @@ public class MainActivity extends Activity {
     }
     root.addView(liquidBackground, 0, new FrameLayout.LayoutParams(-1, -1));
 
-    // ✨ 粒子星尘（漂浮能量粒子，贯穿启动全程）
-    final ParticleFieldView particles = new ParticleFieldView(this);
-    root.addView(particles, 1, new FrameLayout.LayoutParams(-1, -1));
-
     FrameLayout splashRoot = new FrameLayout(this);
     splashRoot.setPadding(dp(30), dp(30), dp(30), dp(30));
     root.addView(splashRoot, new FrameLayout.LayoutParams(-1, -1));
 
-    // ===== 1. 光环 Logo（淡绿色主题，外圈声呐涟漪） =====
+    // ===== 1. 光环 Logo（淡绿色主题） =====
     RingView ringView = new RingView(this);
     ringView.setAlpha(0f);
     FrameLayout.LayoutParams ringLp = new FrameLayout.LayoutParams(dp(110), dp(110));
@@ -1450,57 +1420,29 @@ public class MainActivity extends Activity {
     ringLp.topMargin = -dp(50);
     splashRoot.addView(ringView, ringLp);
 
-    // ===== 2. 品牌名（逐字母弹性弹入） =====
-    LinearLayout nameRow = new LinearLayout(this);
-    nameRow.setOrientation(LinearLayout.HORIZONTAL);
-    nameRow.setGravity(Gravity.CENTER);
-    String brand = "AuraKernel";
-    for (int i = 0; i < brand.length(); i++) {
-      TextView letter = text(String.valueOf(brand.charAt(i)), 34, DARK_TEXT, Typeface.BOLD);
-      letter.setAlpha(0f);
-      letter.setTranslationY(dp(24));
-      letter.setScaleX(0.3f);
-      letter.setScaleY(0.3f);
-      nameRow.addView(letter, lp(-2, -2, 0, 0, 0, 0));
-      final View lv = letter;
-      lv.animate()
-          .alpha(1f)
-          .translationY(0f)
-          .scaleX(1f)
-          .scaleY(1f)
-          .setDuration(380)
-          .setStartDelay(150 + i * 45L)
-          .setInterpolator(new OvershootInterpolator(1.6f))
-          .start();
-    }
+    // ===== 2. 品牌名（深灰色文字，白底清晰） =====
+    TextView nameView = text("AuraKernel", 34, DARK_TEXT, Typeface.BOLD);
+    nameView.setAlpha(0f);
+    nameView.setTranslationY(dp(24));
+    nameView.setGravity(Gravity.CENTER);
+    // 文字阴影（白底弱化阴影）
+    nameView.setShadowLayer(dp(4), 0, dp(2), Color.argb(40, 0, 0, 0));
     FrameLayout.LayoutParams nameLp = new FrameLayout.LayoutParams(-1, -2);
     nameLp.gravity = Gravity.CENTER;
     nameLp.topMargin = dp(76);
-    splashRoot.addView(nameRow, nameLp);
+    splashRoot.addView(nameView, nameLp);
 
-    // ===== 3. 副标题（打字机逐字打出） =====
-    final String subFull = "Binary Runner · Driver Mode · Live Terminal";
-    final TextView subView = text("", 12, LIGHT_GREEN, Typeface.NORMAL);
+    // ===== 3. 副标题（淡绿色文字） =====
+    TextView subView =
+        text("Binary Runner · Driver Mode · Live Terminal", 12, LIGHT_GREEN, Typeface.NORMAL);
+    subView.setAlpha(0f);
     subView.setGravity(Gravity.CENTER);
     FrameLayout.LayoutParams subLp = new FrameLayout.LayoutParams(-1, -2);
     subLp.gravity = Gravity.CENTER;
     subLp.topMargin = dp(112);
     splashRoot.addView(subView, subLp);
-    final int[] typeIdx = {0};
-    final Runnable typeRunnable =
-        new Runnable() {
-          @Override
-          public void run() {
-            if (typeIdx[0] < subFull.length()) {
-              typeIdx[0]++;
-              subView.setText(subFull.substring(0, typeIdx[0]));
-              handler.postDelayed(this, 26);
-            }
-          }
-        };
-    handler.postDelayed(typeRunnable, 520);
 
-    // ===== 4. 流体进度条 + 百分比 + 状态轮换文案 =====
+    // ===== 4. 加载指示条（🌊 流体波浪进度条） =====
     final FluidProgressView bar = new FluidProgressView(this);
     bar.setDraggable(false);
     FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(dp(200), dp(10));
@@ -1508,96 +1450,20 @@ public class MainActivity extends Activity {
     barLp.topMargin = dp(180);
     splashRoot.addView(bar, barLp);
 
-    final TextView pctView = text("0%", 12, MAIN_GREEN, Typeface.BOLD);
-    pctView.setAlpha(0f);
-    pctView.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams pctLp = new FrameLayout.LayoutParams(-1, -2);
-    pctLp.gravity = Gravity.CENTER;
-    pctLp.topMargin = dp(202);
-    splashRoot.addView(pctView, pctLp);
-
-    final TextView statusView = text("正在初始化内核模块…", 11, DARK_TEXT, Typeface.NORMAL);
-    statusView.setAlpha(0f);
-    statusView.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams stLp = new FrameLayout.LayoutParams(-1, -2);
-    stLp.gravity = Gravity.CENTER;
-    stLp.topMargin = dp(224);
-    splashRoot.addView(statusView, stLp);
-
-    // ===== 5. 底部版本号 + 首次启动引导文案 =====
-    String versionName = "v" + getVersionName();
-    final TextView versionView = text(versionName, 11, Color.argb(150, 90, 90, 90), Typeface.NORMAL);
-    versionView.setAlpha(0f);
-    versionView.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams verLp = new FrameLayout.LayoutParams(-1, -2);
-    verLp.gravity = Gravity.BOTTOM;
-    verLp.bottomMargin = dp(28);
-    splashRoot.addView(versionView, verLp);
-
-    final SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
-    final boolean firstLaunch = sp.getBoolean("first_launch", true);
-    if (firstLaunch) {
-      sp.edit().putBoolean("first_launch", false).apply();
-    }
-    if (firstLaunch) {
-      // 首次启动引导：底部一行提示
-      final TextView guideView =
-          text("首次启动 · 长按底部 Tab 可拖拽切换页面", 11, Color.argb(160, 81, 191, 101), Typeface.NORMAL);
-      guideView.setAlpha(0f);
-      guideView.setGravity(Gravity.CENTER);
-      FrameLayout.LayoutParams guideLp = new FrameLayout.LayoutParams(-1, -2);
-      guideLp.gravity = Gravity.BOTTOM;
-      guideLp.bottomMargin = dp(50);
-      splashRoot.addView(guideView, guideLp);
-      guideView
-          .animate()
-          .alpha(1f)
-          .setDuration(500)
-          .setStartDelay(1400)
-          .setInterpolator(new DecelerateInterpolator())
-          .start();
-    }
-
-    // ===== 6. 完成对勾徽章（进度满时弹入光环中心） =====
-    final TextView checkView = text("✓", 30, Color.WHITE, Typeface.BOLD);
-    checkView.setGravity(Gravity.CENTER);
-    checkView.setBackground(round(MAIN_GREEN, dp(30), 0, 0));
-    checkView.setAlpha(0f);
-    checkView.setScaleX(0.2f);
-    checkView.setScaleY(0.2f);
-    FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(dp(56), dp(56));
-    checkLp.gravity = Gravity.CENTER;
-    checkLp.topMargin = -dp(50);
-    splashRoot.addView(checkView, checkLp);
-
-    // ===== 加载条动画（进度 0→100，波浪涌动 + 百分比 + 状态轮换） =====
+    // ===== 加载条动画（进度 0→100，波浪涌动） =====
     final ValueAnimator barAnim = ValueAnimator.ofFloat(0f, 100f);
-    barAnim.setDuration(1200);
-    barAnim.setStartDelay(700);
+    barAnim.setDuration(800);
+    barAnim.setStartDelay(500);
     barAnim.setInterpolator(new DecelerateInterpolator(2.0f));
     barAnim.addUpdateListener(
         new ValueAnimator.AnimatorUpdateListener() {
           public void onAnimationUpdate(ValueAnimator animation) {
-            float v = ((Float) animation.getAnimatedValue()).floatValue();
-            bar.setProgress(v);
-            pctView.setText((int) v + "%");
-            if (v < 30f) {
-              statusView.setText("正在初始化内核模块…");
-            } else if (v < 70f) {
-              statusView.setText("正在校准驱动参数…");
-            } else if (v < 99.5f) {
-              statusView.setText("正在建立安全连接…");
-            } else {
-              statusView.setText("启动完成 ✓");
-              statusView.setTextColor(MAIN_GREEN);
-              statusView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-              bar.surgeBoost(); // 进度满：加载条波浪涌动加速
-            }
+            bar.setProgress(((Float) animation.getAnimatedValue()).floatValue());
           }
         });
 
-    // ===== 动画序列 =====
-    // 1. 光环淡入 + 旋转 + 声呐涟漪
+    // ===== 动画序列（完全保留原有动画逻辑） =====
+    // 1. 光环淡入 + 旋转
     ringView
         .animate()
         .alpha(1f)
@@ -1618,59 +1484,39 @@ public class MainActivity extends Activity {
     rotateAnim.setStartDelay(200);
     rotateAnim.start();
 
-    // 2. 百分比 + 状态文案淡入
-    pctView
+    // 2. 品牌名弹性弹入
+    nameView
+        .animate()
+        .alpha(1f)
+        .translationY(0f)
+        .setDuration(400)
+        .setStartDelay(200)
+        .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
+        .start();
+
+    // 3. 副标题淡入
+    subView
         .animate()
         .alpha(1f)
         .setDuration(350)
-        .setStartDelay(720)
-        .setInterpolator(new DecelerateInterpolator())
-        .start();
-    statusView
-        .animate()
-        .alpha(1f)
-        .setDuration(350)
-        .setStartDelay(720)
-        .setInterpolator(new DecelerateInterpolator())
-        .start();
-    versionView
-        .animate()
-        .alpha(1f)
-        .setDuration(500)
-        .setStartDelay(900)
+        .setStartDelay(500)
         .setInterpolator(new DecelerateInterpolator())
         .start();
 
-    // 3. 加载条结束：粒子汇聚 + 中心脉冲 + 对勾弹入 → 整体淡出 → 主界面
+    // 4. 加载条结束，跳转主界面
     barAnim.addListener(
         new android.animation.AnimatorListenerAdapter() {
           @Override
           public void onAnimationEnd(android.animation.Animator animation) {
-            particles.attractToRing(); // 粒子向光环汇聚，形成 Logo
-            ringView.pulse();
-            checkView
-                .animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(320)
-                .setInterpolator(new OvershootInterpolator(2.0f))
-                .start();
             handler.postDelayed(
                 new Runnable() {
                   public void run() {
                     rotateAnim.cancel();
-                    // 整体淡出（含粒子层）
-                    particles
-                        .animate()
-                        .alpha(0f)
-                        .setDuration(400)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
+                    // 整体淡出
                     splashRoot
                         .animate()
                         .alpha(0f)
-                        .setDuration(400)
+                        .setDuration(300)
                         .setInterpolator(new DecelerateInterpolator())
                         .withEndAction(
                             new Runnable() {
@@ -1682,27 +1528,20 @@ public class MainActivity extends Activity {
                         .start();
                   }
                 },
-                600);
+                200);
           }
         });
     barAnim.start();
   }
 
-
+  // ====================== RingView 内部类（纯白背景 + 淡绿色元素） ======================
   private class RingView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF arcRect = new RectF(); // 修复：添加 () 括号
-    private long pulseStart = -1L; // 完成脉冲时间戳（-1 表示未触发）
 
     public RingView(Context context) {
       super(context);
       setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-    }
-
-    /** 触发完成脉冲：中心扩散一圈光波。 */
-    public void pulse() {
-      pulseStart = System.currentTimeMillis();
-      invalidate();
     }
 
     @Override
@@ -1712,36 +1551,6 @@ public class MainActivity extends Activity {
       float cx = w / 2f;
       float cy = h / 2f;
       float radius = Math.min(w, h) / 2f - dp(6);
-      long now = System.currentTimeMillis();
-
-      // === 声呐涟漪（外扩圆环，两圈错开相位） ===
-      float ripplePhase = (now % 1700) / 1700f;
-      paint.setStyle(Paint.Style.STROKE);
-      for (int k = 0; k < 2; k++) {
-        float ph = (ripplePhase + k * 0.5f) % 1f;
-        float rr = radius * (0.25f + ph * 1.15f);
-        float ra = (1f - ph) * 110;
-        if (ra > 2f) {
-          paint.setStrokeWidth(dp(2));
-          paint.setColor(Color.argb((int) ra, 81, 191, 101));
-          canvas.drawCircle(cx, cy, rr, paint);
-        }
-      }
-
-      // === 完成脉冲（进度满时中心扩散的光波） ===
-      if (pulseStart >= 0L) {
-        float t = (now - pulseStart) / 800f;
-        if (t < 1f) {
-          float pr = radius * (0.1f + t * 1.6f);
-          float pa = (1f - t) * 160;
-          paint.setStyle(Paint.Style.STROKE);
-          paint.setStrokeWidth(dp(3) * (1f - t * 0.5f));
-          paint.setColor(Color.argb((int) pa, 81, 191, 101));
-          canvas.drawCircle(cx, cy, pr, paint);
-        } else {
-          pulseStart = -1L;
-        }
-      }
 
       // === 外环（半透明白色轮廓，适配白底） ===
       paint.setStyle(Paint.Style.STROKE);
@@ -1754,7 +1563,7 @@ public class MainActivity extends Activity {
       // === 主弧线：淡绿色（替换原蓝色） ===
       paint.setStrokeWidth(dp(4));
       paint.setColor(MAIN_GREEN);
-      float startAngle = -90 + (now % 2500) / 2500f * 360f;
+      float startAngle = -90 + (System.currentTimeMillis() % 2500) / 2500f * 360f;
       float sweepAngle = 150f;
       arcRect.set(cx - radius, cy - radius, cx + radius, cy + radius);
       canvas.drawArc(arcRect, startAngle, sweepAngle, false, paint);
@@ -1794,135 +1603,6 @@ public class MainActivity extends Activity {
       canvas.drawCircle(cx, cy, dp(5), paint);
       paint.setColor(Color.argb(120, 255, 255, 255));
       canvas.drawCircle(cx, cy, dp(2), paint);
-    }
-  }
-
-  // ====================== ParticleFieldView 内部类（启动页能量粒子星尘） ======================
-  private class ParticleFieldView extends View {
-    private static final int COUNT = 34;
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final float[] px = new float[COUNT];
-    private final float[] py = new float[COUNT];
-    private final float[] pvx = new float[COUNT];
-    private final float[] pvy = new float[COUNT];
-    private final float[] pr = new float[COUNT];
-    private final float[] ph = new float[COUNT];
-    private long lastFrameNanos = 0;
-    private float time = 0f;
-    private boolean running = false;
-    // 聚集模式：进度满时粒子向光环中心汇聚成环（形成 Logo）
-    private boolean attract = false;
-    private float attractT = 0f;
-    private final float[] attrAngle = new float[COUNT];
-
-    public ParticleFieldView(Context context) {
-      super(context);
-      Random rnd = new Random();
-      for (int i = 0; i < COUNT; i++) {
-        px[i] = rnd.nextFloat();
-        py[i] = rnd.nextFloat();
-        pvx[i] = (rnd.nextFloat() - 0.5f) * 0.03f; // 横向缓慢漂移
-        pvy[i] = -(0.008f + rnd.nextFloat() * 0.022f); // 上浮速度（归一化/帧）
-        pr[i] = dp(1) + rnd.nextFloat() * dp(2);
-        ph[i] = rnd.nextFloat() * 6.283f; // 呼吸相位
-        attrAngle[i] = rnd.nextFloat() * 6.283f; // 目标环上角度
-      }
-    }
-
-    /** 触发聚集：所有粒子向光环中心汇聚成环（形成 Logo）。 */
-    public void attractToRing() {
-      attract = true;
-      attractT = 0f;
-    }
-
-    private final Choreographer.FrameCallback frameCallback =
-        new Choreographer.FrameCallback() {
-          @Override
-          public void doFrame(long frameTimeNanos) {
-            if (!running) return;
-            long now = System.nanoTime();
-            float dt = (now - lastFrameNanos) / 1e9f;
-            lastFrameNanos = now;
-            if (dt <= 0f) dt = 1f / 60f;
-            if (dt > 0.05f) dt = 0.05f;
-            time += dt;
-
-            int w = getWidth();
-            int h = getHeight();
-            if (attract && w > 0 && h > 0) {
-              // 聚集：向光环中心（屏幕中心偏上）的圆环汇聚
-              attractT += dt;
-              float t = Math.min(1f, attractT / 1.2f);
-              float ease = 1f - (float) Math.pow(1f - t, 3f); // easeOutCubic
-              // 光环中心：ringView 为 110dp 居中 + topMargin -50dp → 屏幕中心上方 50dp
-              float cx = 0.5f;
-              float cy = ((h / 2f - dp(50)) / (float) h);
-              float rx = dp(55) / (float) w;
-              float ry = dp(55) / (float) h;
-              for (int i = 0; i < COUNT; i++) {
-                float tx = cx + (float) Math.cos(attrAngle[i]) * rx;
-                float ty = cy + (float) Math.sin(attrAngle[i]) * ry;
-                px[i] += (tx - px[i]) * ease;
-                py[i] += (ty - py[i]) * ease;
-              }
-            } else {
-              for (int i = 0; i < COUNT; i++) {
-                px[i] += pvx[i] * dt;
-                py[i] += pvy[i] * dt;
-                if (py[i] < -0.04f) { // 回到底部
-                  py[i] = 1.04f;
-                  px[i] = new Random().nextFloat();
-                }
-                if (px[i] < -0.04f) px[i] = 1.04f;
-                if (px[i] > 1.04f) px[i] = -0.04f;
-              }
-            }
-            invalidate();
-            Choreographer.getInstance().postFrameCallback(frameCallback);
-          }
-        };
-
-    @Override
-    protected void onAttachedToWindow() {
-      super.onAttachedToWindow();
-      start();
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-      stop();
-      super.onDetachedFromWindow();
-    }
-
-    private void start() {
-      if (running) return;
-      running = true;
-      lastFrameNanos = System.nanoTime();
-      Choreographer.getInstance().postFrameCallback(frameCallback);
-    }
-
-    private void stop() {
-      running = false;
-      Choreographer.getInstance().removeFrameCallback(frameCallback);
-    }
-
-    @Override
-    protected void onDraw(Canvas c) {
-      int w = getWidth();
-      int h = getHeight();
-      if (w <= 0 || h <= 0) return;
-      for (int i = 0; i < COUNT; i++) {
-        // 呼吸闪烁：alpha 在 30~120 间随相位波动
-        float tw = 0.5f + 0.5f * (float) Math.sin(time * 2.2f + ph[i]);
-        int alpha = (int) (30 + 90 * tw);
-        // 粒子颜色：主体绿色调，部分偏白提亮
-        if (i % 3 == 0) {
-          paint.setColor(Color.argb(alpha, 220, 240, 225));
-        } else {
-          paint.setColor(Color.argb(alpha, 81, 191, 101));
-        }
-        c.drawCircle(px[i] * w, py[i] * h, pr[i], paint);
-      }
     }
   }
 
@@ -5031,8 +4711,6 @@ public class MainActivity extends Activity {
     final FrameLayout materialsFrame = new FrameLayout(this);
     materialsFrame.setBackgroundColor(Color.TRANSPARENT);
     materialsFrame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-    // 保存浮层宿主引用（添加/编辑物资弹窗挂载于此，不离开物资页面）
-    materialsOverlayHost = materialsFrame;
 
     final Button fabAdd = new Button(this);
     fabAdd.setText("＋ 添加物资");
@@ -5043,7 +4721,7 @@ public class MainActivity extends Activity {
     fabAdd.setPadding(dp(20), dp(0), dp(20), dp(0));
     fabAdd.setAllCaps(false);
     fabAdd.setElevation(dp(8));
-    fabAdd.setOnClickListener(v -> showAddItemOverlay(contentArea, tabBar));
+    fabAdd.setOnClickListener(v -> showAddItemDialog(contentArea, tabBar));
     FrameLayout.LayoutParams fabLp =
         new FrameLayout.LayoutParams(-2, dp(44), Gravity.BOTTOM | Gravity.END);
     fabLp.setMargins(0, 0, dp(16), dp(16));
@@ -5268,7 +4946,7 @@ public class MainActivity extends Activity {
             if (localBatchMode[0]) {
               checkBox.toggle();
             } else {
-              showEditItemOverlay(contentArea, tabBar, items, index);
+              showEditItemDialog(contentArea, tabBar, items, index);
             }
           });
 
@@ -5899,14 +5577,11 @@ public class MainActivity extends Activity {
   // ================================================================
   // ➕ 添加物资对话框
   // ================================================================
-  private void showAddItemOverlay(final LinearLayout contentArea, final View tabBar) {
-    if (materialsOverlayHost == null || materialsOverlayOpen) return;
-
-    // 页面内浮层：半透明遮罩铺满物资页，点击遮罩关闭
-    final FrameLayout overlay = new FrameLayout(this);
-    overlay.setTag("materialsOverlay");
-    overlay.setBackgroundColor(Color.argb(150, 0, 0, 0));
-    overlay.setOnClickListener(v -> closeItemOverlay(overlay));
+  private void showAddItemDialog(final LinearLayout contentArea, final View tabBar) {
+    final Dialog dialog =
+        new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
 
     ScrollView scrollWrapper = new ScrollView(this);
     scrollWrapper.setFillViewport(false);
@@ -5915,6 +5590,9 @@ public class MainActivity extends Activity {
     LinearLayout layout = new LinearLayout(this);
     layout.setOrientation(LinearLayout.VERTICAL);
     layout.setPadding(dp(24), dp(24), dp(24), dp(24));
+
+    // 🪟 模糊玻璃背景（捕获背后 → 高斯模糊 → 80% 蒙层，不透字）
+    applyDialogGlass(dialog, scrollWrapper, 20);
 
     // === 顶部装饰条 + 标题 ===
     View accentBar = new View(this);
@@ -6056,7 +5734,7 @@ public class MainActivity extends Activity {
     cancelBtn.setAllCaps(false);
     btnRow.addView(cancelBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-    cancelBtn.setOnClickListener(v -> closeItemOverlay(overlay));
+    cancelBtn.setOnClickListener(v -> dialog.dismiss());
 
     // 间隔
     View btnSpacer = new View(this);
@@ -6105,32 +5783,38 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "❌ 写入失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
           }
 
-          closeItemOverlay(overlay);
+          dialog.dismiss();
           refreshContent(contentArea, true, tabBar);
         });
 
     layout.addView(btnRow, lp(-1, -2, 0, dp(8), 0, 0));
 
-    // 🪟 内容卡片：不透明玻璃卡片（圆角 + 细描边），浮在半透明遮罩之上
+    // 🪟 内容卡片：半透明玻璃卡片，浮在全屏模糊玻璃之上（圆角 + 细描边）
     layout.setBackground(dialogCardBg(20));
     int cardW = Math.min(dp(360), getResources().getDisplayMetrics().widthPixels - dp(48));
     // 居中容器（fillViewport 使内容不足一屏时卡片垂直水平居中；超出则正常滚动）
     FrameLayout centerWrap = new FrameLayout(this);
     centerWrap.addView(layout, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
-    // 卡片拦截点击：点击卡片内部不关闭浮层（点击遮罩区域才关闭）
-    layout.setClickable(true);
-    layout.setOnClickListener(v -> {});
+    // 点击模糊玻璃背景区域 → 关闭弹窗
+    centerWrap.setOnClickListener(v -> dialog.dismiss());
     scrollWrapper.setFillViewport(true);
     scrollWrapper.addView(centerWrap, new ScrollView.LayoutParams(-1, -1));
 
-    // 内容层挂到遮罩上（遮罩铺满物资页，卡片居中浮于其上）
-    overlay.addView(scrollWrapper, new FrameLayout.LayoutParams(-1, -1));
-    // 点击卡片外（遮罩区域）关闭浮层
-    attachOverlayDismiss(scrollWrapper, layout, () -> closeItemOverlay(overlay));
-
-    // 挂载到物资页面内（不离开物资页）
-    materialsOverlayHost.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-    materialsOverlayOpen = true;
+    dialog.setContentView(scrollWrapper);
+    Window win = dialog.getWindow();
+    if (win != null) {
+      // 全屏窗口：整个背景铺满模糊玻璃
+      // （改用与悬浮终端弹窗一致的全屏主题 + 属性设置，规避 Dialog 主题在部分 ROM 上窗口尺寸/位置异常）
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.dimAmount = 0f;
+      win.setAttributes(lp);
+      win.setBackgroundDrawable(null);
+      win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+      win.setWindowAnimations(android.R.style.Animation_Translucent);
+    }
+    dialog.show();
   }
 
   // ================================================================
@@ -6182,8 +5866,8 @@ public class MainActivity extends Activity {
     }
   }
 
-  // ✏️ 编辑物资浮层（在物资页面内弹出，不离开物资页）
-  private void showEditItemOverlay(
+  // ✏️ 编辑物资对话框
+  private void showEditItemDialog(
       final LinearLayout contentArea,
       final View tabBar,
       final List<String> items,
@@ -6191,13 +5875,10 @@ public class MainActivity extends Activity {
     final String oldItem = items.get(index);
     final String[] oldParts = parseItem(oldItem);
 
-    if (materialsOverlayHost == null || materialsOverlayOpen) return;
-
-    // 页面内浮层：半透明遮罩铺满物资页，点击遮罩关闭
-    final FrameLayout overlay = new FrameLayout(this);
-    overlay.setTag("materialsOverlay");
-    overlay.setBackgroundColor(Color.argb(150, 0, 0, 0));
-    overlay.setOnClickListener(v -> closeItemOverlay(overlay));
+    final Dialog dialog =
+        new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    dialog.setCancelable(true);
 
     ScrollView scrollWrapper = new ScrollView(this);
     scrollWrapper.setFillViewport(false);
@@ -6206,6 +5887,9 @@ public class MainActivity extends Activity {
     LinearLayout layout = new LinearLayout(this);
     layout.setOrientation(LinearLayout.VERTICAL);
     layout.setPadding(dp(24), dp(24), dp(24), dp(24));
+
+    // 🪟 模糊玻璃背景（捕获背后 → 高斯模糊 → 80% 蒙层，不透字）
+    applyDialogGlass(dialog, scrollWrapper, 20);
 
     // === 顶部装饰条 + 标题 ===
     View accentBar = new View(this);
@@ -6358,7 +6042,7 @@ public class MainActivity extends Activity {
     cancelBtn.setAllCaps(false);
     btnRow.addView(cancelBtn, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-    cancelBtn.setOnClickListener(v -> closeItemOverlay(overlay));
+    cancelBtn.setOnClickListener(v -> dialog.dismiss());
 
     // 间隔
     View btnSpacer = new View(this);
@@ -6399,255 +6083,52 @@ public class MainActivity extends Activity {
           saveItemsToFile(items);
           Toast.makeText(this, "✅ 已更新「" + name + "」", Toast.LENGTH_SHORT).show();
 
-          closeItemOverlay(overlay);
+          dialog.dismiss();
           refreshContent(contentArea, true, tabBar);
         });
 
     layout.addView(btnRow, lp(-1, -2, 0, dp(8), 0, 0));
 
-    // 🪟 内容卡片：不透明玻璃卡片（圆角 + 细描边），浮在半透明遮罩之上
+    // 🪟 内容卡片：半透明玻璃卡片，浮在全屏模糊玻璃之上（圆角 + 细描边）
     layout.setBackground(dialogCardBg(20));
     int cardW = Math.min(dp(360), getResources().getDisplayMetrics().widthPixels - dp(48));
     // 居中容器（fillViewport 使内容不足一屏时卡片垂直水平居中；超出则正常滚动）
     FrameLayout centerWrap = new FrameLayout(this);
     centerWrap.addView(layout, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
-    // 卡片拦截点击：点击卡片内部不关闭浮层（点击遮罩区域才关闭）
-    layout.setClickable(true);
-    layout.setOnClickListener(v -> {});
+    // 点击模糊玻璃背景区域 → 关闭弹窗
+    centerWrap.setOnClickListener(v -> dialog.dismiss());
     scrollWrapper.setFillViewport(true);
     scrollWrapper.addView(centerWrap, new ScrollView.LayoutParams(-1, -1));
 
-    // 内容层挂到遮罩上（遮罩铺满物资页，卡片居中浮于其上）
-    overlay.addView(scrollWrapper, new FrameLayout.LayoutParams(-1, -1));
-    // 点击卡片外（遮罩区域）关闭浮层
-    attachOverlayDismiss(scrollWrapper, layout, () -> closeItemOverlay(overlay));
-
-    // 挂载到物资页面内（不离开物资页）
-    materialsOverlayHost.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-    materialsOverlayOpen = true;
-  }
-
-  // 关闭物资页浮层（移除遮罩；若页面内还有其他浮层则保持打开状态）
-  private void closeItemOverlay(final FrameLayout overlay) {
-    if (overlay != null && overlay.getParent() != null) {
-      ((ViewGroup) overlay.getParent()).removeView(overlay);
+    dialog.setContentView(scrollWrapper);
+    Window win = dialog.getWindow();
+    if (win != null) {
+      // 全屏窗口：整个背景铺满模糊玻璃
+      // （改用与悬浮终端弹窗一致的全屏主题 + 属性设置，规避 Dialog 主题在部分 ROM 上窗口尺寸/位置异常）
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.dimAmount = 0f;
+      win.setAttributes(lp);
+      win.setBackgroundDrawable(null);
+      win.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+      win.setWindowAnimations(android.R.style.Animation_Translucent);
     }
-    // 物资页内是否还有其他浮层（调色盘可能叠在添加/编辑浮层之上）
-    boolean hasOverlay = false;
-    if (materialsOverlayHost != null) {
-      for (int i = 0; i < materialsOverlayHost.getChildCount(); i++) {
-        if ("materialsOverlay".equals(materialsOverlayHost.getChildAt(i).getTag())) {
-          hasOverlay = true;
-          break;
-        }
-      }
-    }
-    materialsOverlayOpen = hasOverlay;
-  }
-
-  // 关闭设置页浮层（主题色系/液态壁纸选择器）
-  private void closeSettingsOverlay(final FrameLayout overlay) {
-    if (overlay != null && overlay.getParent() != null) {
-      ((ViewGroup) overlay.getParent()).removeView(overlay);
-    }
-    settingsOverlayOpen = false;
-  }
-
-  // 浮层外点击关闭：ScrollView 会消费触摸事件，需在其上监听；
-  // 轻点（无滑动）且松手位置在卡片外 → 触发 onDismiss
-  private void attachOverlayDismiss(
-      final View scrollWrapper, final View card, final Runnable onDismiss) {
-    final float[] down = new float[2];
-    scrollWrapper.setOnTouchListener(
-        (v, ev) -> {
-          switch (ev.getAction()) {
-            case android.view.MotionEvent.ACTION_DOWN:
-              down[0] = ev.getRawX();
-              down[1] = ev.getRawY();
-              break;
-            case android.view.MotionEvent.ACTION_UP:
-              float dx = ev.getRawX() - down[0];
-              float dy = ev.getRawY() - down[1];
-              if (Math.abs(dx) < dp(10) && Math.abs(dy) < dp(10) && !isTouchInside(card, ev)) {
-                onDismiss.run();
-              }
-              break;
-          }
-          return false;
-        });
-  }
-
-  // 触摸点是否在卡片内（含圆角忽略）
-  private boolean isTouchInside(final View card, final android.view.MotionEvent ev) {
-    int[] loc = new int[2];
-    card.getLocationOnScreen(loc);
-    float x = ev.getRawX(), y = ev.getRawY();
-    return x >= loc[0] && x <= loc[0] + card.getWidth() && y >= loc[1] && y <= loc[1] + card.getHeight();
+    dialog.show();
   }
 
   // ================================================================
-  // 🎨 主题色系浮层 — 点击"主题色系"行弹出（设置页内）
-  // ================================================================
-  private void showPaletteOverlay() {
-    if (root == null) return;
-
-    // 页面内浮层：半透明遮罩铺满全屏，卡片浮于其上
-    final FrameLayout overlay = new FrameLayout(this);
-    overlay.setTag("settingsOverlay");
-    overlay.setBackgroundColor(Color.argb(150, 0, 0, 0));
-    overlay.setOnClickListener(v -> closeSettingsOverlay(overlay));
-
-    ScrollView scrollWrapper = new ScrollView(this);
-    scrollWrapper.setFillViewport(true);
-    scrollWrapper.setVerticalScrollBarEnabled(false);
-    overlay.addView(scrollWrapper, new FrameLayout.LayoutParams(-1, -1));
-
-    LinearLayout layout = new LinearLayout(this);
-    layout.setOrientation(LinearLayout.VERTICAL);
-    layout.setPadding(dp(20), dp(20), dp(20), dp(20));
-
-    // 标题
-    // 点击卡片外（遮罩区域）关闭浮层
-    attachOverlayDismiss(scrollWrapper, layout, () -> closeSettingsOverlay(overlay));
-    TextView title = text("🎨 主题色系", 17, textColor(), Typeface.BOLD);
-    title.setGravity(Gravity.CENTER);
-    layout.addView(title, lp(-1, -2, 0, 0, 0, dp(16)));
-
-    // 8 色圆点（4 列 × 2 行）
-    LinearLayout grid = new LinearLayout(this);
-    grid.setOrientation(LinearLayout.VERTICAL);
-    grid.setGravity(Gravity.CENTER);
-    final ThemeManager.Palette[] palettes = ThemeManager.Palette.values();
-    LinearLayout row = null;
-    for (int i = 0; i < palettes.length; i++) {
-      if (i % 4 == 0) {
-        row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER);
-        grid.addView(row, lp(-1, -2, 0, i >= 4 ? dp(6) : 0, 0, 0));
-      }
-      final ThemeManager.Palette p = palettes[i];
-      GradientDrawable dot = new GradientDrawable(
-          GradientDrawable.Orientation.TL_BR, paletteColors(p));
-      dot.setCornerRadius(dp(100));
-      final View dotView = new View(this);
-      dotView.setBackground(dot);
-      LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(48), dp(48));
-      dotLp.setMargins(dp(7), dp(4), dp(7), dp(4));
-      dotView.setLayoutParams(dotLp);
-      boolean selected = ThemeManager.get().getPalette() == p;
-      dotView.setAlpha(selected ? 1f : 0.4f);
-      dotView.setOnClickListener(
-          v -> {
-            ThemeManager.get().setPalette(p);
-            MAIN_GREEN = ThemeManager.get().getTheme().acc;
-            closeSettingsOverlay(overlay);
-            showMainShell();
-            switchPage(3);
-          });
-      row.addView(dotView);
-    }
-    layout.addView(grid, lp(-1, -2, 0, 0, 0, dp(6)));
-
-    // 卡片拦截点击：点击卡片内部不关闭
-    layout.setBackground(dialogCardBg(20));
-    layout.setClickable(true);
-    layout.setOnClickListener(v -> {});
-    int cardW = Math.min(dp(330), getResources().getDisplayMetrics().widthPixels - dp(48));
-    FrameLayout centerWrap = new FrameLayout(this);
-    centerWrap.addView(layout, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
-    scrollWrapper.setFillViewport(true);
-    scrollWrapper.addView(centerWrap, new ScrollView.LayoutParams(-1, -1));
-
-    // 挂到根布局（全屏遮罩）
-    root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-    settingsOverlayOpen = true;
-  }
-
-  // ================================================================
-  // 🖼️ 液态壁纸浮层 — 点击"液态壁纸"行弹出（设置页内）
-  // ================================================================
-  private void showWallpaperOverlay() {
-    if (root == null) return;
-
-    final FrameLayout overlay = new FrameLayout(this);
-    overlay.setTag("settingsOverlay");
-    overlay.setBackgroundColor(Color.argb(150, 0, 0, 0));
-    overlay.setOnClickListener(v -> closeSettingsOverlay(overlay));
-
-    ScrollView scrollWrapper = new ScrollView(this);
-    scrollWrapper.setFillViewport(true);
-    scrollWrapper.setVerticalScrollBarEnabled(false);
-    overlay.addView(scrollWrapper, new FrameLayout.LayoutParams(-1, -1));
-
-    LinearLayout layout = new LinearLayout(this);
-    layout.setOrientation(LinearLayout.VERTICAL);
-    layout.setPadding(dp(20), dp(20), dp(20), dp(20));
-
-    // 点击卡片外（遮罩区域）关闭浮层
-    attachOverlayDismiss(scrollWrapper, layout, () -> closeSettingsOverlay(overlay));
-    TextView title = text("🖼️ 液态壁纸", 17, textColor(), Typeface.BOLD);
-    title.setGravity(Gravity.CENTER);
-    layout.addView(title, lp(-1, -2, 0, 0, 0, dp(16)));
-
-    // 8 张内置渐变壁纸缩略图（4 列 × 2 行）
-    LinearLayout grid = new LinearLayout(this);
-    grid.setOrientation(LinearLayout.VERTICAL);
-    grid.setGravity(Gravity.CENTER);
-    LinearLayout row = null;
-    for (int i = 0; i < 8; i++) {
-      if (i % 4 == 0) {
-        row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER);
-        grid.addView(row, lp(-1, -2, 0, i >= 4 ? dp(6) : 0, 0, 0));
-      }
-      final int idx = i;
-      GradientDrawable thumbBg = new GradientDrawable(
-          GradientDrawable.Orientation.TL_BR, wallpaperColors(idx));
-      thumbBg.setCornerRadius(dp(12));
-      final View thumb = new View(this);
-      thumb.setBackground(thumbBg);
-      LinearLayout.LayoutParams thumbLp = new LinearLayout.LayoutParams(dp(66), dp(46));
-      thumbLp.setMargins(dp(6), dp(4), dp(6), dp(4));
-      thumb.setLayoutParams(thumbLp);
-      thumb.setOnClickListener(
-          v -> {
-            WallpaperStore.setBuiltin(MainActivity.this, idx);
-            if (liquidBackground != null) {
-              liquidBackground.setWallpaper(WallpaperStore.loadCurrent(MainActivity.this));
-            }
-            closeSettingsOverlay(overlay);
-            Toast.makeText(MainActivity.this, "✅ 壁纸已应用", Toast.LENGTH_SHORT).show();
-          });
-      row.addView(thumb);
-    }
-    layout.addView(grid, lp(-1, -2, 0, 0, 0, 0));
-
-    layout.setBackground(dialogCardBg(20));
-    layout.setClickable(true);
-    layout.setOnClickListener(v -> {});
-    int cardW = Math.min(dp(330), getResources().getDisplayMetrics().widthPixels - dp(48));
-    FrameLayout centerWrap = new FrameLayout(this);
-    centerWrap.addView(layout, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
-    scrollWrapper.setFillViewport(true);
-    scrollWrapper.addView(centerWrap, new ScrollView.LayoutParams(-1, -1));
-
-    root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-    settingsOverlayOpen = true;
-  }
-
-  // ================================================================
-  // 🎨 调色盘浮层 — 点击颜色预览圆点弹出（物资页内）
+  // 🎨 调色盘对话框 — 点击颜色预览圆点弹出
   // ================================================================
   private void showColorPickerDialog(final EditText colorInput, final View previewDot) {
-    if (materialsOverlayHost == null) return;
+    final Dialog picker =
+        new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+    picker.requestWindowFeature(Window.FEATURE_NO_TITLE);
+    picker.setCancelable(true);
 
-    // 页面内浮层：半透明遮罩（叠在添加/编辑浮层之上），点击遮罩关闭
-    final FrameLayout overlay = new FrameLayout(this);
-    overlay.setTag("materialsOverlay");
-    overlay.setBackgroundColor(Color.argb(150, 0, 0, 0));
-    overlay.setOnClickListener(v -> closeItemOverlay(overlay));
+    // 全屏模糊玻璃根容器：整屏铺满玻璃，内容卡片浮在其上
+    FrameLayout glassRoot = new FrameLayout(this);
+    applyDialogGlass(picker, glassRoot, 16);
 
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
@@ -6727,7 +6208,7 @@ public class MainActivity extends Activity {
               colorInput.setText(colorStr);
               colorInput.setSelection(colorStr.length());
               previewDot.setBackground(round(parseColor(colorStr), dp(8), borderColor(), 1));
-              closeItemOverlay(overlay);
+              picker.dismiss();
             });
 
         rowLayout.addView(colorDot);
@@ -6735,14 +6216,24 @@ public class MainActivity extends Activity {
       root.addView(rowLayout, lp(-1, -2, 0, 0, 0, 0));
     }
 
-    // 卡片拦截点击：点击卡片内部不关闭（点击遮罩区域才关闭）
-    root.setClickable(true);
-    root.setOnClickListener(v -> {});
+    // 内容卡片浮在全屏模糊玻璃之上，点击玻璃背景关闭
     int pickerW = Math.min(dp(320), getResources().getDisplayMetrics().widthPixels - dp(48));
-    overlay.addView(root, new FrameLayout.LayoutParams(pickerW, -2, Gravity.CENTER));
-
-    // 挂到物资页面内（叠在添加/编辑浮层之上）
-    materialsOverlayHost.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+    glassRoot.addView(root, new FrameLayout.LayoutParams(pickerW, -2, Gravity.CENTER));
+    glassRoot.setOnClickListener(v -> picker.dismiss());
+    picker.setContentView(glassRoot);
+    Window win = picker.getWindow();
+    if (win != null) {
+      // 全屏窗口：整个背景铺满模糊玻璃
+      // （改用与悬浮终端弹窗一致的全屏主题 + 属性设置，规避 Dialog 主题在部分 ROM 上窗口尺寸/位置异常）
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.dimAmount = 0f;
+      win.setAttributes(lp);
+      win.setBackgroundDrawable(null);
+      win.setWindowAnimations(android.R.style.Animation_Translucent);
+    }
+    picker.show();
   }
 
   private View createMinePage() {
@@ -6960,10 +6451,38 @@ public class MainActivity extends Activity {
     cardSettings.addView(themeRow, lp(-1, -2, 0, 0, 0, 0));
     addMineDivider(cardSettings);
 
-    // 🌊 液态外观：主题色系（点击弹出浮层选择）
-    LinearLayout paletteRow =
-        addMineActionRow(cardSettings, "🎨", "主题色系", "8 色系一键换肤，点击选择");
-    paletteRow.setOnClickListener(v -> showPaletteOverlay());
+    // 🌊 液态外观：主题色系
+    LinearLayout paletteRow = addMineActionRow(cardSettings, "🎨", "主题色系", "绿 / 青蓝 / 紫粉，一键换肤");
+    addMineDivider(cardSettings);
+
+    // 色系选择（三色圆点）
+    LinearLayout palettePicker = new LinearLayout(this);
+    palettePicker.setOrientation(LinearLayout.HORIZONTAL);
+    palettePicker.setGravity(Gravity.CENTER);
+    palettePicker.setPadding(dp(6), dp(4), dp(6), dp(4));
+    final ThemeManager.Palette[] palettes = ThemeManager.Palette.values();
+    for (int i = 0; i < palettes.length; i++) {
+      final ThemeManager.Palette p = palettes[i];
+      GradientDrawable dot = new GradientDrawable(
+          GradientDrawable.Orientation.TL_BR, paletteColors(p));
+      dot.setCornerRadius(dp(100));
+      final View dotView = new View(this);
+      dotView.setBackground(dot);
+      LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(40), dp(40));
+      dotLp.setMargins(dp(8), dp(4), dp(8), dp(4));
+      dotView.setLayoutParams(dotLp);
+      boolean selected = ThemeManager.get().getPalette() == p;
+      dotView.setAlpha(selected ? 1f : 0.45f);
+      dotView.setOnClickListener(
+          v -> {
+            ThemeManager.get().setPalette(p);
+            MAIN_GREEN = ThemeManager.get().getTheme().acc;
+            showMainShell();
+            switchPage(3);
+          });
+      palettePicker.addView(dotView);
+    }
+    cardSettings.addView(palettePicker, lp(-1, -2, dp(6), 0, dp(6), 0));
     addMineDivider(cardSettings);
 
     // 跟随系统深色模式
@@ -6985,10 +6504,36 @@ public class MainActivity extends Activity {
         });
     addMineDivider(cardSettings);
 
-    // 🌊 液态背景：壁纸（点击弹出浮层选择）
-    LinearLayout wpRow =
-        addMineActionRow(cardSettings, "🖼️", "液态壁纸", "8 张内置渐变 / 相册选图（自动模糊）");
-    wpRow.setOnClickListener(v -> showWallpaperOverlay());
+    // 🌊 液态背景：壁纸
+    LinearLayout wpRow = addMineActionRow(cardSettings, "🖼️", "液态壁纸", "内置渐变 / 相册选图（自动模糊）");
+    addMineDivider(cardSettings);
+
+    LinearLayout wpPicker = new LinearLayout(this);
+    wpPicker.setOrientation(LinearLayout.HORIZONTAL);
+    wpPicker.setGravity(Gravity.CENTER);
+    wpPicker.setPadding(dp(6), dp(4), dp(6), dp(4));
+    for (int i = 0; i < 3; i++) {
+      final int idx = i;
+      // 渐变缩略图（GradientDrawable，零位图内存）
+      GradientDrawable thumbBg = new GradientDrawable(
+          GradientDrawable.Orientation.TL_BR, paletteColors(ThemeManager.Palette.values()[i]));
+      thumbBg.setCornerRadius(dp(12));
+      final View thumb = new View(this);
+      thumb.setBackground(thumbBg);
+      LinearLayout.LayoutParams thumbLp = new LinearLayout.LayoutParams(dp(72), dp(48));
+      thumbLp.setMargins(dp(6), dp(4), dp(6), dp(4));
+      thumb.setLayoutParams(thumbLp);
+      thumb.setOnClickListener(
+          v -> {
+            WallpaperStore.setBuiltin(MainActivity.this, idx);
+            if (liquidBackground != null) {
+              liquidBackground.setWallpaper(WallpaperStore.loadCurrent(MainActivity.this));
+            }
+            Toast.makeText(MainActivity.this, "✅ 壁纸已应用", Toast.LENGTH_SHORT).show();
+          });
+      wpPicker.addView(thumb);
+    }
+    cardSettings.addView(wpPicker, lp(-1, -2, dp(6), 0, dp(6), 0));
     addMineDivider(cardSettings);
 
     // 从相册选择
@@ -8544,40 +8089,8 @@ public class MainActivity extends Activity {
         return new int[] {0xFF0B7FA3, 0xFF12A8D1, 0xFF4FD4F2};
       case PINK:
         return new int[] {0xFF8B3FBF, 0xFFB14FE0, 0xFFE27BF0};
-      case ORANGE:
-        return new int[] {0xFFB35A1E, 0xFFE07B2F, 0xFFF5A94E};
-      case RED:
-        return new int[] {0xFFB33434, 0xFFE05050, 0xFFF58282};
-      case BLUE:
-        return new int[] {0xFF2F5FB3, 0xFF4A80E0, 0xFF7FA8F5};
-      case PURPLE:
-        return new int[] {0xFF7A3FB3, 0xFF9A5FE0, 0xFFC08FF5};
-      case GOLD:
-        return new int[] {0xFFB08A1E, 0xFFD9AC33, 0xFFF2CE66};
       default:
         return new int[] {0xFF1E8A4F, 0xFF35B76A, 0xFF5FDB8F};
-    }
-  }
-
-  // 🖼️ 内置壁纸缩略图渐变（与 WallpaperStore.builtin 对应）
-  private int[] wallpaperColors(int idx) {
-    switch (idx) {
-      case 1:
-        return new int[] {0xFF0B7FA3, 0xFF3FB9D8, 0xFFB8F0E8};
-      case 2:
-        return new int[] {0xFF7B2FB8, 0xFFC05AE0, 0xFFF2B8F0};
-      case 3:
-        return new int[] {0xFFB35A1E, 0xFFF08A3E, 0xFFF7D4A0};
-      case 4:
-        return new int[] {0xFFB33434, 0xFFF06060, 0xFFF7C0C0};
-      case 5:
-        return new int[] {0xFF2F5FB3, 0xFF5A90F0, 0xFFB8CCF7};
-      case 6:
-        return new int[] {0xFF7A3FB3, 0xFFAA70F0, 0xFFDCC0F7};
-      case 7:
-        return new int[] {0xFFB08A1E, 0xFFE8BC44, 0xFFF7E8B8};
-      default:
-        return new int[] {0xFF1E8A4F, 0xFF4FC97E, 0xFFC8F5D8};
     }
   }
 
@@ -9084,7 +8597,6 @@ public class MainActivity extends Activity {
         .getWindow()
         .setLayout(
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
-
 
     // 无关闭按钮；倒计时结束前禁止关闭（返回键/点击外部均无效）
     dialog.setCancelable(false);
@@ -9887,8 +9399,7 @@ public class MainActivity extends Activity {
           swipeStartY = ev.getRawY();
           isSwipingPage = false;
           // ✅ 起点锁定：起点在导航栏或横向滚动列表上时，本次手势永不切换页面
-          // ✅ 浮层打开时（添加/编辑物资），本次手势永不切换页面
-          swipeStartOnNav = materialsOverlayOpen || settingsOverlayOpen || isTouchOnNavBar(swipeStartX, swipeStartY);
+          swipeStartOnNav = isTouchOnNavBar(swipeStartX, swipeStartY);
           swipeStartOnHScroll = isTouchOnHorizontalScrollView(swipeStartX, swipeStartY);
           break;
 

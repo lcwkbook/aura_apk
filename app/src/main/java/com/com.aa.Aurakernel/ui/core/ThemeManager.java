@@ -8,14 +8,14 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * 液态主题管理器：3 色系（绿/青蓝/紫粉）× 明暗 = 6 套 token。
+ * 液态主题管理器：8 色系（绿/青蓝/紫粉/橙/红/蓝/紫/金）× 明暗 = 16 套 token。
  * - 默认跟随系统深色模式（Activity.onConfigurationChanged 转发），手动选择后覆盖。
  * - 全部偏好持久化到 SharedPreferences。
  * - 主题变更通过 Listener 通知（自绘组件做颜色插值过渡；静态页面由 Activity 重建）。
  */
 public final class ThemeManager {
 
-  public enum Palette { GREEN, CYAN, PINK }
+  public enum Palette { GREEN, CYAN, PINK, ORANGE, RED, BLUE, PURPLE, GOLD }
 
   /** 一套主题的全部 token（色值均为 ARGB int）。 */
   public static final class Theme {
@@ -65,6 +65,36 @@ public final class ThemeManager {
   private static final Theme PINK_DARK = new Theme(
       0xFF240A38, 0xFF3B1457, 0xFF8B3FBF, 0xFFC06AF0, 0xFFD070F0, 0xFFD84FA8, 0xFFF06AC0,
       0xFFF9ECFF, 0xFFC3A8D9, 0x8A12081C, 0x24FFFFFF, 0x2E3B1457);
+  private static final Theme ORANGE_LIGHT = new Theme(
+      0xFFB35A1E, 0xFFE07B2F, 0xFFF5A94E, 0xFFE07B2F, 0xFFF08A3E, 0xFFF5A94E, 0xFFF7C06A,
+      0xFF33190A, 0xFF6B4A33, 0x8CFFFFFF, 0xBFFFFFFF, 0x1EB35A1E);
+  private static final Theme ORANGE_DARK = new Theme(
+      0xFF241006, 0xFF4A200C, 0xFFB35A1E, 0xFFF08A3E, 0xFFE07B2F, 0xFFC96A24, 0xFFB35A1E,
+      0xFFFFF3E8, 0xFFD9B89E, 0x8A140E0A, 0x24FFFFFF, 0x2E4A200C);
+  private static final Theme RED_LIGHT = new Theme(
+      0xFFB33434, 0xFFE05050, 0xFFF58282, 0xFFE05050, 0xFFF06060, 0xFFF58282, 0xFFF7A0A0,
+      0xFF331010, 0xFF6B3A3A, 0x8CFFFFFF, 0xBFFFFFFF, 0x1EB33434);
+  private static final Theme RED_DARK = new Theme(
+      0xFF240A0A, 0xFF4A1414, 0xFFB33434, 0xFFF06060, 0xFFE05050, 0xFFC94A4A, 0xFFB33434,
+      0xFFFFEDED, 0xFFD9A6A6, 0x8A140A0A, 0x24FFFFFF, 0x2E4A1414);
+  private static final Theme BLUE_LIGHT = new Theme(
+      0xFF2F5FB3, 0xFF4A80E0, 0xFF7FA8F5, 0xFF4A80E0, 0xFF5A90F0, 0xFF7FA8F5, 0xFF9AC0F7,
+      0xFF0F1E33, 0xFF3A5273, 0x8CFFFFFF, 0xBFFFFFFF, 0x1E2F5FB3);
+  private static final Theme BLUE_DARK = new Theme(
+      0xFF0A1424, 0xFF14294A, 0xFF2F5FB3, 0xFF5A90F0, 0xFF4A80E0, 0xFF3F6EC9, 0xFF2F5FB3,
+      0xFFEAF1FF, 0xFFA6BCE0, 0x8A0A0F1A, 0x24FFFFFF, 0x2E14294A);
+  private static final Theme PURPLE_LIGHT = new Theme(
+      0xFF7A3FB3, 0xFF9A5FE0, 0xFFC08FF5, 0xFF9A5FE0, 0xFFAA70F0, 0xFFC08FF5, 0xFFD4B0F7,
+      0xFF1E0F33, 0xFF5C3A73, 0x8CFFFFFF, 0xBFFFFFFF, 0x1E7A3FB3);
+  private static final Theme PURPLE_DARK = new Theme(
+      0xFF140A24, 0xFF29144A, 0xFF7A3FB3, 0xFFAA70F0, 0xFF9A5FE0, 0xFF8550C9, 0xFF7A3FB3,
+      0xFFF2EAFF, 0xFFC4A6E0, 0x8A120A1A, 0x24FFFFFF, 0x2E29144A);
+  private static final Theme GOLD_LIGHT = new Theme(
+      0xFFB08A1E, 0xFFD9AC33, 0xFFF2CE66, 0xFFD9AC33, 0xFFE8BC44, 0xFFF2CE66, 0xFFF7DE8A,
+      0xFF33290F, 0xFF736233, 0x8CFFFFFF, 0xBFFFFFFF, 0x1EB08A1E);
+  private static final Theme GOLD_DARK = new Theme(
+      0xFF241C08, 0xFF4A3A10, 0xFFB08A1E, 0xFFE8BC44, 0xFFD9AC33, 0xFFC4962A, 0xFFB08A1E,
+      0xFFFFF8E8, 0xFFE0CE9E, 0x8A14100A, 0x24FFFFFF, 0x2E4A3A10);
 
   private static volatile ThemeManager instance;
 
@@ -123,7 +153,12 @@ public final class ThemeManager {
     switch (p) {
       case CYAN: return dark ? CYAN_DARK : CYAN_LIGHT;
       case PINK: return dark ? PINK_DARK : PINK_LIGHT;
-      default:   return dark ? GREEN_DARK : GREEN_LIGHT;
+      case ORANGE: return dark ? ORANGE_DARK : ORANGE_LIGHT;
+      case RED: return dark ? RED_DARK : RED_LIGHT;
+      case BLUE: return dark ? BLUE_DARK : BLUE_LIGHT;
+      case PURPLE: return dark ? PURPLE_DARK : PURPLE_LIGHT;
+      case GOLD: return dark ? GOLD_DARK : GOLD_LIGHT;
+      default: return dark ? GREEN_DARK : GREEN_LIGHT;
     }
   }
 
