@@ -50,7 +50,7 @@ public class FluidProgressView extends View implements ThemeManager.Listener {
   private boolean dragging = false;
   private Listener listener;
 
-  private int accColor, gradColor, trackColor, borderColor;
+  private int accColor, gradColor, grad3Color, trackColor, borderColor;
 
   public FluidProgressView(Context context) {
     super(context);
@@ -104,7 +104,8 @@ public class FluidProgressView extends View implements ThemeManager.Listener {
 
   private void applyTheme(ThemeManager.Theme t) {
     accColor = t.acc;
-    gradColor = t.grad; // 渐变搭档色（混搭渐变）
+    gradColor = t.grad; // 渐变搭档色
+    grad3Color = t.grad3; // 渐变第三色（相近色相多色渐变）
     trackColor = t.glass;
     borderColor = t.border;
   }
@@ -245,7 +246,7 @@ public class FluidProgressView extends View implements ThemeManager.Listener {
 
       wavePaint.setStyle(Paint.Style.FILL);
       wavePaint.setShader(new LinearGradient(
-          0, 0, 0, h, accColor, gradColor, Shader.TileMode.CLAMP));
+          0, 0, 0, h, new int[] {accColor, gradColor, grad3Color}, null, Shader.TileMode.CLAMP));
       c.drawPath(wavePath, wavePaint);
       wavePaint.setShader(null);
 

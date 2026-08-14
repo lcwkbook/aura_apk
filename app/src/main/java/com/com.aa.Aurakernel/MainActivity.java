@@ -4716,8 +4716,17 @@ public class MainActivity extends Activity {
     fabAdd.setText("＋ 添加物资");
     fabAdd.setTextSize(13);
     fabAdd.setTypeface(null, Typeface.BOLD);
-    fabAdd.setTextColor(MAIN_GREEN);
-    fabAdd.setBackground(lightGradient(MAIN_GREEN, dp(24)));
+    fabAdd.setTextColor(Color.WHITE);
+    GradientDrawable fabBg =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {
+              withAlphaColor(MAIN_GREEN, 242),
+              withAlphaColor(ThemeManager.get().getTheme().grad, 165)
+            });
+    fabBg.setCornerRadius(dp(24));
+    fabBg.setStroke(dp(1), withAlphaColor(MAIN_GREEN, 200));
+    fabAdd.setBackground(fabBg);
     fabAdd.setPadding(dp(20), dp(0), dp(20), dp(0));
     fabAdd.setAllCaps(false);
     fabAdd.setElevation(dp(8));
@@ -9222,14 +9231,14 @@ public class MainActivity extends Activity {
     return g;
   }
 
-  // 🌊 浅渐变按钮底色：主题色 → 搭档色 双色渐变 + 同色描边（所有按钮统一，不深色）
+  // 🌊 浅渐变按钮底色：主题色 → 渐变二色 → 渐变三色（相近色相多色渐变）+ 同色描边
   private GradientDrawable lightGradient(int base, int radius) {
+    ThemeManager.Theme t = ThemeManager.get().getTheme();
     GradientDrawable g =
         new GradientDrawable(
             GradientDrawable.Orientation.LEFT_RIGHT,
             new int[] {
-              withAlphaColor(base, 205),
-              withAlphaColor(ThemeManager.get().getTheme().grad, 62)
+              withAlphaColor(base, 205), withAlphaColor(t.grad, 150), withAlphaColor(t.grad3, 62)
             });
     g.setCornerRadius(dp(radius));
     g.setStroke(dp(1), withAlphaColor(base, 135));

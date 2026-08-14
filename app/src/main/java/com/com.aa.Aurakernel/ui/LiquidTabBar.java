@@ -80,7 +80,7 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
   private float rippleR = 0f;
   private static final float RIPPLE_MAX = 46f;
 
-  private int glassColor, borderColor, acc1, acc2, iconNormal, iconActive;
+  private int glassColor, borderColor, acc1, acc2, acc3, iconNormal, iconActive;
   private boolean dark;
 
   private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
@@ -212,7 +212,8 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
     glassColor = t.glass;
     borderColor = t.border;
     acc1 = t.acc;
-    acc2 = t.grad; // 渐变搭档色（混搭渐变）
+    acc2 = t.grad; // 渐变搭档色
+    acc3 = t.grad3; // 渐变第三色（相近色相多色渐变）
     iconNormal = t.sub;
     iconActive = Color.WHITE;
   }
@@ -405,31 +406,13 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
       float left = cx - bw / 2f, right = cx + bw / 2f;
       float top = (h - bh) / 2f, bottom = (h + bh) / 2f;
       float r = bh / 2f;
-      if (dir == 0) {
-        blobPath.addRoundRect(new RectF(left, top, right, bottom), r, r, Path.Direction.CW);
-      } else {
-        float tip = (stretch - 1f) * 26f * density;
-        if (dir > 0) {
-          blobPath.moveTo(left, top);
-          blobPath.lineTo(right - r, top);
-          blobPath.quadTo(right - r * 0.25f, top, right + tip, (top + bottom) / 2f);
-          blobPath.quadTo(right - r * 0.25f, bottom, right - r, bottom);
-          blobPath.lineTo(left, bottom);
-          blobPath.close();
-        } else {
-          blobPath.moveTo(right, top);
-          blobPath.lineTo(left + r, top);
-          blobPath.quadTo(left + r * 0.25f, top, left - tip, (top + bottom) / 2f);
-          blobPath.quadTo(left + r * 0.25f, bottom, left + r, bottom);
-          blobPath.lineTo(right, bottom);
-          blobPath.close();
-        }
-      }
+      // 圆润胶囊形（无尖端箭头），仅保留速度方向的拉伸形变
+      blobPath.addRoundRect(new RectF(left, top, right, bottom), r, r, Path.Direction.CW);
 
-      // 球渐变
+      // 球渐变（三色相近渐变）
       blobPaint.setStyle(Paint.Style.FILL);
       blobPaint.setShader(new LinearGradient(
-          0, top, 0, bottom, acc1, acc2, Shader.TileMode.CLAMP));
+          0, top, 0, bottom, new int[] {acc1, acc2, acc3}, null, Shader.TileMode.CLAMP));
       c.drawPath(blobPath, blobPaint);
       blobPaint.setShader(null);
 

@@ -73,15 +73,18 @@ public class GlassButton extends Button implements ThemeManager.Listener {
   }
 
   private void rebuildShader() {
-    int base = customAcc ? customAccColor : ThemeManager.get().getTheme().acc;
-    int grad = ThemeManager.get().getTheme().grad; // 渐变搭档色（混搭渐变）
+    ThemeManager.Theme t = ThemeManager.get().getTheme();
+    int base = customAcc ? customAccColor : t.acc;
     boolean dark = ThemeManager.get().isDark();
-    // 浅渐变玻璃：主题色 → 搭档色 双色渐变 + 同色描边
+    // 浅渐变玻璃：主题色 → 渐变二色 → 渐变三色（相近色相多色渐变）+ 同色描边
     bgPaint.setShader(new LinearGradient(
         0, 0, 0, 120 * density,
-        withAlpha(base, dark ? 118 : 84),
-        withAlpha(grad, dark ? 42 : 16),
-        Shader.TileMode.CLAMP));
+        new int[] {
+          withAlpha(base, dark ? 118 : 84),
+          withAlpha(t.grad, dark ? 70 : 48),
+          withAlpha(t.grad3, dark ? 42 : 16)
+        },
+        null, Shader.TileMode.CLAMP));
     borderPaint.setStyle(Paint.Style.STROKE);
     borderPaint.setStrokeWidth(Math.max(1f, density));
     borderPaint.setColor(withAlpha(base, dark ? 230 : 160));
