@@ -6443,6 +6443,111 @@ public class MainActivity extends Activity {
     cardSettings.addView(themeRow, lp(-1, -2, 0, 0, 0, 0));
     addMineDivider(cardSettings);
 
+    // 🌊 液态外观：主题色系
+    LinearLayout paletteRow = addMineActionRow(cardSettings, "🎨", "主题色系", "绿 / 青蓝 / 紫粉，一键换肤");
+    addMineDivider(cardSettings);
+
+    // 色系选择（三色圆点）
+    LinearLayout palettePicker = new LinearLayout(this);
+    palettePicker.setOrientation(LinearLayout.HORIZONTAL);
+    palettePicker.setGravity(Gravity.CENTER);
+    palettePicker.setPadding(dp(6), dp(4), dp(6), dp(4));
+    final ThemeManager.Palette[] palettes = ThemeManager.Palette.values();
+    for (int i = 0; i < palettes.length; i++) {
+      final ThemeManager.Palette p = palettes[i];
+      GradientDrawable dot = new GradientDrawable(
+          GradientDrawable.Orientation.TL_BR, paletteColors(p));
+      dot.setCornerRadius(dp(100));
+      final View dotView = new View(this);
+      dotView.setBackground(dot);
+      LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(40), dp(40));
+      dotLp.setMargins(dp(8), dp(4), dp(8), dp(4));
+      dotView.setLayoutParams(dotLp);
+      boolean selected = ThemeManager.get().getPalette() == p;
+      dotView.setAlpha(selected ? 1f : 0.45f);
+      dotView.setOnClickListener(
+          v -> {
+            ThemeManager.get().setPalette(p);
+            MAIN_GREEN = ThemeManager.get().getTheme().acc;
+            showMainShell();
+            switchPage(3);
+          });
+      palettePicker.addView(dotView);
+    }
+    cardSettings.addView(palettePicker, lp(-1, -2, dp(6), 0, dp(6), 0));
+    addMineDivider(cardSettings);
+
+    // 跟随系统深色模式
+    LinearLayout followRow = addMineActionRow(
+        cardSettings,
+        "🌗",
+        "跟随系统深色",
+        ThemeManager.get().isFollowSystem()
+            ? "已开启（自动切换明暗）"
+            : "已关闭（手动控制）");
+    followRow.setOnClickListener(
+        v -> {
+          boolean next = !ThemeManager.get().isFollowSystem();
+          ThemeManager.get().setFollowSystem(next);
+          nightMode = ThemeManager.get().isDark();
+          MAIN_GREEN = ThemeManager.get().getTheme().acc;
+          showMainShell();
+          switchPage(3);
+        });
+    addMineDivider(cardSettings);
+
+    // 🌊 液态背景：壁纸
+    LinearLayout wpRow = addMineActionRow(cardSettings, "🖼️", "液态壁纸", "内置渐变 / 相册选图（自动模糊）");
+    addMineDivider(cardSettings);
+
+    LinearLayout wpPicker = new LinearLayout(this);
+    wpPicker.setOrientation(LinearLayout.HORIZONTAL);
+    wpPicker.setGravity(Gravity.CENTER);
+    wpPicker.setPadding(dp(6), dp(4), dp(6), dp(4));
+    for (int i = 0; i < 3; i++) {
+      final int idx = i;
+      Bitmap bmp = WallpaperStore.builtin(this, i);
+      final ImageView thumb = new ImageView(this);
+      thumb.setImageBitmap(bmp);
+      thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+      thumb.setBackground(round(cardColor(), 12, borderColor(), 1));
+      LinearLayout.LayoutParams thumbLp = new LinearLayout.LayoutParams(dp(72), dp(48));
+      thumbLp.setMargins(dp(6), dp(4), dp(6), dp(4));
+      thumb.setLayoutParams(thumbLp);
+      thumb.setOnClickListener(
+          v -> {
+            WallpaperStore.setBuiltin(MainActivity.this, idx);
+            if (liquidBackground != null) {
+              liquidBackground.setWallpaper(WallpaperStore.loadCurrent(MainActivity.this));
+            }
+            Toast.makeText(MainActivity.this, "✅ 壁纸已应用", Toast.LENGTH_SHORT).show();
+          });
+      wpPicker.addView(thumb);
+    }
+    cardSettings.addView(wpPicker, lp(-1, -2, dp(6), 0, dp(6), 0));
+    addMineDivider(cardSettings);
+
+    // 从相册选择
+    LinearLayout galleryRow =
+        addMineActionRow(cardSettings, "📁", "从相册选择", "选择图片作为液态背景（自动模糊）");
+    galleryRow.setOnClickListener(
+        v ->
+            WallpaperStore.pickFromGallery(
+                MainActivity.this,
+                new WallpaperStore.Callback() {
+                  @Override
+                  public void onReady(Bitmap bitmap) {
+                    if (liquidBackground != null) liquidBackground.setWallpaper(bitmap);
+                    Toast.makeText(MainActivity.this, "✅ 壁纸已应用", Toast.LENGTH_SHORT).show();
+                  }
+
+                  @Override
+                  public void onError(String message) {
+                    Toast.makeText(MainActivity.this, "❌ " + message, Toast.LENGTH_SHORT).show();
+                  }
+                }));
+    addMineDivider(cardSettings);
+
     // 授权访问全部文件
     View accessRow = addMineActionRow(cardSettings, "☰", "授权访问全部文件", "用于访问 /sdcard 和更多目录");
     accessRow.setOnClickListener(v -> openAllFilesAccessSettings());
@@ -7967,6 +8072,17 @@ public class MainActivity extends Activity {
       } catch (Exception ignored) {
         Toast.makeText(this, "无法打开授权页面", Toast.LENGTH_SHORT).show();
       }
+    }
+  }
+
+  private int[] paletteColors(ThemeManager.Palette p) {
+    switch (p) {
+      case CYAN:
+        return new int[] {0xFF0B7FA3, 0xFF12A8D1, 0xFF4FD4F2};
+      case PINK:
+        return new int[] {0xFF8B3FBF, 0xFFB14FE0, 0xFFE27BF0};
+      default:
+        return new int[] {0xFF1E8A4F, 0xFF35B76A, 0xFF5FDB8F};
     }
   }
 
