@@ -2220,9 +2220,13 @@ public class MainActivity extends Activity {
           grayBg.setColor(disabledColor());
           grayBg.setCornerRadius(dp(14));
 
-          // 上层绿色进度背景
-          GradientDrawable greenBg = new GradientDrawable();
-          greenBg.setColor(MAIN_GREEN);
+          // 上层绿色进度背景（浅渐变）
+          GradientDrawable greenBg =
+              new GradientDrawable(
+                  GradientDrawable.Orientation.LEFT_RIGHT,
+                  new int[] {
+                    withAlphaColor(primaryColor(), 225), withAlphaColor(primaryColor(), 100)
+                  });
           greenBg.setCornerRadius(dp(14));
 
           // ClipDrawable 控制绿色区域的水平裁剪（从左到右）
@@ -3141,16 +3145,11 @@ public class MainActivity extends Activity {
     v.setTextSize(12);
     v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
     v.setGravity(Gravity.CENTER);
-    v.setTextColor(active ? Color.WHITE : subTextColor());
+    v.setTextColor(active ? primaryColor() : subTextColor());
     v.setPadding(dp(12), 0, dp(12), 0);
 
     if (active) {
-      GradientDrawable g =
-          new GradientDrawable(
-              GradientDrawable.Orientation.LEFT_RIGHT,
-              new int[] {MAIN_GREEN, Color.rgb(99, 209, 119)});
-      g.setCornerRadius(dp(16));
-      v.setBackground(g);
+      v.setBackground(lightGradient(primaryColor(), 16));
     } else {
       v.setBackground(round(tagColor(), 16, borderColor(), 1));
     }
@@ -3202,13 +3201,14 @@ public class MainActivity extends Activity {
     v.setTextSize(12);
     v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
     v.setGravity(Gravity.CENTER);
-    v.setTextColor(on ? Color.WHITE : Color.argb(180, 120, 130, 150));
+    v.setTextColor(on ? primaryColor() : Color.argb(180, 120, 130, 150));
     // 圆角胶囊形状
-    GradientDrawable bg = new GradientDrawable();
-    bg.setCornerRadius(dp(16));
+    GradientDrawable bg;
     if (on) {
-      bg.setColor(primaryColor());
+      bg = lightGradient(primaryColor(), 16);
     } else {
+      bg = new GradientDrawable();
+      bg.setCornerRadius(dp(16));
       bg.setColor(tagColor());
       bg.setStroke(dp(1), borderColor());
     }
@@ -3243,49 +3243,33 @@ public class MainActivity extends Activity {
     // 1. KMA-KPM驱动（索引0）
     if (driverBtnKpm != null) {
       boolean active = driverType == 0;
-      driverBtnKpm.setTextColor(active ? Color.WHITE : subTextColor());
+      driverBtnKpm.setTextColor(active ? primaryColor() : subTextColor());
       driverBtnKpm.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
+          active ? lightGradient(primaryColor(), 16) : round(tagColor(), 16, borderColor(), 1));
     }
 
     // 2. Ditpro_KPM驱动（索引1）
     if (driverBtnDitpro != null) {
       boolean active = driverType == 1;
-      driverBtnDitpro.setTextColor(active ? Color.WHITE : subTextColor());
+      driverBtnDitpro.setTextColor(active ? primaryColor() : subTextColor());
       driverBtnDitpro.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
+          active ? lightGradient(primaryColor(), 16) : round(tagColor(), 16, borderColor(), 1));
     }
 
     // 3. Paradise驱动（索引2）
     if (driverBtnParadise != null) {
       boolean active = driverType == 2;
-      driverBtnParadise.setTextColor(active ? Color.WHITE : subTextColor());
+      driverBtnParadise.setTextColor(active ? primaryColor() : subTextColor());
       driverBtnParadise.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
+          active ? lightGradient(primaryColor(), 16) : round(tagColor(), 16, borderColor(), 1));
     }
 
     // 4. 备用驱动（索引3）
     if (driverBtnBackup != null) {
       boolean active = driverType == 3;
-      driverBtnBackup.setTextColor(active ? Color.WHITE : subTextColor());
+      driverBtnBackup.setTextColor(active ? primaryColor() : subTextColor());
       driverBtnBackup.setBackground(
-          round(
-              active ? primaryColor() : tagColor(),
-              16,
-              active ? 0 : borderColor(),
-              active ? 0 : 1));
+          active ? lightGradient(primaryColor(), 16) : round(tagColor(), 16, borderColor(), 1));
     }
   }
 
@@ -3307,17 +3291,16 @@ public class MainActivity extends Activity {
   private void updateSwitchButton(TextView btn, boolean on) {
     if (btn == null) return;
     btn.setText(on ? "开启" : "关闭");
-    btn.setTextColor(on ? Color.WHITE : subTextColor());
+    btn.setTextColor(on ? primaryColor() : subTextColor());
     btn.setBackground(
-        round(on ? primaryColor() : tagColor(), 16, on ? 0 : borderColor(), on ? 0 : 1));
+        on ? lightGradient(primaryColor(), 16) : round(tagColor(), 16, borderColor(), 1));
   }
 
   private TextView modeButton(String text, boolean active) {
-    TextView v = text(text, 13, active ? Color.WHITE : subTextColor(), Typeface.BOLD);
+    TextView v = text(text, 13, active ? primaryColor() : subTextColor(), Typeface.BOLD);
     v.setGravity(Gravity.CENTER);
     v.setBackground(
-        round(
-            active ? primaryColor() : tagColor(), 16, active ? 0 : borderColor(), active ? 0 : 1));
+        active ? lightGradient(primaryColor(), 16) : round(tagColor(), 16, borderColor(), 1));
     return v;
   }
 
@@ -4733,8 +4716,8 @@ public class MainActivity extends Activity {
     fabAdd.setText("＋ 添加物资");
     fabAdd.setTextSize(13);
     fabAdd.setTypeface(null, Typeface.BOLD);
-    fabAdd.setTextColor(Color.WHITE);
-    fabAdd.setBackground(round(MAIN_GREEN, dp(24), 0, 0));
+    fabAdd.setTextColor(MAIN_GREEN);
+    fabAdd.setBackground(lightGradient(MAIN_GREEN, dp(24)));
     fabAdd.setPadding(dp(20), dp(0), dp(20), dp(0));
     fabAdd.setAllCaps(false);
     fabAdd.setElevation(dp(8));
@@ -5142,8 +5125,8 @@ public class MainActivity extends Activity {
     batchAddBtn.setText("☑ 批量");
     batchAddBtn.setTextSize(11);
     batchAddBtn.setTypeface(null, Typeface.BOLD);
-    batchAddBtn.setTextColor(Color.WHITE);
-    batchAddBtn.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+    batchAddBtn.setTextColor(MAIN_GREEN);
+    batchAddBtn.setBackground(lightGradient(MAIN_GREEN, dp(8)));
     batchAddBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
     batchAddBtn.setAllCaps(false);
     actionRow.addView(batchAddBtn, lp(-2, dp(30), dp(8), 0, 0, 0));
@@ -5197,8 +5180,8 @@ public class MainActivity extends Activity {
     addAllBtn.setText("＋全部添加");
     addAllBtn.setTextSize(11);
     addAllBtn.setTypeface(null, Typeface.BOLD);
-    addAllBtn.setTextColor(Color.WHITE);
-    addAllBtn.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+    addAllBtn.setTextColor(MAIN_GREEN);
+    addAllBtn.setBackground(lightGradient(MAIN_GREEN, dp(8)));
     addAllBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
     addAllBtn.setAllCaps(false);
     // 用权重占位把按钮推到右边
@@ -5448,8 +5431,8 @@ public class MainActivity extends Activity {
                 addCloudBtn.setText("＋添加");
                 addCloudBtn.setTextSize(12);
                 addCloudBtn.setTypeface(null, Typeface.BOLD);
-                addCloudBtn.setTextColor(Color.WHITE);
-                addCloudBtn.setBackground(round(MAIN_GREEN, dp(8), 0, 0));
+                addCloudBtn.setTextColor(MAIN_GREEN);
+                addCloudBtn.setBackground(lightGradient(MAIN_GREEN, dp(8)));
                 addCloudBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
                 addCloudBtn.setAllCaps(false);
                 itemRow.addView(addCloudBtn, lp(-2, dp(30), 0, 0, 0, 0));
@@ -7713,8 +7696,7 @@ public class MainActivity extends Activity {
         label = "直接运行";
     }
     runButton.setText(running ? "运行中..." : label);
-    runButton.setBackground(round(ok ? primaryColor() : disabledColor(), 14, 0, 0));
-    runButton.setTextColor(ok ? Color.WHITE : subTextColor());
+    // GlassButton 自绘浅渐变玻璃背景与文字色，无需 setBackground/setTextColor
   }
 
   private void showFilePicker(
@@ -9238,6 +9220,21 @@ public class MainActivity extends Activity {
     g.setCornerRadius(dp(radius));
     if (strokeWidth > 0) g.setStroke(dp(strokeWidth), strokeColor);
     return g;
+  }
+
+  // 🌊 浅渐变按钮底色：同色高透明渐变 + 同色描边（所有按钮统一，不深色）
+  private GradientDrawable lightGradient(int base, int radius) {
+    GradientDrawable g =
+        new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] {withAlphaColor(base, 205), withAlphaColor(base, 62)});
+    g.setCornerRadius(dp(radius));
+    g.setStroke(dp(1), withAlphaColor(base, 135));
+    return g;
+  }
+
+  private int withAlphaColor(int color, int alpha) {
+    return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
   }
 
   // ==================== 🎨 全新配色体系 ====================
