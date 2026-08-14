@@ -4721,11 +4721,11 @@ public class MainActivity extends Activity {
         new GradientDrawable(
             GradientDrawable.Orientation.LEFT_RIGHT,
             new int[] {
-              withAlphaColor(MAIN_GREEN, 242),
-              withAlphaColor(ThemeManager.get().getTheme().grad, 165)
+              withAlphaColor(MAIN_GREEN, 255),
+              withAlphaColor(ThemeManager.get().getTheme().grad, 215)
             });
     fabBg.setCornerRadius(dp(24));
-    fabBg.setStroke(dp(1), withAlphaColor(MAIN_GREEN, 200));
+    fabBg.setStroke(dp(1), withAlphaColor(MAIN_GREEN, 230));
     fabAdd.setBackground(fabBg);
     fabAdd.setPadding(dp(20), dp(0), dp(20), dp(0));
     fabAdd.setAllCaps(false);
@@ -9231,14 +9231,17 @@ public class MainActivity extends Activity {
     return g;
   }
 
-  // 🌊 浅渐变按钮底色：主题色 → 渐变二色 → 渐变三色（相近色相多色渐变）+ 同色描边
+  // 🌊 浅渐变按钮底色：主题色 → 渐变二/三/四色（相近色相多色渐变）+ 同色描边
   private GradientDrawable lightGradient(int base, int radius) {
     ThemeManager.Theme t = ThemeManager.get().getTheme();
     GradientDrawable g =
         new GradientDrawable(
             GradientDrawable.Orientation.LEFT_RIGHT,
             new int[] {
-              withAlphaColor(base, 205), withAlphaColor(t.grad, 150), withAlphaColor(t.grad3, 62)
+              withAlphaColor(base, 205),
+              withAlphaColor(t.grad, 152),
+              withAlphaColor(t.grad3, 100),
+              withAlphaColor(t.grad4, 62)
             });
     g.setCornerRadius(dp(radius));
     g.setStroke(dp(1), withAlphaColor(base, 135));

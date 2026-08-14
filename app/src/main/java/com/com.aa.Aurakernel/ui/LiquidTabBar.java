@@ -80,7 +80,7 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
   private float rippleR = 0f;
   private static final float RIPPLE_MAX = 46f;
 
-  private int glassColor, borderColor, acc1, acc2, acc3, iconNormal, iconActive;
+  private int glassColor, borderColor, acc1, acc2, acc3, acc4, iconNormal, iconActive;
   private boolean dark;
 
   private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
@@ -213,7 +213,8 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
     borderColor = t.border;
     acc1 = t.acc;
     acc2 = t.grad; // 渐变搭档色
-    acc3 = t.grad3; // 渐变第三色（相近色相多色渐变）
+    acc3 = t.grad3; // 渐变第三色
+    acc4 = t.grad4; // 渐变第四色（相近色相多色渐变）
     iconNormal = t.sub;
     iconActive = Color.WHITE;
   }
@@ -409,10 +410,10 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
       // 圆润胶囊形（无尖端箭头），仅保留速度方向的拉伸形变
       blobPath.addRoundRect(new RectF(left, top, right, bottom), r, r, Path.Direction.CW);
 
-      // 球渐变（三色相近渐变）
+      // 球渐变（四色相近渐变）
       blobPaint.setStyle(Paint.Style.FILL);
       blobPaint.setShader(new LinearGradient(
-          0, top, 0, bottom, new int[] {acc1, acc2, acc3}, null, Shader.TileMode.CLAMP));
+          0, top, 0, bottom, new int[] {acc1, acc2, acc3, acc4}, null, Shader.TileMode.CLAMP));
       c.drawPath(blobPath, blobPaint);
       blobPaint.setShader(null);
 

@@ -40,6 +40,7 @@ public class GlassButton extends Button implements ThemeManager.Listener {
     setAllCaps(false);
     setMinHeight(0);
     setMinimumHeight(0);
+    setBackground(null); // 清除 Button 系统默认灰色背景，避免从半透明渐变下透出
     if (android.os.Build.VERSION.SDK_INT >= 21) {
       setStateListAnimator(null);
       setElevation(0f);
@@ -76,13 +77,14 @@ public class GlassButton extends Button implements ThemeManager.Listener {
     ThemeManager.Theme t = ThemeManager.get().getTheme();
     int base = customAcc ? customAccColor : t.acc;
     boolean dark = ThemeManager.get().isDark();
-    // 浅渐变玻璃：主题色 → 渐变二色 → 渐变三色（相近色相多色渐变）+ 同色描边
+    // 浅渐变玻璃：主题色 → 渐变二/三/四色（相近色相多色渐变）+ 同色描边
     bgPaint.setShader(new LinearGradient(
         0, 0, 0, 120 * density,
         new int[] {
-          withAlpha(base, dark ? 118 : 84),
-          withAlpha(t.grad, dark ? 70 : 48),
-          withAlpha(t.grad3, dark ? 42 : 16)
+          withAlpha(base, dark ? 125 : 92),
+          withAlpha(t.grad, dark ? 80 : 56),
+          withAlpha(t.grad3, dark ? 58 : 34),
+          withAlpha(t.grad4, dark ? 42 : 20)
         },
         null, Shader.TileMode.CLAMP));
     borderPaint.setStyle(Paint.Style.STROKE);
