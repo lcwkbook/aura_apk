@@ -36,6 +36,7 @@ import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
 import com.aa.Aurakernel.ui.LiquidBackgroundView;
+import com.aa.Aurakernel.ui.LiquidTabBar;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
@@ -176,6 +177,7 @@ public class MainActivity extends Activity {
   private final Handler longPressHandler = new Handler(Looper.getMainLooper());
   private Runnable longPressRunnable;
   private LinearLayout navDriver;
+  private LiquidTabBar liquidTabBar; // 💧 液态Tab栏（T7）
   private TextView driverBtnKpm, driverBtnDitpro, driverBtnParadise, driverBtnBackup;
   private TextView antiRecordBtn, noBackgroundBtn;
 
@@ -2212,6 +2214,34 @@ public class MainActivity extends Activity {
   }
 
   private View createBottomNav() {
+    liquidTabBar =
+        new LiquidTabBar(
+            this,
+            new String[] {"🏠", "📦", "🎒", "👤"},
+            new String[] {"主页", "驱动", "物资", "我的"});
+    liquidTabBar.setListener(
+        new LiquidTabBar.Listener() {
+          @Override
+          public void onSelect(int tab) {
+            switchPage(tab);
+          }
+
+          @Override
+          public void onHover(int tab) {
+            switchPageContentOnly(tab);
+          }
+
+          @Override
+          public void onDragEnd() {
+            // 页面已由 onHover 实时切换完成，无需额外处理
+          }
+        });
+    liquidTabBar.setActive(currentPage, false);
+    return liquidTabBar;
+  }
+
+  /** 旧版胶囊导航（已被 LiquidTabBar 取代，保留以防回退）。 */
+  private View createBottomNavLegacy() {
     LinearLayout wrap = new LinearLayout(this);
     wrap.setGravity(Gravity.CENTER);
     wrap.setPadding(dp(16), dp(4), dp(16), dp(16));
@@ -2460,11 +2490,10 @@ public class MainActivity extends Activity {
     fadeIn.setDuration(300);
     next.startAnimation(fadeIn);
 
-    // 🔄 胶囊滑动（只在有旧页时动画，首次不滑）
+    // 🔄 液态球滑动（只在有旧页时动画，首次不滑）
     if (from != page) {
-      updateNavCapsule(page);
+      liquidTabBar.setActive(page, true);
     }
-    updateNavTabStyle();
   }
 
   // 🔄 仅切换页面内容（不动胶囊动画，用于拖拽中实时切页）
@@ -2491,8 +2520,6 @@ public class MainActivity extends Activity {
     AlphaAnimation fadeIn = new AlphaAnimation(0.3f, 1f);
     fadeIn.setDuration(200);
     next.startAnimation(fadeIn);
-
-    updateNavTabStyle();
   }
 
   // 🔄 拖拽时实时预览tab颜色变化
@@ -9173,10 +9200,10 @@ public class MainActivity extends Activity {
 
   // 🛑 检测触摸位置是否在底部导航栏上
   private boolean isTouchOnNavBar(float x, float y) {
-    if (navBarFrame == null) return false;
+    if (liquidTabBar == null) return false;
     int[] loc = new int[2];
-    navBarFrame.getLocationOnScreen(loc);
-    return y >= loc[1] && y <= loc[1] + navBarFrame.getHeight();
+    liquidTabBar.getLocationOnScreen(loc);
+    return y >= loc[1] && y <= loc[1] + liquidTabBar.getHeight();
   }
 
   // 🛑 检测触摸位置是否在 HorizontalScrollView 上
