@@ -196,6 +196,8 @@ public class MainActivity extends Activity {
   private boolean nightMode = false;
   private LiquidBackgroundView liquidBackground; // 🌊 液态背景（Activity 级复用，主题切换不重建）
   private int currentPage = 0;
+  private ScrollView currentScroll; // 当前页面滚动容器（下拉拉扯检测用）
+  private boolean pullActive = false;
 
   private Process runningProcess;
   private BufferedWriter processWriter;
@@ -2512,8 +2514,7 @@ public class MainActivity extends Activity {
     } else next = createMinePage();
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
-
-    // 🎬 液态过渡：淡入 + 上移回弹
+    currentScroll = findFirstScrollView(next);
     AnimationSet liquidIn = new AnimationSet(true);
     TranslateAnimation up =
         new TranslateAnimation(
@@ -2559,6 +2560,7 @@ public class MainActivity extends Activity {
     } else next = createMinePage();
 
     pageHost.addView(next, new LinearLayout.LayoutParams(-1, -1));
+    currentScroll = findFirstScrollView(next);
 
     // 🎬 液态过渡（拖拽实时切页，更快）
     AnimationSet liquidIn = new AnimationSet(true);
@@ -9340,10 +9342,22 @@ public class MainActivity extends Activity {
               isSwipingPage = true;
             }
           }
+          // 🌊 下拉拉扯：页面在顶部且手指下拉时，背景波浪被拉伸
+          if (!isSwipingPage && !swipeStartOnNav && liquidBackground != null) {
+            float dy = ev.getRawY() - swipeStartY;
+            if (pullActive || (dy > dp(6) && isCurrentScrollAtTop())) {
+              pullActive = true;
+              liquidBackground.setPullTarget(Math.min(1f, dy / dp(140)));
+            }
+          }
           break;
 
         case android.view.MotionEvent.ACTION_UP:
         case android.view.MotionEvent.ACTION_CANCEL:
+          if (pullActive) {
+            pullActive = false;
+            if (liquidBackground != null) liquidBackground.releasePull();
+          }
           if (isSwipingPage) {
             float diffX = ev.getRawX() - swipeStartX;
             if (Math.abs(diffX) > SWIPE_THRESHOLD) {
@@ -9362,6 +9376,22 @@ public class MainActivity extends Activity {
       return super.dispatchTouchEvent(ev);
     }
     return super.dispatchTouchEvent(ev);
+  }
+
+  private ScrollView findFirstScrollView(View view) {
+    if (view instanceof ScrollView) return (ScrollView) view;
+    if (view instanceof ViewGroup) {
+      ViewGroup vg = (ViewGroup) view;
+      for (int i = 0; i < vg.getChildCount(); i++) {
+        ScrollView found = findFirstScrollView(vg.getChildAt(i));
+        if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  private boolean isCurrentScrollAtTop() {
+    return currentScroll == null || currentScroll.getScrollY() <= 0;
   }
 
   // 🛑 检测触摸位置是否在底部导航栏上

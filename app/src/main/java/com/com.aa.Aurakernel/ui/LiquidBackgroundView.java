@@ -50,6 +50,7 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
       if (dt > 0.05f) dt = 0.05f;
 
       time += dt;
+      pullSpring.step(pullTarget, 320f, 26f, dt);
       advanceThemeTransition(dt);
       detectFrameHealth(dt);
       updateBubbles(dt);
@@ -81,6 +82,20 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
   // 壁纸层（可选）
   private Bitmap wallpaper;
   private final Paint wallpaperPaint = new Paint();
+
+  // 下拉拉扯（overscroll）：波浪随下拉拉伸，松手弹簧回弹
+  private final FluidPhysics.Spring pullSpring = new FluidPhysics.Spring(0f);
+  private float pullTarget = 0f;
+
+  /** 设置下拉量 0-1（拖动中调用）。 */
+  public void setPullTarget(float pull) {
+    pullTarget = FluidPhysics.clamp(pull, 0f, 1f);
+  }
+
+  /** 松手：波浪弹簧回弹。 */
+  public void releasePull() {
+    pullTarget = 0f;
+  }
 
   // 主题过渡
   private int[] fromColors = null, toColors = null;
@@ -256,18 +271,20 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
 
   private void drawWaveLayer(Canvas c, int w, int h, int layer, int layers) {
     FluidPhysics.Wave wave = waves[layer];
-    float baseY = h * WAVE_DEFS[layer][3];
-    float alphaFill = 0.20f - layer * 0.05f; // 近层更实
-    float alphaLine = 0.16f - layer * 0.04f;
+    float pull = pullSpring.x; // 0-1 下拉拉扯量
+    float baseY = h * WAVE_DEFS[layer][3] + pull * h * 0.16f; // 下拉时波浪向下拉伸
+    float ampMul = 1f + pull * 0.55f; // 振幅增大
+    float alphaFill = (0.20f - layer * 0.05f) * (1f + pull * 0.25f);
+    float alphaLine = (0.16f - layer * 0.04f) * (1f + pull * 0.6f);
 
     // 波浪路径：x 步长 4dp
     float step = 4f * density;
     path.reset();
     path.moveTo(0, h);
-    float y0 = baseY + wave.y(0, time);
+    float y0 = baseY + wave.y(0, time) * ampMul;
     path.lineTo(0, y0);
     for (float x = step; x <= w + step; x += step) {
-      path.lineTo(x, baseY + wave.y(x, time));
+      path.lineTo(x, baseY + wave.y(x, time) * ampMul);
     }
     path.lineTo(w, h);
     path.close();
@@ -276,7 +293,7 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
     int color = layer == 0 ? curW1 : layer == 1 ? curW2 : curW3;
     paint.setStyle(Paint.Style.FILL);
     paint.setShader(new LinearGradient(
-        0, baseY - wave.amp * 2f, 0, h,
+        0, baseY - wave.amp * 2f * ampMul, 0, h,
         withAlpha(color, (int) (255 * alphaFill)), withAlpha(color, 0), Shader.TileMode.CLAMP));
     c.drawPath(path, paint);
     paint.setShader(null);
@@ -288,7 +305,7 @@ public class LiquidBackgroundView extends View implements ThemeManager.Listener 
     path.reset();
     path.moveTo(0, y0);
     for (float x = step; x <= w + step; x += step) {
-      path.lineTo(x, baseY + wave.y(x, time));
+      path.lineTo(x, baseY + wave.y(x, time) * ampMul);
     }
     c.drawPath(path, paint);
   }
