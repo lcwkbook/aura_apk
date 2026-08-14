@@ -9222,12 +9222,15 @@ public class MainActivity extends Activity {
     return g;
   }
 
-  // 🌊 浅渐变按钮底色：同色高透明渐变 + 同色描边（所有按钮统一，不深色）
+  // 🌊 浅渐变按钮底色：主题色 → 搭档色 双色渐变 + 同色描边（所有按钮统一，不深色）
   private GradientDrawable lightGradient(int base, int radius) {
     GradientDrawable g =
         new GradientDrawable(
             GradientDrawable.Orientation.LEFT_RIGHT,
-            new int[] {withAlphaColor(base, 205), withAlphaColor(base, 62)});
+            new int[] {
+              withAlphaColor(base, 205),
+              withAlphaColor(ThemeManager.get().getTheme().grad, 62)
+            });
     g.setCornerRadius(dp(radius));
     g.setStroke(dp(1), withAlphaColor(base, 135));
     return g;

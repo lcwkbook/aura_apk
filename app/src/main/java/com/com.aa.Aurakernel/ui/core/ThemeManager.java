@@ -21,12 +21,14 @@ public final class ThemeManager {
   public static final class Theme {
     public final int w1, w2, w3;    // 波浪渐变三色
     public final int acc;           // 强调色
+    public final int grad;          // 渐变搭档色（按钮/液体球/进度条双色渐变的第二色）
     public final int text, sub;     // 主文字 / 次级文字
     public final int glass, border; // 玻璃底色 / 玻璃高光描边
     public final int chipBg;        // 浅色标签底（原 tagColor 语义）
 
-    public Theme(int w1, int w2, int w3, int acc, int text, int sub, int glass, int border, int chipBg) {
+    public Theme(int w1, int w2, int w3, int acc, int grad, int text, int sub, int glass, int border, int chipBg) {
       this.w1 = w1; this.w2 = w2; this.w3 = w3; this.acc = acc;
+      this.grad = grad;
       this.text = text; this.sub = sub; this.glass = glass; this.border = border;
       this.chipBg = chipBg;
     }
@@ -44,22 +46,22 @@ public final class ThemeManager {
 
   // ==================== 6 套主题色值（spec §6，原型确认） ====================
   private static final Theme GREEN_LIGHT = new Theme(
-      0xFF1E8A4F, 0xFF35B76A, 0xFF5FDB8F, 0xFF23A55A,
+      0xFF1E8A4F, 0xFF35B76A, 0xFF5FDB8F, 0xFF23A55A, 0xFF2EC4B6,
       0xFF0E2B1A, 0xFF3A5C49, 0x8CFFFFFF, 0xBFFFFFFF, 0x1E51BF65);
   private static final Theme GREEN_DARK = new Theme(
-      0xFF0B2E1B, 0xFF14532D, 0xFF1E8A4F, 0xFF35C77B,
+      0xFF0B2E1B, 0xFF14532D, 0xFF1E8A4F, 0xFF35C77B, 0xFF1FAE9E,
       0xFFE9FFF2, 0xFF9CC9AE, 0x8A0C141A, 0x24FFFFFF, 0x2E14532D);
   private static final Theme CYAN_LIGHT = new Theme(
-      0xFF0B7FA3, 0xFF12A8D1, 0xFF4FD4F2, 0xFF0FA3D8,
+      0xFF0B7FA3, 0xFF12A8D1, 0xFF4FD4F2, 0xFF0FA3D8, 0xFF3D7BF0,
       0xFF062B38, 0xFF33586A, 0x8CFFFFFF, 0xBFFFFFFF, 0x1E0B7FA3);
   private static final Theme CYAN_DARK = new Theme(
-      0xFF06242F, 0xFF0B3A4A, 0xFF0B7FA3, 0xFF18BCE8,
+      0xFF06242F, 0xFF0B3A4A, 0xFF0B7FA3, 0xFF18BCE8, 0xFF3466D6,
       0xFFE4F8FF, 0xFF8FC6D9, 0x8A08141A, 0x24FFFFFF, 0x2E0B3A4A);
   private static final Theme PINK_LIGHT = new Theme(
-      0xFF8B3FBF, 0xFFB14FE0, 0xFFE27BF0, 0xFFA84FE0,
+      0xFF8B3FBF, 0xFFB14FE0, 0xFFE27BF0, 0xFFA84FE0, 0xFFF062C0,
       0xFF2A0B3D, 0xFF5C4A6E, 0x8CFFFFFF, 0xBFFFFFFF, 0x1E8B3FBF);
   private static final Theme PINK_DARK = new Theme(
-      0xFF240A38, 0xFF3B1457, 0xFF8B3FBF, 0xFFC06AF0,
+      0xFF240A38, 0xFF3B1457, 0xFF8B3FBF, 0xFFC06AF0, 0xFFD84FA8,
       0xFFF9ECFF, 0xFFC3A8D9, 0x8A12081C, 0x24FFFFFF, 0x2E3B1457);
 
   private static volatile ThemeManager instance;

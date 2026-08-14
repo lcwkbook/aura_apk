@@ -212,7 +212,7 @@ public class LiquidTabBar extends FrameLayout implements ThemeManager.Listener {
     glassColor = t.glass;
     borderColor = t.border;
     acc1 = t.acc;
-    acc2 = ThemeManager.lerpColor(t.acc, t.w3, 0.45f);
+    acc2 = t.grad; // 渐变搭档色（混搭渐变）
     iconNormal = t.sub;
     iconActive = Color.WHITE;
   }
