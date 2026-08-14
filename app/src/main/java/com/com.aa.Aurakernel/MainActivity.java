@@ -38,6 +38,7 @@ import android.os.Handler;
 import com.aa.Aurakernel.ui.FluidProgressView;
 import com.aa.Aurakernel.ui.LiquidBackgroundView;
 import com.aa.Aurakernel.ui.LiquidTabBar;
+import com.aa.Aurakernel.ui.core.WallpaperStore;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
@@ -1316,6 +1317,13 @@ public class MainActivity extends Activity {
         // 用户未授权，引导手动操作
         Toast.makeText(this, "⚠️ 需要允许安装未知来源应用才能安装更新", Toast.LENGTH_LONG).show();
       }
+    } else if (WallpaperStore.onActivityResult(this, requestCode, resultCode, data)) {
+      // 🖼️ 壁纸选择完成：应用新壁纸（失败时 WallpaperStore 已回退内置）
+      Bitmap wp = WallpaperStore.loadCurrent(this);
+      if (liquidBackground != null) liquidBackground.setWallpaper(wp);
+      if (WallpaperStore.getType(this).startsWith("custom")) {
+        Toast.makeText(this, "✅ 壁纸已应用", Toast.LENGTH_SHORT).show();
+      }
     }
   }
 
@@ -1605,6 +1613,8 @@ public class MainActivity extends Activity {
     if (liquidBackground == null) {
       liquidBackground = new LiquidBackgroundView(this);
     }
+    // 🖼️ 应用当前壁纸（内置渐变或相册自定义，随主题明暗自适应）
+    liquidBackground.setWallpaper(WallpaperStore.loadCurrent(this));
     root.addView(liquidBackground, 0, new FrameLayout.LayoutParams(-1, -1));
 
     LinearLayout shell = new LinearLayout(this);
