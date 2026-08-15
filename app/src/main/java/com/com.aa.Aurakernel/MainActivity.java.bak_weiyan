@@ -85,7 +85,6 @@ import com.verify.sdk.config.ApiBaseEntity;
 import com.verify.sdk.config.VerifyConfig;
 import com.verify.sdk.framework.FrameworkTool;
 import com.verify.sdk.framework.ReqBuilder;
-import com.weiyan.api.Rc4Util;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -141,21 +140,6 @@ public class MainActivity extends Activity {
 
   private static final String REMOTE_SCRIPT_NAME = StringGuard.get(4);
   private static final String SCRIPT_NAME = StringGuard.get(4);
-    // ============================================================
-  // 微验网络验证配置（启用）
-  // ============================================================
-  private static final String WEIURL = "https://wy.llua.cn";
-  private static final String WEIAID = "53873";
-  private static final String WEIKEY = "GE8f3IPy3yfy4Y0M";
-  private static final String RC4KEY = "I7Iqe7wFaE553873";
-  private static final String DLCODE = "200";  // 登录成功状态码
-
-  // ============================================================
-  // 验证方式总开关
-  //   true  = js网络验证
-  //   false = 微验网络验证
-  // ============================================================
-  private static final boolean USE_JS_VERIFY = false;
   private int driverType = 0;
   private boolean antiRecord = false; // 防录屏，默认关闭
   private boolean noBackground = false; // 无后台，默认关闭
@@ -501,19 +485,7 @@ public class MainActivity extends Activity {
     }
   }
 
-  // ============================================================
-  // 卡密验证入口：根据 USE_JS_VERIFY 开关自动选择验证方式
-  // ============================================================
   private void verifyCardFromServer(final String card, final VerifyCallback callback) {
-    if (USE_JS_VERIFY) {
-      verifyCardFromServerJs(card, callback);
-    } else {
-      verifyCardFromServerWei(card, callback);
-    }
-  }
-
-  /*js网络验证 */
-  private void verifyCardFromServerJs(final String card, final VerifyCallback callback) {
     // ★ 先检查缓存：如果这张卡之前查过，直接用缓存
     if (CacheManager.hasCachedCard(card)) {
       CacheManager.CardCache cached = CacheManager.getCachedCard(card);
@@ -564,102 +536,7 @@ public class MainActivity extends Activity {
         .start();
   }
 
-  /*微验网络验证 */
-  private void verifyCardFromServerWei(final String card, final VerifyCallback callback) {
-    // ★ 先检查缓存
-    if (CacheManager.hasCachedCard(card)) {
-      CacheManager.CardCache cached = CacheManager.getCachedCard(card);
-      runOnUiThread(
-          () -> {
-            if (callback != null) callback.onSuccess(cached.type, cached.endTime, cached.status);
-          });
-      return;
-    }
-
-    // ===== 微验卡密验证 =====
-    new Thread(() -> {
-        try {
-            String ANDROID_ID = Settings.System.getString(getContentResolver(), Settings.System.ANDROID_ID);
-            long TIME = System.currentTimeMillis() / 1000;
-            long VALUE = (long)(1 + Math.random() * 10) + TIME;
-
-            String rawSign = "kami=" + card + "&markcode=" + ANDROID_ID + "&t=" + TIME + "&" + WEIKEY;
-            String SIGN = stringToMD5(rawSign);
-
-            String rawData = "kami=" + card + "&markcode=" + ANDROID_ID
-                           + "&t=" + TIME
-                           + "&sign=" + SIGN
-                           + "&value=" + VALUE;
-
-            String encData = Rc4Util.encryRC4String(rawData, RC4KEY, "UTF-8");
-            String urlStr = WEIURL + "/api/?id=kmlogon&app=" + WEIAID + "&data=" + encData;
-
-            Log.d("WEIYAN_REQ", "TIME(s): " + TIME);
-            Log.d("WEIYAN_REQ", "VALUE: " + VALUE);
-            Log.d("WEIYAN_REQ", "SIGN: " + SIGN);
-
-            URL url = new URL(urlStr);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line);
-            reader.close();
-            conn.disconnect();
-
-            String WEIDATA = Rc4Util.decryRC4(sb.toString(), RC4KEY, "UTF-8");
-            Log.d("WEIYAN_RESP", "解密响应: " + WEIDATA);
-
-            JSONObject jsonObject = new JSONObject(WEIDATA);
-            String code = jsonObject.getString("code");
-            String msg = jsonObject.getString("msg");
-
-            if (code.equals(DLCODE)) {
-                JSONObject data = new JSONObject(msg);
-                String vip = data.getString("vip");
-                String endTime = formatTimestamp(vip);
-                String status = getCardStatus(endTime);
-
-                saveCardToFile(card);
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("key_value", card).apply();
-
-                runOnUiThread(() -> {
-                    if (callback != null) callback.onSuccess("已激活", endTime, status);
-                });
-            } else {
-                runOnUiThread(() -> {
-                    if (callback != null) callback.onError(msg);
-                });
-            }
-        } catch (final Exception e) {
-            Log.e("WEIYAN", "卡密验证失败", e);
-            runOnUiThread(() -> {
-                if (callback != null) callback.onError(e.getMessage() != null ? e.getMessage() : "网络错误");
-            });
-        }
-    }).start();
-  }
-
-
-
-
-  // ============================================================
-  // 公告获取入口：根据 USE_JS_VERIFY 开关自动选择
-  // ============================================================
   private void fetchNoticeFromServer() {
-    if (USE_JS_VERIFY) {
-      fetchNoticeFromServerJs();
-    } else {
-      fetchNoticeFromServerWei();
-    }
-  }
-
-  /*js网络验证 */
-  private void fetchNoticeFromServerJs() {
     // ★ 如果已经有缓存，直接显示，不用请求服务器
     if (CacheManager.hasAnnouncement()) {
       announcementText.setText(CacheManager.getCachedAnnouncement());
@@ -692,80 +569,6 @@ public class MainActivity extends Activity {
             })
         .start();
   }
-
-  /*微验网络验证 */
-  private void fetchNoticeFromServerWei() {
-    if (CacheManager.hasAnnouncement()) {
-        announcementText.setText(CacheManager.getCachedAnnouncement());
-        return;
-    }
-
-    // ===== 微验获取公告 =====
-    new Thread(() -> {
-        try {
-            URL url = new URL(WEIURL + "/api/?id=notice&app=" + WEIAID);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line);
-            reader.close();
-            conn.disconnect();
-
-            String WEINotice = Rc4Util.decryRC4(sb.toString(), RC4KEY, "UTF-8");
-            JSONObject jsonObject = new JSONObject(WEINotice);
-            String code = jsonObject.getString("code");
-
-            if (code.equals("200")) {
-                JSONObject data = new JSONObject(jsonObject.getString("msg"));
-                final String content = data.getString("app_gg");
-
-                if (content != null && !content.isEmpty()) {
-                    CacheManager.setCachedAnnouncement(content);
-                }
-
-                runOnUiThread(() -> {
-                    if (content != null && !content.isEmpty()) {
-                        announcementText.setText(content);
-                    }
-                });
-            }
-        } catch (Exception e) {
-            Log.e("NOTICE", "获取公告失败", e);
-        }
-    }).start();
-  }
-
-
-    private String formatTimestamp(String timestampSec) {
-    try {
-        long sec = Long.parseLong(timestampSec);
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
-        return sdf.format(new Date(sec * 1000));
-    } catch (Exception e) {
-        return timestampSec;
-    }
-  }
-
-  public static String stringToMD5(String string) {
-      try {
-          java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-          byte[] hash = md.digest(string.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-          StringBuilder hex = new StringBuilder(hash.length * 2);
-          for (byte b : hash) {
-              if ((b & 0xFF) < 0x10) hex.append("0");
-              hex.append(Integer.toHexString(b & 0xFF));
-          }
-          return hex.toString();
-      } catch (Exception e) {
-          return null;
-      }
-  }
-
 
   private void updateRowValue(LinearLayout card, int rowIndex, String newValue, String emoji) {
     if (card == null || rowIndex < 0 || rowIndex >= card.getChildCount()) return;
@@ -1288,11 +1091,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    // 验证方式总开关：USE_JS_VERIFY（true=js网络验证 / false=微验网络验证）
-    // js网络验证需要初始化 verify SDK；微验模式不走 verify SDK，无需初始化
-    if (USE_JS_VERIFY) {
-      initVerifySdk();
-    }
+    initVerifySdk();
     if (!SignatureGuard.isSignatureValid(this)) {
       // 签名不匹配，APK 被篡改过，直接退出
       finish();
