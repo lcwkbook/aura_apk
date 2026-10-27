@@ -145,9 +145,9 @@ public class MainActivity extends Activity {
   // 微验网络验证配置（启用）
   // ============================================================
   private static final String WEIURL = "https://wy.llua.cn";
-  private static final String WEIAID = "53873";
-  private static final String WEIKEY = "GE8f3IPy3yfy4Y0M";
-  private static final String RC4KEY = "I7Iqe7wFaE553873";
+  private static final String WEIAID = "16058";
+  private static final String WEIKEY = "s77f25fc5b8f75171f3";
+  private static final String RC4KEY = "k5d5e2b7e41c2c5c28924616bf0";
   private static final String DLCODE = "200";  // 登录成功状态码
 
   // ============================================================
@@ -155,7 +155,7 @@ public class MainActivity extends Activity {
   //   true  = js网络验证
   //   false = 微验网络验证
   // ============================================================
-  private static final boolean USE_JS_VERIFY = false;
+  private static final boolean USE_JS_VERIFY = true;
   private int driverType = 0;
   private boolean antiRecord = false; // 防录屏，默认关闭
   private boolean noBackground = false; // 无后台，默认关闭
@@ -351,9 +351,11 @@ public class MainActivity extends Activity {
   // 卡密验证（对接 verify SDK）
   // ============================================================
   private void initVerifySdk() {
-    // ★ 多域名列表（按优先级排列）
+    // final String[] apiUrls = {
+    //   "http://vip.jsyz.asia", "http://vip.jszun.com", "http://vip.jsjst.top"
+    // };
     final String[] apiUrls = {
-      "http://vip.jsyz.asia", "http://vip.jszun.com", "http://vip.jsjst.top"
+      "cdn.jsauth.cn", "cdn.jszun.com", "cdn.jsjst.top", "cdn.jsyz.asia", "api.jsauth.cn", "api.jszun.com", "api.jsjst.top", "api.jsyz.asia"
     };
 
     // ★ 在子线程中检测可用域名
